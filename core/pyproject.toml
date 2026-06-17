@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=82", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "botilleria-core"
+version = "0.3.0"
+description = "Sistema de control de mensajería multiusuario para botillería"
+requires-python = ">=3.12"
+dependencies = [
+    "google-adk[extensions]>=2.0.0",
+    "litellm>=1.71.2",
+    "google-genai>=1.75.0",
+    "sqlalchemy>=2.0",
+    "psycopg2-binary>=2.9",
+    "asyncpg>=0.30",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "python-dotenv>=1.0",
+    "redis>=7.4.0",
+    "alembic>=1.13",
+    "sse-starlette>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+cache_dir = "/tmp/botilleria_core_pytest_cache"
+markers = [
+    "integration: tests that require a running API service or external process",
+]
+
+[tool.setuptools]
+py-modules = []
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = [
+    "agents",
+    "config",
+    "controllers",
+    "dtos",
+    "dtos.*",
+    "exceptions",
+    "middleware",
+    "models",
+    "repositories",
+    "services",
+]
+exclude = [
+    "alembic",
+    "scripts",
+    "tests",
+]
