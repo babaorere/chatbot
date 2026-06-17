@@ -3,6 +3,20 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
+class TenantCreateRequest(BaseModel):
+    slug: str = Field(..., min_length=1, max_length=50)
+    name: str = Field(..., min_length=1, max_length=100)
+    instruction: str | None = None
+    model: str | None = None
+    api_key: str | None = None
+    portal_token: str | None = None
+
+
+class ChannelRouteCreateRequest(BaseModel):
+    platform: str = Field(..., min_length=1, max_length=20)
+    channel_identifier: str = Field(..., min_length=1, max_length=255)
+
+
 class TenantProfileUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=100)
     email: str | None = Field(None, max_length=255)

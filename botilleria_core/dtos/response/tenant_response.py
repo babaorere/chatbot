@@ -3,6 +3,24 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 
+class TenantResponse(BaseModel):
+    id: str
+    slug: str
+    name: str
+    status: str
+
+    model_config = {"from_attributes": True}
+
+
+class ChannelRouteResponse(BaseModel):
+    id: str
+    tenant_id: str
+    platform: str
+    channel_identifier: str
+
+    model_config = {"from_attributes": True}
+
+
 class TenantProfileResponse(BaseModel):
     id: str
     slug: str

@@ -1,4 +1,4 @@
-from .request_id import add_request_id
+from .request_id import RequestIdMiddleware
 from .tenant_resolver import TenantResolverMiddleware
 
-__all__ = ["add_request_id", "TenantResolverMiddleware"]
+__all__ = ["RequestIdMiddleware", "TenantResolverMiddleware"]
