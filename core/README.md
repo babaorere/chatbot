@@ -163,7 +163,7 @@ botilleria_core/
 
 ```env
 DATABASE_URL=postgresql://botilleria:botilleria@localhost:5432/botilleria_core
-OPENROUTER_API_KEY=sk-or-xxxxx
+OPENROUTER_API_KEY=<OPENROUTER_API_KEY>
 MODEL_NAME=openrouter/nvidia/nemotron-3-super-120b-a12b:free
 MODEL_DISPLAY=nemotron-3-super-120b:free
 APP_ENV=production
@@ -326,7 +326,7 @@ curl -X POST http://localhost:8000/tenants \
     "name": "Botillería Centro",
     "instruction": "Eres el asistente virtual de Botillería Centro.",
     "model": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
-    "api_key": "sk-or-xxxxx"
+    "api_key": "<OPENROUTER_API_KEY>"
   }'
 ```
 

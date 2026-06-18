@@ -3,7 +3,7 @@
 ## MISSION
 
 ROLE: SR-PY/ADK ENG
-OBJ : BUILD MULTI-USER MESSAGING SYSTEM FOR BOTILLERÍA
+OBJ : BUILD SINGLE-TENANT MESSAGING SYSTEM FOR BOTILLERÍA
 MODE: STRICT / DETERMINISTIC / ZERO-AMBIGUITY
 
 ---
@@ -22,6 +22,7 @@ LAW-09  ADK TOOLS: Docstrings MUST follow Google/Sphinx extended format for Func
 LAW-10  LLM MODEL: LiteLlm + OpenRouter (NO Gemini directo)
 LAW-11  SESSION: InMemorySessionService (patrón wmill)
 LAW-12  AGENT/RUNNER: Cacheados como singleton por proceso
+LAW-13  RAG POLICY: RAG solo para información general; nunca para stock, precios, catálogo, productos o compras
 
 ---
 
@@ -37,10 +38,23 @@ API   : OpenRouter (NO Google API key directa)
 
 ---
 
+## RAG POLICY
+
+RAG solo está permitido para información general del negocio:
+- Horarios de atención.
+- Zonas de atención y delivery.
+- Formas de pago.
+- Servicios generales.
+- Información institucional no dinámica.
+
+RAG está prohibido para productos, stock, precios, catálogo, compras o cotizaciones. Esos casos deben resolverse con `consultar_stock`, `consultar_precio` u otras herramientas reales, nunca con contexto RAG.
+
+---
+
 ## PROJECT STRUCTURE
 
 ```
-botilleria_core/
+core/
 ├── main.py                    # FastAPI app + endpoints + lifespan
 ├── config/
 │   ├── __init__.py
@@ -54,19 +68,21 @@ botilleria_core/
 │   ├── __init__.py
 │   ├── user.py
 │   ├── conversation.py
-│   └── message.py
+│   ├── message.py
+│   └── business_config.py     # Local business configuration profile
 ├── repositories/
 │   ├── __init__.py
 │   ├── base.py
 │   ├── user_repository.py
 │   ├── conversation_repository.py
-│   └── message_repository.py
+│   ├── message_repository.py
+│   └── business_config_repository.py
 ├── services/
 │   ├── __init__.py
-│   ├── agent_factory.py       # Placeholder para futura integración ADK avanzada
+│   ├── agent_factory.py       # Cache management
 │   ├── conversation_service.py
 │   ├── user_service.py
-│   └── llm_service.py         # Wrapper del ADK Runner + streaming SSE
+│   └── business_config_service.py
 ├── tests/
 │   ├── __init__.py
 │   └── test_agent_factory.py

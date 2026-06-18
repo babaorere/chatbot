@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
+
 @router.post("", response_model=ChatResponse)
 async def chat(
     request: ChatRequest,
@@ -21,12 +22,9 @@ async def chat(
     fastapi_request: Request = None,
 ) -> ChatResponse:
     try:
-        tenant_id_header = fastapi_request.headers.get("X-Tenant-ID") if fastapi_request else None
-        
         cmd = ProcessMessageCommand(
             user_id=request.user_id,
             platform=request.platform,
-            channel_identifier=tenant_id_header or "rest",
             message=request.message,
             session_id=request.session_id,
         )
@@ -36,7 +34,6 @@ async def chat(
         return ChatResponse(
             session_id=result.session_id,
             user_id=result.user_id,
-            tenant_slug=result.tenant_slug,
             response=result.response,
         )
     except Exception as e:
@@ -48,12 +45,13 @@ async def chat(
         logger.error("Chat endpoint failed [request_id=%s]: %s", request_id, e)
         raise
 
+
 @router.post("/stream")
 async def chat_stream(
     request: ChatRequest,
     process_message_uc: ProcessMessageUCDep,
     fastapi_request: Request = None,
 ) -> EventSourceResponse:
-    # TODO: Implement stream in ProcessMessageUseCase if needed.
-    # For now, we fallback to non-streaming or raise an error.
-    raise NotImplementedError("Streaming is not yet implemented in the new architecture.")
+    raise NotImplementedError(
+        "Streaming is not yet implemented in the new architecture."
+    )

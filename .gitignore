@@ -1,4 +1,7 @@
 .env
+.env.local
+*.env.local
+core/.env.local
 .venv/
 .pytest_cache/
 .ruff_cache/

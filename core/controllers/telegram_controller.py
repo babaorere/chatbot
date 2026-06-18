@@ -12,17 +12,36 @@ from typing import Any
 
 from fastapi import APIRouter, Request, HTTPException
 
-from app.container import ProcessMessageUCDep
+from app.container import ProcessMessageUCDep, get_redis_client
 from application.use_cases.commands import ProcessMessageCommand
-from infrastructure.channels.telegram_fsm import TelegramConversationFSM, FSMStateStore, FSMState
+from infrastructure.channels.telegram_fsm import (
+    TelegramConversationFSM,
+    FSMStateStore,
+    FSMState,
+    RedisFSMStateStore,
+)
+from config.settings import settings
 from services.telegram_service import send_telegram_message, build_main_menu
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/telegram", tags=["telegram"])
 
-# Instancia global en memoria para el FSM store (en prod debería ser RedisFSMStateStore)
-_fsm_store = FSMStateStore()
+_memory_fsm_store = FSMStateStore()
+
+
+def get_fsm_store() -> FSMStateStore:
+    """Returns the Redis-backed FSM state store if configured, otherwise falls back to in-memory."""
+    if settings.use_redis_sessions:
+        redis_client = get_redis_client()
+        if redis_client is not None:
+            return RedisFSMStateStore(
+                redis_client=redis_client,
+                namespace=settings.redis_namespace,
+                ttl_seconds=settings.redis_session_ttl_seconds,
+            )
+    return _memory_fsm_store
+
 
 @router.post("/webhook/{token}")
 async def telegram_webhook(
@@ -30,6 +49,10 @@ async def telegram_webhook(
     request: Request,
     process_message_uc: ProcessMessageUCDep,
 ) -> dict[str, Any]:
+    if token != settings.telegram_bot_token:
+        logger.warning("Unauthorized webhook request with token: %s", token)
+        raise HTTPException(403, "Forbidden: Invalid Telegram bot token")
+
     try:
         payload = await request.json()
     except Exception as e:
@@ -52,7 +75,7 @@ async def telegram_webhook(
             return {"status": "ok", "detail": "invalid callback"}
 
         # Resolver FSM
-        fsm = TelegramConversationFSM(user_id=user_id, state_store=_fsm_store)
+        fsm = TelegramConversationFSM(user_id=user_id, state_store=get_fsm_store())
         new_state, context = await fsm.transition(callback_data)
 
         intent = context.get("intent")
@@ -61,7 +84,9 @@ async def telegram_webhook(
         if intent == "consultar_stock":
             response_text = "Por favor, escribe el nombre del producto que buscas:"
         elif intent == "consultar_precio":
-            response_text = "Por favor, escribe el nombre del producto para consultar su precio:"
+            response_text = (
+                "Por favor, escribe el nombre del producto para consultar su precio:"
+            )
         elif intent == "get_botilleria_info":
             response_text = "Nuestro horario de atención es de Lunes a Sábado de 10:00 a 22:00, y Domingo de 12:00 a 20:00."
         elif intent == "contactar_humano":
@@ -89,7 +114,7 @@ async def telegram_webhook(
     user_id = str(from_obj.get("id") if from_obj else chat_id)
 
     # Revisar estado actual del FSM
-    fsm = TelegramConversationFSM(user_id=user_id, state_store=_fsm_store)
+    fsm = TelegramConversationFSM(user_id=user_id, state_store=get_fsm_store())
     current_state = await fsm.get_state()
     fsm_context = await fsm.get_context()
 
@@ -106,7 +131,6 @@ async def telegram_webhook(
     cmd = ProcessMessageCommand(
         user_id=user_id,
         platform="telegram",
-        channel_identifier=token,
         message=message_text,
     )
 

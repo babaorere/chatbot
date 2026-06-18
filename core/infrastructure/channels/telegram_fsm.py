@@ -218,7 +218,9 @@ class FSMStateStore:
 class RedisFSMStateStore(FSMStateStore):
     """State store respaldado por Redis para producción multi-worker."""
 
-    def __init__(self, redis_client: Any, namespace: str, ttl_seconds: int = 86400) -> None:
+    def __init__(
+        self, redis_client: Any, namespace: str, ttl_seconds: int = 86400
+    ) -> None:
         """Inicializa el store Redis.
 
         Args:

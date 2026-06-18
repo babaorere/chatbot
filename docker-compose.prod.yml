@@ -68,12 +68,12 @@ services:
   # ── FastAPI: Backend API ─────────────────────────────────────────────────
   api:
     build:
-      context: ./botilleria_core
+      context: ./core
       dockerfile: Dockerfile
     container_name: botilleria_api
     restart: unless-stopped
     env_file:
-      - ./botilleria_core/.env
+      - .env
     expose:
       - "8000"
     volumes:

@@ -1,6 +1,5 @@
 from .base import JpaRepository
-from .tenant_repository import TenantRepository
-from .channel_route_repository import ChannelRouteRepository
+from .business_config_repository import BusinessConfigRepository
 from .user_repository import UserRepository
 from .conversation_repository import ConversationRepository
 from .message_repository import MessageRepository
@@ -10,8 +9,7 @@ from .system_setting_repository import SystemSettingRepository
 
 __all__ = [
     "JpaRepository",
-    "TenantRepository",
-    "ChannelRouteRepository",
+    "BusinessConfigRepository",
     "UserRepository",
     "ConversationRepository",
     "MessageRepository",

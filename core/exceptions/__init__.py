@@ -1,18 +1,10 @@
-from .tenant_exceptions import (
-    TenantNotFoundError,
-    TenantInactiveError,
-    ChannelRouteNotFoundError,
-    TenantResolutionError,
-)
+from .config_exceptions import BusinessConfigNotFoundError
 from .user_exceptions import UserNotFoundError, UserAlreadyExistsError
 from .conversation_exceptions import ConversationNotFoundError
 from .global_handler import register_exception_handlers
 
 __all__ = [
-    "TenantNotFoundError",
-    "TenantInactiveError",
-    "ChannelRouteNotFoundError",
-    "TenantResolutionError",
+    "BusinessConfigNotFoundError",
     "UserNotFoundError",
     "UserAlreadyExistsError",
     "ConversationNotFoundError",

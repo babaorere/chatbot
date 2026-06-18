@@ -1,8 +1,6 @@
 from .chat_response import ChatResponse, SessionHistoryItem
-from .tenant_response import (
-    TenantResponse,
-    ChannelRouteResponse,
-    TenantProfileResponse,
+from .config_response import (
+    BusinessConfigResponse,
     ProductResponse,
     KBEntryResponse,
     KBSearchResultItem,
@@ -15,9 +13,7 @@ from .conversation_response import ConversationResponse
 __all__ = [
     "ChatResponse",
     "SessionHistoryItem",
-    "TenantResponse",
-    "ChannelRouteResponse",
-    "TenantProfileResponse",
+    "BusinessConfigResponse",
     "ProductResponse",
     "KBEntryResponse",
     "KBSearchResultItem",

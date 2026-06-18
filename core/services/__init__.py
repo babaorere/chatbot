@@ -4,34 +4,39 @@ from importlib import import_module
 from typing import Any
 
 __all__ = [
-    "TenantService",
+    "BusinessConfigService",
     "UserService",
     "ConversationService",
-    "LLMService",
-    "create_llm_service",
-    "ChatService",
     "KBService",
     "ProductService",
+    "RAGPolicyResult",
+    "RAGPolicyService",
     "RAGContextBuilder",
     "RedisSessionService",
     "create_session_service",
     "AgentFactory",
     "transactional",
     "send_telegram_message",
+    "CartService",
+    "OrderService",
 ]
 
 _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
-    "TenantService": ("services.tenant_service", "TenantService"),
+    "CartService": ("services.cart_service", "CartService"),
+    "OrderService": ("services.order_service", "OrderService"),
+    "BusinessConfigService": (
+        "services.business_config_service",
+        "BusinessConfigService",
+    ),
     "UserService": ("services.user_service", "UserService"),
     "ConversationService": (
         "services.conversation_service",
         "ConversationService",
     ),
-    "LLMService": ("services.llm_service", "LLMService"),
-    "create_llm_service": ("services.llm_service", "create_llm_service"),
-    "ChatService": ("services.chat_service", "ChatService"),
     "KBService": ("services.kb_service", "KBService"),
     "ProductService": ("services.product_service", "ProductService"),
+    "RAGPolicyResult": ("services.rag_policy", "RAGPolicyResult"),
+    "RAGPolicyService": ("services.rag_policy", "RAGPolicyService"),
     "RAGContextBuilder": (
         "services.rag_context_builder",
         "RAGContextBuilder",

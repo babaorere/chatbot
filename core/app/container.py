@@ -11,7 +11,7 @@ se resuelven desde este módulo.
 from __future__ import annotations
 
 import logging
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends
 from sqlalchemy.orm import Session
@@ -46,6 +46,11 @@ def clear_providers() -> None:
     global _llm_provider, _redis_client
     _llm_provider = None
     _redis_client = None
+
+
+def get_redis_client() -> Any:
+    """Retorna el cliente Redis registrado."""
+    return _redis_client
 
 
 # ============================================================================

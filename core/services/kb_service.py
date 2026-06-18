@@ -13,9 +13,8 @@ logger = logging.getLogger(__name__)
 
 
 class KBService:
-    def __init__(self, db: Session, tenant_id: uuid.UUID) -> None:
+    def __init__(self, db: Session) -> None:
         self.db = db
-        self.tenant_id = tenant_id
         self.repo = KBRepository(db)
 
     def list_entries(
@@ -26,27 +25,23 @@ class KBService:
         limit: int = 50,
     ) -> list[KnowledgeBase]:
         try:
-            return self.repo.find_by_tenant_id(
-                self.tenant_id,
+            return self.repo.find_all(
                 category=category,
                 active_only=active_only,
                 skip=skip,
                 limit=limit,
             )
         except Exception as e:
-            logger.error(
-                "KBService.list_entries failed [tenant=%s]: %s", self.tenant_id, e
-            )
+            logger.error("KBService.list_entries failed: %s", e)
             raise
 
     def get_entry(self, entry_id: uuid.UUID) -> KnowledgeBase | None:
         try:
-            return self.repo.find_by_id_and_tenant(entry_id, self.tenant_id)
+            return self.repo.find_by_id(entry_id)
         except Exception as e:
             logger.error(
-                "KBService.get_entry failed [id=%s, tenant=%s]: %s",
+                "KBService.get_entry failed [id=%s]: %s",
                 entry_id,
-                self.tenant_id,
                 e,
             )
             raise
@@ -59,7 +54,6 @@ class KBService:
     ) -> KnowledgeBase:
         try:
             entry = KnowledgeBase(
-                tenant_id=self.tenant_id,
                 category=category,
                 title=title,
                 content=content,
@@ -67,8 +61,7 @@ class KBService:
             return self.repo.save(entry)
         except Exception as e:
             logger.error(
-                "KBService.create_entry failed [tenant=%s, category=%s]: %s",
-                self.tenant_id,
+                "KBService.create_entry failed [category=%s]: %s",
                 category,
                 e,
             )
@@ -83,11 +76,9 @@ class KBService:
         is_active: bool | None = None,
     ) -> KnowledgeBase:
         try:
-            entry = self.repo.find_by_id_and_tenant(entry_id, self.tenant_id)
+            entry = self.repo.find_by_id(entry_id)
             if not entry:
-                raise ValueError(
-                    f"Knowledge base entry {entry_id} not found for tenant {self.tenant_id}"
-                )
+                raise ValueError(f"Knowledge base entry {entry_id} not found")
 
             if category is not None:
                 entry.category = category
@@ -103,21 +94,19 @@ class KBService:
             return entry
         except Exception as e:
             logger.error(
-                "KBService.update_entry failed [id=%s, tenant=%s]: %s",
+                "KBService.update_entry failed [id=%s]: %s",
                 entry_id,
-                self.tenant_id,
                 e,
             )
             raise
 
     def delete_entry(self, entry_id: uuid.UUID) -> bool:
         try:
-            return self.repo.soft_delete_by_id_and_tenant(entry_id, self.tenant_id)
+            return self.repo.soft_delete(entry_id)
         except Exception as e:
             logger.error(
-                "KBService.delete_entry failed [id=%s, tenant=%s]: %s",
+                "KBService.delete_entry failed [id=%s]: %s",
                 entry_id,
-                self.tenant_id,
                 e,
             )
             raise
@@ -126,13 +115,10 @@ class KBService:
         self, query: str, top_k: int = 5, category: str | None = None
     ) -> list[dict[str, Any]]:
         try:
-            return self.repo.search_fts(
-                self.tenant_id, query, top_k=top_k, category=category
-            )
+            return self.repo.search_fts(query, top_k=top_k, category=category)
         except Exception as e:
             logger.error(
-                "KBService.search failed [tenant=%s, query=%s]: %s",
-                self.tenant_id,
+                "KBService.search failed [query=%s]: %s",
                 query,
                 e,
             )
@@ -140,20 +126,14 @@ class KBService:
 
     def get_categories(self, active_only: bool = True) -> list[str]:
         try:
-            return self.repo.get_categories_by_tenant(
-                self.tenant_id, active_only=active_only
-            )
+            return self.repo.get_categories(active_only=active_only)
         except Exception as e:
-            logger.error(
-                "KBService.get_categories failed [tenant=%s]: %s", self.tenant_id, e
-            )
+            logger.error("KBService.get_categories failed: %s", e)
             raise
 
     def count(self, category: str | None = None, active_only: bool = True) -> int:
         try:
-            return self.repo.count_by_tenant(
-                self.tenant_id, category=category, active_only=active_only
-            )
+            return self.repo.count_all(category=category, active_only=active_only)
         except Exception as e:
-            logger.error("KBService.count failed [tenant=%s]: %s", self.tenant_id, e)
+            logger.error("KBService.count failed: %s", e)
             raise

@@ -8,19 +8,15 @@ la lógica de aplicación.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, AsyncGenerator, Protocol, runtime_checkable
-
-if TYPE_CHECKING:
-    from domain.tenant.schemas import TenantLLMConfig
+from typing import AsyncGenerator, Protocol, runtime_checkable
 
 
 @runtime_checkable
 class ILLMProvider(Protocol):
-    """Contrato para proveedores de inferencia LLM multi-tenant."""
+    """Contrato para proveedores de inferencia LLM."""
 
     async def run_chat(
         self,
-        llm_config: "TenantLLMConfig",
         user_id: str,
         session_id: str,
         message: str,
@@ -29,7 +25,6 @@ class ILLMProvider(Protocol):
         """Ejecuta una inferencia síncrona y retorna la respuesta completa.
 
         Args:
-            llm_config: Configuración LLM del tenant (modelo, api_key, instruction).
             user_id: Identificador externo del usuario (ej: Telegram user_id).
             session_id: Identificador de la sesión de conversación.
             message: Mensaje del usuario a procesar.
@@ -42,7 +37,6 @@ class ILLMProvider(Protocol):
 
     async def run_chat_stream(
         self,
-        llm_config: "TenantLLMConfig",
         user_id: str,
         session_id: str,
         message: str,
@@ -51,7 +45,6 @@ class ILLMProvider(Protocol):
         """Ejecuta una inferencia en modo streaming.
 
         Args:
-            llm_config: Configuración LLM del tenant.
             user_id: Identificador externo del usuario.
             session_id: Identificador de la sesión de conversación.
             message: Mensaje del usuario a procesar.
@@ -64,14 +57,12 @@ class ILLMProvider(Protocol):
 
     async def get_session_history(
         self,
-        llm_config: "TenantLLMConfig",
         user_id: str,
         session_id: str,
     ) -> list[dict[str, str]]:
         """Recupera el historial de mensajes de una sesión.
 
         Args:
-            llm_config: Configuración LLM del tenant.
             user_id: Identificador externo del usuario.
             session_id: Identificador de la sesión de conversación.
 

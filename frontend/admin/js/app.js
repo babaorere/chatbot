@@ -186,7 +186,7 @@ class AdminApp {
                 </div>
                 <div class="form-group">
                     <label>API Key (OpenRouter)</label>
-                    <input type="password" id="tenantApiKey" placeholder="sk-or-...">
+                    <input type="password" id="tenantApiKey" placeholder="<OPENROUTER_API_KEY>">
                 </div>
                 <button type="submit" class="btn btn-primary">Crear Tenant</button>
             </form>

@@ -1,8 +1,6 @@
 from .chat_request import ChatRequest
-from .tenant_request import (
-    TenantCreateRequest,
-    ChannelRouteCreateRequest,
-    TenantProfileUpdateRequest,
+from .config_request import (
+    BusinessConfigUpdateRequest,
     ProductCreateRequest,
     ProductUpdateRequest,
     KBEntryCreateRequest,
@@ -13,9 +11,7 @@ from .user_request import UserCreateRequest
 
 __all__ = [
     "ChatRequest",
-    "TenantCreateRequest",
-    "ChannelRouteCreateRequest",
-    "TenantProfileUpdateRequest",
+    "BusinessConfigUpdateRequest",
     "ProductCreateRequest",
     "ProductUpdateRequest",
     "KBEntryCreateRequest",

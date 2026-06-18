@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import uuid
 
 from sqlalchemy.orm import Session
 
@@ -20,20 +19,6 @@ class MessageRepository(JpaRepository[Message]):
             self.db.query(Message)
             .filter(Message.conversation_id == conversation_id)
             .order_by(Message.created_at.asc())
-            .all()
-        )
-
-    def find_by_tenant_id(
-        self,
-        tenant_id: uuid.UUID,
-        skip: int = 0,
-        limit: int = 100,
-    ) -> list[Message]:
-        return (
-            self.db.query(Message)
-            .filter(Message.tenant_id == tenant_id)
-            .offset(skip)
-            .limit(limit)
             .all()
         )
 

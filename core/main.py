@@ -11,12 +11,12 @@ from middleware import RequestIdMiddleware
 from controllers import (
     health_router,
     chat_router,
-    tenant_router,
     user_router,
     session_router,
-    tenant_portal_router,
+    business_config_router,
     admin_router,
     telegram_router,
+    order_router,
 )
 
 logger = logging.getLogger(__name__)
@@ -26,17 +26,22 @@ logging.basicConfig(
 )
 
 app = FastAPI(
-    title="Botilleria Core (Multi-Tenant)",
+    title="Botilleria Core",
     version="1.0.0",
     lifespan=lifespan,
 )
 
 app.add_middleware(RequestIdMiddleware)
 
+origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
+allow_credentials = True
+if "*" in origins:
+    allow_credentials = False
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=origins,
+    allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -45,9 +50,9 @@ register_exception_handlers(app)
 
 app.include_router(health_router)
 app.include_router(chat_router)
-app.include_router(tenant_router)
 app.include_router(user_router)
 app.include_router(session_router)
-app.include_router(tenant_portal_router)
+app.include_router(business_config_router)
 app.include_router(admin_router)
 app.include_router(telegram_router)
+app.include_router(order_router)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -40,9 +41,34 @@ class Settings(BaseSettings):
     redis_max_connections: int = 100
     redis_retry_attempts: int = 3
 
+    # ── Business configuration ─────────────────────────────────
+    business_name: str = "Mi Negocio"
+    business_email: str = "contacto@minegocio.com"
+    business_phone: str = "+56912345678"
+    business_address: str = "Calle Principal 123"
+    business_city: str = "Santiago"
+    business_website: str = ""
+    business_hours: str = ""
+
     # ── App ──────────────────────────────────────────────────────
     app_env: str = "development"
     log_level: str = "INFO"
+
+    # ── Security & Channels ──────────────────────────────────────
+    telegram_bot_token: str = ""
+    admin_api_key: str = ""
+    allowed_origins: str = "http://localhost:8083"
+
+    @model_validator(mode="after")
+    def validate_production_cors(self) -> "Settings":
+        origins = [
+            origin.strip()
+            for origin in self.allowed_origins.split(",")
+            if origin.strip()
+        ]
+        if self.is_production and "*" in origins:
+            raise ValueError("APP_ENV=production no permite ALLOWED_ORIGINS='*'")
+        return self
 
     @property
     def is_production(self) -> bool:

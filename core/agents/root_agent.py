@@ -10,6 +10,7 @@ from google.adk import Agent, Runner
 from google.adk.models.lite_llm import LiteLlm
 
 from services.session_service_factory import create_session_service
+from config.settings import settings
 from .constants import GADK_APP_NAME, GADK_INSTRUCTION, GADK_MODEL
 
 
@@ -95,15 +96,32 @@ def consultar_stock(producto: str | None = None) -> str:
             un producto específico y necesitas pedírselo.
 
     Returns:
-        str: Mensaje de confirmación indicando que se consultará la
-            disponibilidad del producto solicitado. Si producto fue
-            proporcionado, incluye el nombre del producto en la respuesta.
-            Si producto es None, retorna una pregunta solicitando al
-            usuario que especifique qué producto le interesa.
+        str: Mensaje de confirmación indicando disponibilidad o alternativas.
     """
-    if producto:
-        return f"Stock de '{producto}': consultaré disponibilidad y te respondo pronto."
-    return "¿Qué producto te interesa? Indícame el nombre y consultaré disponibilidad."
+    if not producto:
+        return (
+            "¿Qué producto te interesa? Indícame el nombre y consultaré disponibilidad."
+        )
+
+    from config.database import SessionLocal
+    from services.product_service import ProductService
+
+    db = SessionLocal()
+    try:
+        product_svc = ProductService(db)
+        products = product_svc.search(producto, limit=3)
+        if not products:
+            return f"No encontré '{producto}' en nuestro catálogo de inventario actual. ¿Deseas consultar por otra opción?"
+
+        lines = []
+        for p in products:
+            disp = "Disponible" if p.is_available and p.stock > 0 else "Agotado"
+            lines.append(f"- {p.name}: {p.stock} {p.unit_of_measure or 'un'} ({disp})")
+        return "Disponibilidad de stock encontrada:\n" + "\n".join(lines)
+    except Exception:
+        return f"Disculpas, no he podido consultar el inventario para '{producto}'. Intenta de nuevo más tarde."
+    finally:
+        db.close()
 
 
 def consultar_precio(producto: str | None = None) -> str:
@@ -125,15 +143,31 @@ def consultar_precio(producto: str | None = None) -> str:
             producto específico y necesitas pedírselo.
 
     Returns:
-        str: Mensaje de confirmación indicando que se consultará el precio
-            del producto solicitado. Si producto fue proporcionado, incluye
-            el nombre en la respuesta. Si producto es None, retorna una
-            pregunta solicitando al usuario que especifique de qué producto
-            quiere saber el precio.
+        str: Información de precios de los productos encontrados.
     """
-    if producto:
-        return f"Precio de '{producto}': consultaré y te respondo pronto."
-    return "¿De qué producto quieres saber el precio?"
+    if not producto:
+        return "¿De qué producto quieres saber el precio?"
+
+    from config.database import SessionLocal
+    from services.product_service import ProductService
+
+    db = SessionLocal()
+    try:
+        product_svc = ProductService(db)
+        products = product_svc.search(producto, limit=3)
+        if not products:
+            return f"No encontré ningún precio para '{producto}' en nuestro catálogo. ¿Buscas algún otro producto?"
+
+        lines = []
+        for p in products:
+            price_val = float(p.price) if p.price else 0.0
+            price_str = f"${price_val:,.0f}" if price_val > 0 else "No especificado"
+            lines.append(f"- {p.name}: {price_str} por {p.unit_of_measure or 'un'}")
+        return "Precios vigentes:\n" + "\n".join(lines)
+    except Exception:
+        return f"Disculpas, no he podido consultar el catálogo de precios para '{producto}'."
+    finally:
+        db.close()
 
 
 def contactar_humano(motivo: str | None = None) -> str:
@@ -191,16 +225,27 @@ def _get_agent() -> Agent:
     """Crea o retorna el agente ADK cacheado (singleton por proceso)."""
     global _agent_cache
     if _agent_cache is None:
-        openrouter_key = os.getenv("OPENROUTER_API_KEY")
-        if not openrouter_key:
-            raise RuntimeError(
-                "OPENROUTER_API_KEY no configurada. "
-                "Configura la variable de entorno o agrega la clave a .env"
-            )
+        api_key = settings.openrouter_api_key or os.getenv("OPENROUTER_API_KEY", "")
+
+        fallbacks = []
+        if settings.fallback_model_1:
+            fallbacks.append({"model": settings.fallback_model_1, "api_key": api_key})
+        if settings.fallback_model_2:
+            fb2_key = api_key
+            if "groq" in settings.fallback_model_2.lower():
+                fb2_key = settings.groq_api_key or os.getenv("GROQ_API_KEY", api_key)
+            fallbacks.append({"model": settings.fallback_model_2, "api_key": fb2_key})
+
+        model_obj = LiteLlm(
+            model=settings.model_name or GADK_MODEL,
+            api_key=api_key,
+            num_retries=3,
+            fallbacks=fallbacks,
+        )
 
         _agent_cache = Agent(
             name=f"{GADK_APP_NAME}_{int(time.time())}",
-            model=LiteLlm(model=GADK_MODEL, api_key=openrouter_key),
+            model=model_obj,
             instruction=GADK_INSTRUCTION,
             tools=cast("list[Any]", _BOTILLERIA_TOOLS),
         )

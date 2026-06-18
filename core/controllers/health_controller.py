@@ -14,7 +14,7 @@ def health_check() -> dict[str, str]:
         "status": "ok",
         "service": "botilleria-core",
         "version": "1.0.0",
-        "multi_tenant": "true",
+        "multi_tenant": "false",
         "session_backend": settings.session_backend,
         "worker_pid": str(os.getpid()),
     }

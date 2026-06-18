@@ -6,7 +6,9 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
-async def send_telegram_message(bot_token: str, chat_id: str | int, text: str, reply_markup: dict | None = None) -> bool:
+async def send_telegram_message(
+    bot_token: str, chat_id: str | int, text: str, reply_markup: dict | None = None
+) -> bool:
     """Envía un mensaje de texto a un chat de Telegram usando httpx de forma asíncrona."""
     if not bot_token or not chat_id:
         logger.warning(
@@ -24,7 +26,7 @@ async def send_telegram_message(bot_token: str, chat_id: str | int, text: str, r
         }
         if reply_markup:
             payload["reply_markup"] = reply_markup
-            
+
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(url, json=payload)
             if resp.status_code == 200 and resp.json().get("ok"):
@@ -44,11 +46,11 @@ def build_main_menu() -> dict:
         "inline_keyboard": [
             [
                 {"text": "📦 Consultar Stock", "callback_data": "menu:stock"},
-                {"text": "💰 Ver Precios", "callback_data": "menu:precio"}
+                {"text": "💰 Ver Precios", "callback_data": "menu:precio"},
             ],
             [
                 {"text": "🕒 Horarios", "callback_data": "menu:horario"},
-                {"text": "👤 Hablar con Humano", "callback_data": "menu:contacto"}
-            ]
+                {"text": "👤 Hablar con Humano", "callback_data": "menu:contacto"},
+            ],
         ]
     }

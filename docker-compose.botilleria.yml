@@ -1,7 +1,7 @@
 # ============================================================================
 # BOTILLERIA CORE — Docker Compose
 # ============================================================================
-# Servicio FastAPI multiusuario + PostgreSQL compartido de Windmill
+# Servicio FastAPI de negocio single-tenant + PostgreSQL local/compartido
 # ============================================================================
 
 x-logging: &default-logging
@@ -36,16 +36,16 @@ services:
 
   botilleria_api:
     build:
-      context: ./botilleria_core
+      context: ./core
       dockerfile: Dockerfile
     container_name: botilleria_core_api
     restart: unless-stopped
     env_file:
-      - ./botilleria_core/.env
+      - .env
     ports:
       - "8001:8000"
     volumes:
-      - ./botilleria_core:/app
+      - ./core:/app
       - botilleria_venv:/app/.venv
     networks:
       - booking-titanium-wm_default
@@ -66,7 +66,7 @@ services:
       start_period: 45s
     logging: *default-logging
 
-  # ── Init DB: crea la base de datos 'botilleria' en el PostgreSQL compartido ──
+  # ── Init DB: crea la base de datos 'botilleria' en el PostgreSQL de Windmill ──
   botilleria_init_db:
     image: postgres:17-alpine
     container_name: botilleria_init_db

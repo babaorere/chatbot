@@ -1,13 +1,7 @@
 """
 ADKLLMProvider — Implementación de ILLMProvider usando Google ADK + LiteLlm.
 
-Implementa el port ILLMProvider delegando en:
-- RunnerRegistry: gestiona el ciclo de vida de los ADK Runners por tenant
-- APIKeyResolver: resuelve API keys de forma centralizada
-
-ANTES: Toda esta lógica vivía en services/llm_service.py mezclando
-       gestión de runners, resolución de keys e inferencia.
-AHORA: Cada responsabilidad está en su clase correcta.
+Delegará la ejecución al agente central definido en `agents.root_agent`.
 """
 
 from __future__ import annotations
@@ -18,18 +12,11 @@ from typing import Any, AsyncGenerator
 from google.adk.sessions.base_session_service import BaseSessionService
 from google.genai import types
 
-from domain.tenant.schemas import TenantLLMConfig
-from infrastructure.llm.key_resolver import APIKeyResolver
-from infrastructure.llm.runner_registry import RunnerRegistry
-
 logger = logging.getLogger(__name__)
 
 
 class ADKLLMProvider:
     """Implementa ILLMProvider usando Google ADK + LiteLlm + OpenRouter.
-
-    Compatible con cualquier modelo soportado por LiteLlm:
-    OpenRouter, Groq, NVIDIA NIM, Gemini, etc.
 
     Esta clase es un singleton por proceso (registrado en app/container.py).
     """
@@ -37,24 +24,16 @@ class ADKLLMProvider:
     def __init__(
         self,
         session_service: BaseSessionService,
-        key_resolver: APIKeyResolver | None = None,
     ) -> None:
-        """Inicializa el proveedor con el session service y runner registry.
+        """Inicializa el proveedor con el session service.
 
         Args:
-            session_service: Servicio de sesiones ADK compartido (Redis o InMemory).
-            key_resolver: Resolvedor de API keys. Si None, se usa el default.
+            session_service: Servicio de sesiones ADK compartido.
         """
-        _resolver = key_resolver or APIKeyResolver()
-        self._registry = RunnerRegistry(
-            session_service=session_service,
-            key_resolver=_resolver,
-        )
         self._session_service = session_service
 
     async def run_chat(
         self,
-        llm_config: TenantLLMConfig,
         user_id: str,
         session_id: str,
         message: str,
@@ -63,7 +42,6 @@ class ADKLLMProvider:
         """Ejecuta una inferencia completa y retorna la respuesta como string.
 
         Args:
-            llm_config: Configuración LLM del tenant.
             user_id: Identificador del usuario.
             session_id: Identificador de la sesión de conversación.
             message: Mensaje del usuario.
@@ -76,10 +54,9 @@ class ADKLLMProvider:
             RuntimeError: Si el modelo no puede generar respuesta.
         """
         try:
-            runner = self._registry.get_runner(
-                tenant_id=llm_config.model_name,  # usado como clave de caché
-                llm_config=llm_config,
-            )
+            from agents.root_agent import get_runner
+
+            runner = get_runner()
             content = self._build_content(message, rag_context)
             full_response: list[str] = []
 
@@ -101,8 +78,7 @@ class ADKLLMProvider:
 
         except Exception as e:
             logger.error(
-                "ADKLLMProvider.run_chat failed [model=%s, user=%s, session=%s]: %s",
-                llm_config.model_name,
+                "ADKLLMProvider.run_chat failed [user=%s, session=%s]: %s",
                 user_id,
                 session_id,
                 e,
@@ -111,7 +87,6 @@ class ADKLLMProvider:
 
     async def run_chat_stream(
         self,
-        llm_config: TenantLLMConfig,
         user_id: str,
         session_id: str,
         message: str,
@@ -120,7 +95,6 @@ class ADKLLMProvider:
         """Ejecuta una inferencia en modo streaming (SSE).
 
         Args:
-            llm_config: Configuración LLM del tenant.
             user_id: Identificador del usuario.
             session_id: Identificador de la sesión de conversación.
             message: Mensaje del usuario.
@@ -130,10 +104,9 @@ class ADKLLMProvider:
             str: Fragmentos de texto a medida que el modelo los genera.
         """
         try:
-            runner = self._registry.get_runner(
-                tenant_id=llm_config.model_name,
-                llm_config=llm_config,
-            )
+            from agents.root_agent import get_runner
+
+            runner = get_runner()
             content = self._build_content(message, rag_context)
 
             async for event in runner.run_async(
@@ -148,9 +121,7 @@ class ADKLLMProvider:
 
         except Exception as e:
             logger.error(
-                "ADKLLMProvider.run_chat_stream failed "
-                "[model=%s, user=%s, session=%s]: %s",
-                llm_config.model_name,
+                "ADKLLMProvider.run_chat_stream failed [user=%s, session=%s]: %s",
                 user_id,
                 session_id,
                 e,
@@ -159,14 +130,12 @@ class ADKLLMProvider:
 
     async def get_session_history(
         self,
-        llm_config: TenantLLMConfig,
         user_id: str,
         session_id: str,
     ) -> list[dict[str, Any]]:
         """Recupera el historial de mensajes de una sesión ADK.
 
         Args:
-            llm_config: Configuración LLM del tenant.
             user_id: Identificador del usuario.
             session_id: Identificador de la sesión.
 
@@ -174,10 +143,9 @@ class ADKLLMProvider:
             list[dict[str, str]]: Lista de mensajes con 'author' y 'content'.
         """
         try:
-            runner = self._registry.get_runner(
-                tenant_id=llm_config.model_name,
-                llm_config=llm_config,
-            )
+            from agents.root_agent import get_runner
+
+            runner = get_runner()
             session = await self._session_service.get_session(
                 app_name=runner.app_name,
                 user_id=user_id,
@@ -198,24 +166,12 @@ class ADKLLMProvider:
 
         except Exception as e:
             logger.error(
-                "ADKLLMProvider.get_session_history failed "
-                "[model=%s, user=%s, session=%s]: %s",
-                llm_config.model_name,
+                "ADKLLMProvider.get_session_history failed [user=%s, session=%s]: %s",
                 user_id,
                 session_id,
                 e,
             )
             raise
-
-    def evict_runner(self, tenant_id: str) -> None:
-        """Invalida el runner de un tenant para forzar recreación.
-
-        Útil cuando el admin actualiza la configuración LLM del tenant.
-
-        Args:
-            tenant_id: Identificador del tenant cuyo runner debe invalidarse.
-        """
-        self._registry.evict(tenant_id)
 
     @staticmethod
     def _build_content(message: str, rag_context: str | None) -> types.Content:

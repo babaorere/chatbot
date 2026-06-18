@@ -13,9 +13,8 @@ logger = logging.getLogger(__name__)
 
 
 class ConversationService:
-    def __init__(self, db: Session, tenant_id: uuid.UUID) -> None:
+    def __init__(self, db: Session) -> None:
         self.db = db
-        self.tenant_id = tenant_id
         self.repo = ConversationRepository(db)
 
     def create_for_user(
@@ -26,7 +25,6 @@ class ConversationService:
         try:
             sid = session_id or str(uuid.uuid4())
             conversation = Conversation(
-                tenant_id=self.tenant_id,
                 user_id=user_id,
                 session_id=sid,
             )
@@ -42,7 +40,7 @@ class ConversationService:
 
     def get_by_session_id(self, session_id: str) -> Conversation | None:
         try:
-            return self.repo.find_by_session_id_and_tenant(session_id, self.tenant_id)
+            return self.repo.find_by_session_id(session_id)
         except Exception as e:
             logger.error(
                 "ConversationService.get_by_session_id failed [session_id=%s]: %s",
@@ -67,7 +65,7 @@ class ConversationService:
 
     def get_by_user_id(self, user_id: int) -> list[Conversation]:
         try:
-            return self.repo.find_by_user_id_and_tenant(user_id, self.tenant_id)
+            return self.repo.find_by_user_id(user_id)
         except Exception as e:
             logger.error(
                 "ConversationService.get_by_user_id failed [user_id=%s]: %s",

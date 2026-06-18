@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 
-from models.tenant import Tenant
 from services.kb_service import KBService
 
 logger = logging.getLogger(__name__)
@@ -10,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 class RAGContextBuilder:
     """
-    Builds RAG context from tenant's knowledge base and injects it into
+    Builds RAG context from knowledge base and injects it into
     the LLM system prompt.
 
     Pattern:
@@ -64,12 +63,3 @@ class RAGContextBuilder:
             f"Si la información no es suficiente, responde honestamente "
             f"y ofrece contactar a un humano."
         )
-
-    async def build_and_inject(
-        self,
-        tenant: Tenant,
-        query: str,
-        top_k: int = 5,
-    ) -> str:
-        rag_context = await self.build_context(query, top_k=top_k)
-        return self.inject_into_instruction(tenant.get_instruction(), rag_context)

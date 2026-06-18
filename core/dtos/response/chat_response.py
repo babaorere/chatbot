@@ -6,7 +6,6 @@ from pydantic import BaseModel
 class ChatResponse(BaseModel):
     session_id: str
     user_id: str
-    tenant_slug: str
     response: str
 
 

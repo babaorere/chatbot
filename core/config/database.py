@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import create_engine, text, Connection
+from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session, sessionmaker, declarative_base
 
@@ -96,48 +96,3 @@ def get_db() -> Session:
 async def get_async_db() -> AsyncSession:
     async with AsyncSessionLocal() as session:
         yield session
-
-
-def set_tenant_context(db: Session, tenant_id: str) -> None:
-    """
-    Setea el contexto de tenant para Row-Level Security (RLS) en PostgreSQL.
-    Debe llamarse al inicio de cada request/transaction.
-    """
-    db.execute(text("SET app.current_tenant_id = :tenant_id"), {"tenant_id": tenant_id})
-
-
-def reset_tenant_context(db: Session) -> None:
-    """Resetea el contexto de tenant."""
-    db.execute(text("SET app.current_tenant_id = ''"))
-
-
-def enable_rls_on_startup(conn: Connection) -> None:
-    """
-    Habilita RLS y crea políticas de aislamiento en las tablas multi-tenant.
-    Se ejecuta una vez al iniciar la aplicación.
-    """
-    try:
-        from sqlalchemy import inspect
-        inspector = inspect(conn)
-        existing_tables = inspector.get_table_names()
-        
-        tables_to_rls = []
-        for table in existing_tables:
-            columns = [c["name"] for c in inspector.get_columns(table)]
-            if "tenant_id" in columns:
-                tables_to_rls.append(table)
-    except Exception:
-        # Fallback to known tables in this branch
-        tables_to_rls = ["users", "conversations", "messages", "knowledge_base", "products"]
-
-    for table in tables_to_rls:
-        conn.execute(text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY"))
-        conn.execute(text(f"DROP POLICY IF EXISTS tenant_isolation ON {table}"))
-        conn.execute(
-            text(
-                f"CREATE POLICY tenant_isolation ON {table} "
-                f"USING (tenant_id = current_setting('app.current_tenant_id')::uuid)"
-            )
-        )
-
-    conn.commit()

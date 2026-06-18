@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import uuid
+import logging
 from typing import Optional
-
 from sqlalchemy.orm import Session
-
 from models.user import User
 from repositories.base import JpaRepository
+
+logger = logging.getLogger(__name__)
 
 
 class UserRepository(JpaRepository[User]):
@@ -17,45 +17,56 @@ class UserRepository(JpaRepository[User]):
         self,
         external_id: str,
         platform: str,
-        tenant_id: uuid.UUID,
     ) -> Optional[User]:
-        return (
-            self.db.query(User)
-            .filter(
-                User.tenant_id == tenant_id,
-                User.external_id == external_id,
-                User.platform == platform,
+        try:
+            return (
+                self.db.query(User)
+                .filter(
+                    User.external_id == external_id,
+                    User.platform == platform,
+                )
+                .first()
             )
-            .first()
-        )
+        except Exception as e:
+            logger.error(
+                "UserRepository.find_by_external_id_and_platform failed [external_id=%s, platform=%s]: %s",
+                external_id,
+                platform,
+                e,
+            )
+            raise
 
-    def find_by_tenant_id(
+    def find_all(
         self,
-        tenant_id: uuid.UUID,
         skip: int = 0,
         limit: int = 100,
     ) -> list[User]:
-        return (
-            self.db.query(User)
-            .filter(User.tenant_id == tenant_id)
-            .offset(skip)
-            .limit(limit)
-            .all()
-        )
+        try:
+            return self.db.query(User).offset(skip).limit(limit).all()
+        except Exception as e:
+            logger.error("UserRepository.find_all failed: %s", e)
+            raise
 
     def exists_by_external_id_and_platform(
         self,
         external_id: str,
         platform: str,
-        tenant_id: uuid.UUID,
     ) -> bool:
-        return (
-            self.db.query(User)
-            .filter(
-                User.tenant_id == tenant_id,
-                User.external_id == external_id,
-                User.platform == platform,
+        try:
+            return (
+                self.db.query(User)
+                .filter(
+                    User.external_id == external_id,
+                    User.platform == platform,
+                )
+                .first()
+                is not None
             )
-            .first()
-            is not None
-        )
+        except Exception as e:
+            logger.error(
+                "UserRepository.exists_by_external_id_and_platform failed [external_id=%s, platform=%s]: %s",
+                external_id,
+                platform,
+                e,
+            )
+            raise

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Column, String, DateTime, Text, Boolean, ForeignKey, func
+from sqlalchemy import Column, String, DateTime, Text, Boolean, func
 from sqlalchemy.dialects.postgresql import UUID
 from config.database import Base
 
@@ -11,12 +11,6 @@ class KnowledgeBase(Base):
     __tablename__ = "knowledge_base"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("tenants.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
     category = Column(String(100), nullable=False)
     title = Column(Text, nullable=False)
     content = Column(Text, nullable=False)
@@ -27,7 +21,6 @@ class KnowledgeBase(Base):
     def to_dict(self) -> dict:
         return {
             "id": str(self.id),
-            "tenant_id": str(self.tenant_id),
             "category": self.category,
             "title": self.title,
             "content": self.content,

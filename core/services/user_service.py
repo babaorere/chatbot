@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import uuid
 
 from sqlalchemy.orm import Session
 
@@ -13,9 +12,8 @@ logger = logging.getLogger(__name__)
 
 
 class UserService:
-    def __init__(self, db: Session, tenant_id: uuid.UUID) -> None:
+    def __init__(self, db: Session) -> None:
         self.db = db
-        self.tenant_id = tenant_id
         self.repo = UserRepository(db)
 
     def get_or_create(
@@ -25,14 +23,11 @@ class UserService:
         display_name: str | None = None,
     ) -> User:
         try:
-            user = self.repo.find_by_external_id_and_platform(
-                external_id, platform, self.tenant_id
-            )
+            user = self.repo.find_by_external_id_and_platform(external_id, platform)
             if user:
                 return user
 
             user = User(
-                tenant_id=self.tenant_id,
                 external_id=external_id,
                 platform=platform,
                 display_name=display_name,
@@ -49,10 +44,7 @@ class UserService:
 
     def get_by_id(self, user_id: int) -> User | None:
         try:
-            user = self.repo.find_by_id(user_id)
-            if user and user.tenant_id != self.tenant_id:
-                return None
-            return user
+            return self.repo.find_by_id(user_id)
         except Exception as e:
             logger.error("UserService.get_by_id failed [user_id=%s]: %s", user_id, e)
             raise
@@ -71,7 +63,7 @@ class UserService:
 
     def list_users(self, skip: int = 0, limit: int = 50) -> list[User]:
         try:
-            return self.repo.find_by_tenant_id(self.tenant_id, skip=skip, limit=limit)
+            return self.repo.find_all(skip=skip, limit=limit)
         except Exception as e:
             logger.error("UserService.list_users failed: %s", e)
             raise

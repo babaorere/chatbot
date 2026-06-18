@@ -1,14 +1,12 @@
 """
-Fase 5: Tests de Integración Multi-Tenant + RAG + Admin
+Fase 5: Tests de Integración Single-Tenant + RAG + Admin
 
 Verifica:
 1. KB FTS Search (español, acentos, stemming)
-2. KB Tenant Isolation (RLS)
-3. RAG Context Builder
-4. Products CRUD
-5. Tenant Profile CRUD
-6. Admin Agent Config
-7. Rate Limiting
+2. RAG Context Builder
+3. Products CRUD
+4. Business Config CRUD
+5. Rate Limiting
 """
 
 from __future__ import annotations
@@ -55,50 +53,20 @@ def mock_db():
 
 
 @pytest.fixture
-def tenant_id_1():
-    return uuid.uuid4()
-
-
-@pytest.fixture
-def tenant_id_2():
-    return uuid.uuid4()
-
-
-@pytest.fixture
-def mock_tenant_1(tenant_id_1):
-    config = {
-        "instruction": "Eres el asistente de San Miguel.",
-        "model": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
-        "api_key": "sk-test-key-1",
-    }
-
-    tenant = MagicMock()
-    tenant.id = tenant_id_1
-    tenant.slug = "botilleria_san_miguel"
-    tenant.name = "Botillería San Miguel"
-    tenant.config = config
-    tenant.email = "sanmiguel@test.com"
-    tenant.phone = "+56912345678"
-    tenant.address = "Av. San Miguel 123"
-    tenant.city = "Santiago"
-    tenant.website = "https://sanmiguel.cl"
-    tenant.logo_url = "https://example.com/logo1.png"
-    tenant.business_hours = {"lunes": {"open": "10:00", "close": "22:00"}}
-    tenant.status = "active"
-
-    def get_instruction():
-        return tenant.config.get("instruction", "")
-
-    def get_model():
-        return tenant.config.get(
-            "model", "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
-        )
-
-    def get_api_key():
-        return tenant.config.get("api_key", "")
+def mock_business_config():
+    config = MagicMock()
+    config.id = uuid.uuid4()
+    config.name = "Botillería El Buen Trago"
+    config.email = "contacto@elbuentrago.cl"
+    config.phone = "+56912345678"
+    config.address = "Av. Principal 123"
+    config.city = "Santiago"
+    config.website = "https://elbuentrago.cl"
+    config.logo_url = "https://example.com/logo.png"
+    config.business_hours = {"lunes": {"open": "10:00", "close": "22:00"}}
 
     def get_business_hours_display():
-        hours = tenant.business_hours or {}
+        hours = config.business_hours or {}
         if not hours:
             return "Consultar horarios"
         parts = []
@@ -107,63 +75,8 @@ def mock_tenant_1(tenant_id_1):
                 parts.append(f"{day}: {schedule['open']}-{schedule['close']}")
         return ", ".join(parts) if parts else "Consultar horarios"
 
-    tenant.get_instruction.side_effect = get_instruction
-    tenant.get_model.side_effect = get_model
-    tenant.get_api_key.side_effect = get_api_key
-    tenant.get_business_hours_display.side_effect = get_business_hours_display
-
-    return tenant
-
-
-@pytest.fixture
-def mock_tenant_2(tenant_id_2):
-    config = {
-        "instruction": "Eres el asistente de Providencia.",
-        "model": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
-        "api_key": "sk-test-key-2",
-    }
-
-    tenant = MagicMock()
-    tenant.id = tenant_id_2
-    tenant.slug = "licoreria_providencia"
-    tenant.name = "Licorería Providencia"
-    tenant.config = config
-    tenant.email = "providencia@test.com"
-    tenant.phone = "+56987654321"
-    tenant.address = "Av. Providencia 456"
-    tenant.city = "Santiago"
-    tenant.website = None
-    tenant.logo_url = None
-    tenant.business_hours = None
-    tenant.status = "active"
-
-    def get_instruction():
-        return tenant.config.get("instruction", "")
-
-    def get_model():
-        return tenant.config.get(
-            "model", "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
-        )
-
-    def get_api_key():
-        return tenant.config.get("api_key", "")
-
-    def get_business_hours_display():
-        hours = tenant.business_hours or {}
-        if not hours:
-            return "Consultar horarios"
-        parts = []
-        for day, schedule in hours.items():
-            if isinstance(schedule, dict) and schedule.get("open"):
-                parts.append(f"{day}: {schedule['open']}-{schedule['close']}")
-        return ", ".join(parts) if parts else "Consultar horarios"
-
-    tenant.get_instruction.side_effect = get_instruction
-    tenant.get_model.side_effect = get_model
-    tenant.get_api_key.side_effect = get_api_key
-    tenant.get_business_hours_display.side_effect = get_business_hours_display
-
-    return tenant
+    config.get_business_hours_display.side_effect = get_business_hours_display
+    return config
 
 
 # ============================================================================
@@ -172,7 +85,7 @@ def mock_tenant_2(tenant_id_2):
 
 
 class TestKBFTSSearch:
-    def test_search_with_accents(self, mock_db, tenant_id_1):
+    def test_search_with_accents(self, mock_db):
         """FTS debe encontrar 'atencion' cuando se busca 'atención'."""
         from repositories.kb_repository import KBRepository
 
@@ -187,7 +100,7 @@ class TestKBFTSSearch:
         ]
 
         repo = KBRepository(mock_db)
-        results = repo.search_fts(tenant_id_1, "atención", top_k=5)
+        results = repo.search_fts("atención", top_k=5)
 
         assert len(results) == 1
         assert results[0]["title"] == "Horario de atención"
@@ -199,7 +112,7 @@ class TestKBFTSSearch:
         assert "plainto_tsquery('spanish'" in sql_text
         assert "immutable_unaccent" in sql_text
 
-    def test_search_with_stemming(self, mock_db, tenant_id_1):
+    def test_search_with_stemming(self, mock_db):
         """FTS debe encontrar 'cervezas' cuando se busca 'cerveza'."""
         from repositories.kb_repository import KBRepository
 
@@ -214,37 +127,37 @@ class TestKBFTSSearch:
         ]
 
         repo = KBRepository(mock_db)
-        results = repo.search_fts(tenant_id_1, "cerveza", top_k=5)
+        results = repo.search_fts("cerveza", top_k=5)
 
         assert len(results) == 1
         assert "cervezas" in results[0]["content"].lower()
 
-    def test_search_with_category_filter(self, mock_db, tenant_id_1):
+    def test_search_with_category_filter(self, mock_db):
         """FTS debe filtrar por categoría."""
         from repositories.kb_repository import KBRepository
 
         mock_db.execute.return_value.mappings.return_value.all.return_value = []
 
         repo = KBRepository(mock_db)
-        repo.search_fts(tenant_id_1, "horario", category="productos")
+        repo.search_fts("horario", category="productos")
 
         mock_db.execute.assert_called_once()
         call_args = mock_db.execute.call_args
         sql_text = str(call_args[0][0])
         assert "kb.category = :category" in sql_text
 
-    def test_search_empty_query_returns_empty(self, mock_db, tenant_id_1):
+    def test_search_empty_query_returns_empty(self, mock_db):
         """Búsqueda sin resultados debe retornar lista vacía."""
         from repositories.kb_repository import KBRepository
 
         mock_db.execute.return_value.mappings.return_value.all.return_value = []
 
         repo = KBRepository(mock_db)
-        results = repo.search_fts(tenant_id_1, "producto-inexistente-xyz", top_k=5)
+        results = repo.search_fts("producto-inexistente-xyz", top_k=5)
 
         assert results == []
 
-    def test_search_respects_top_k(self, mock_db, tenant_id_1):
+    def test_search_respects_top_k(self, mock_db):
         """FTS debe respetar el límite top_k."""
         from repositories.kb_repository import KBRepository
 
@@ -253,95 +166,31 @@ class TestKBFTSSearch:
             {
                 "id": uuid.uuid4(),
                 "category": "test",
-                "title": f"Entry {i}",
+                "title": "Entry 0",
                 "content": "Content",
                 "rank": 0.5,
             }
-            for i in range(3)
         ]
 
         repo = KBRepository(mock_db)
-        results = repo.search_fts(tenant_id_1, "test", top_k=3)
+        results = repo.search_fts("test", top_k=3)
 
-        assert len(results) == 3
-
-
-# ============================================================================
-# TEST 2: KB Tenant Isolation (RLS)
-# ============================================================================
-
-
-class TestKBTenantIsolation:
-    def test_tenant_1_cannot_see_tenant_2_kb(self, mock_db, tenant_id_1, tenant_id_2):
-        """Tenant 1 no debe poder ver entradas KB de Tenant 2."""
-        from services.kb_service import KBService
-
-        mock_db.query.return_value.filter.return_value.filter.return_value.all.return_value = []
-
-        kb_svc = KBService(mock_db, tenant_id_1)
-        entries = kb_svc.list_entries()
-
-        assert len(entries) == 0
-
-    def test_tenant_2_cannot_see_tenant_1_kb(self, mock_db, tenant_id_1, tenant_id_2):
-        """Tenant 2 no debe poder ver entradas KB de Tenant 1."""
-        from services.kb_service import KBService
-
-        mock_db.query.return_value.filter.return_value.filter.return_value.all.return_value = []
-
-        kb_svc = KBService(mock_db, tenant_id_2)
-        entries = kb_svc.list_entries()
-
-        assert len(entries) == 0
-
-    def test_search_is_tenant_scoped(self, mock_db, tenant_id_1, tenant_id_2):
-        """Búsqueda FTS debe estar scopeada al tenant."""
-        from repositories.kb_repository import KBRepository
-
-        mock_db.execute.return_value.mappings.return_value.all.return_value = []
-
-        repo = KBRepository(mock_db)
-        repo.search_fts(tenant_id_1, "horario")
-
-        call_args = mock_db.execute.call_args
-        params = call_args[1] if call_args[1] else call_args[0][1]
-        assert params["tenant_id"] == tenant_id_1
-
-    def test_create_entry_assigns_correct_tenant(self, mock_db, tenant_id_1):
-        """Crear entrada KB debe asignar el tenant_id correcto."""
-        from services.kb_service import KBService
-
-        mock_db.query.return_value.filter.return_value.all.return_value = []
-        mock_db.add = MagicMock()
-        mock_db.flush = MagicMock()
-        mock_db.refresh = MagicMock()
-
-        kb_svc = KBService(mock_db, tenant_id_1)
-        kb_svc.create_entry(
-            category="horarios",
-            title="Horario",
-            content="Lunes a Viernes 10:00-18:00",
-        )
-
-        mock_db.add.assert_called_once()
-        added_entry = mock_db.add.call_args[0][0]
-        assert added_entry.tenant_id == tenant_id_1
-        assert added_entry.category == "horarios"
+        assert len(results) == 1
 
 
 # ============================================================================
-# TEST 3: RAG Context Builder
+# TEST 2: RAG Context Builder
 # ============================================================================
 
 
 class TestRAGContextBuilder:
     @pytest.mark.asyncio
-    async def test_build_context_with_results(self, mock_db, tenant_id_1):
+    async def test_build_context_with_results(self, mock_db):
         """RAG debe construir contexto XML con resultados de búsqueda."""
         from services.kb_service import KBService
         from services.rag_context_builder import RAGContextBuilder
 
-        kb_svc = KBService(mock_db, tenant_id_1)
+        kb_svc = KBService(mock_db)
 
         with patch.object(kb_svc, "search") as mock_search:
             mock_search.return_value = [
@@ -370,12 +219,12 @@ class TestRAGContextBuilder:
             assert "</KNOWLEDGE_BASE_CONTEXT>" in context
 
     @pytest.mark.asyncio
-    async def test_build_context_empty_results(self, mock_db, tenant_id_1):
+    async def test_build_context_empty_results(self, mock_db):
         """RAG debe retornar string vacío si no hay resultados."""
         from services.kb_service import KBService
         from services.rag_context_builder import RAGContextBuilder
 
-        kb_svc = KBService(mock_db, tenant_id_1)
+        kb_svc = KBService(mock_db)
 
         with patch.object(kb_svc, "search") as mock_search:
             mock_search.return_value = []
@@ -412,13 +261,13 @@ class TestRAGContextBuilder:
 
 
 # ============================================================================
-# TEST 4: Products CRUD
+# TEST 3: Products CRUD
 # ============================================================================
 
 
 class TestProductsCRUD:
-    def test_create_product(self, mock_db, tenant_id_1):
-        """Crear producto debe asignar tenant_id correcto."""
+    def test_create_product(self, mock_db):
+        """Crear producto debe guardar en la base de datos."""
         from services.product_service import ProductService
 
         mock_db.query.return_value.filter.return_value.all.return_value = []
@@ -426,7 +275,7 @@ class TestProductsCRUD:
         mock_db.flush = MagicMock()
         mock_db.refresh = MagicMock()
 
-        product_svc = ProductService(mock_db, tenant_id_1)
+        product_svc = ProductService(mock_db)
         product_svc.create_product(
             name="Pisco Control 35°",
             description="Pisco nacional",
@@ -437,24 +286,22 @@ class TestProductsCRUD:
 
         mock_db.add.assert_called_once()
         added_product = mock_db.add.call_args[0][0]
-        assert added_product.tenant_id == tenant_id_1
         assert added_product.name == "Pisco Control 35°"
         assert added_product.price == 7990.0
 
-    def test_list_products_by_tenant(self, mock_db, tenant_id_1):
-        """Listar productos debe filtrar por tenant."""
+    def test_list_products(self, mock_db):
+        """Listar productos."""
         from services.product_service import ProductService
 
-        mock_products = [MagicMock(tenant_id=tenant_id_1) for _ in range(2)]
-        mock_db.query.return_value.filter.return_value.order_by.return_value.offset.return_value.limit.return_value.all.return_value = mock_products
+        mock_products = [MagicMock() for _ in range(2)]
+        mock_db.query.return_value.order_by.return_value.offset.return_value.limit.return_value.all.return_value = mock_products
 
-        product_svc = ProductService(mock_db, tenant_id_1)
+        product_svc = ProductService(mock_db)
         products = product_svc.list_products()
 
         assert len(products) == 2
-        assert all(p.tenant_id == tenant_id_1 for p in products)
 
-    def test_update_product(self, mock_db, tenant_id_1):
+    def test_update_product(self, mock_db):
         """Actualizar producto debe modificar solo campos especificados."""
         from services.product_service import ProductService
 
@@ -467,7 +314,7 @@ class TestProductsCRUD:
         mock_db.flush = MagicMock()
         mock_db.refresh = MagicMock()
 
-        product_svc = ProductService(mock_db, tenant_id_1)
+        product_svc = ProductService(mock_db)
         product_svc.update_product(
             product_id=uuid.uuid4(),
             price=8990.0,
@@ -478,7 +325,7 @@ class TestProductsCRUD:
         assert mock_product.stock == 40
         assert mock_product.name == "Pisco Control 35° 1L"
 
-    def test_delete_product(self, mock_db, tenant_id_1):
+    def test_delete_product(self, mock_db):
         """Eliminar producto debe retornar True."""
         from services.product_service import ProductService
 
@@ -487,24 +334,24 @@ class TestProductsCRUD:
         mock_db.delete = MagicMock()
         mock_db.flush = MagicMock()
 
-        product_svc = ProductService(mock_db, tenant_id_1)
+        product_svc = ProductService(mock_db)
         result = product_svc.delete_product(uuid.uuid4())
 
         assert result is True
         mock_db.delete.assert_called_once_with(mock_product)
 
-    def test_delete_nonexistent_product(self, mock_db, tenant_id_1):
+    def test_delete_nonexistent_product(self, mock_db):
         """Eliminar producto inexistente debe retornar False."""
         from services.product_service import ProductService
 
         mock_db.query.return_value.filter.return_value.first.return_value = None
 
-        product_svc = ProductService(mock_db, tenant_id_1)
+        product_svc = ProductService(mock_db)
         result = product_svc.delete_product(uuid.uuid4())
 
         assert result is False
 
-    def test_search_products_by_name(self, mock_db, tenant_id_1):
+    def test_search_products_by_name(self, mock_db):
         """Buscar productos por nombre debe usar ILIKE."""
         from services.product_service import ProductService
 
@@ -514,13 +361,13 @@ class TestProductsCRUD:
             mock_product
         ]
 
-        product_svc = ProductService(mock_db, tenant_id_1)
+        product_svc = ProductService(mock_db)
         results = product_svc.search("pisco")
 
         assert len(results) == 1
         assert "pisco" in results[0].name.lower()
 
-    def test_get_categories(self, mock_db, tenant_id_1):
+    def test_get_categories(self, mock_db):
         """Obtener categorías debe retornar lista única."""
         from services.product_service import ProductService
 
@@ -530,101 +377,43 @@ class TestProductsCRUD:
             "whisky",
         ]
 
-        product_svc = ProductService(mock_db, tenant_id_1)
+        product_svc = ProductService(mock_db)
         categories = product_svc.get_categories()
 
         assert categories == ["pisco", "vino", "whisky"]
 
 
 # ============================================================================
-# TEST 5: Tenant Profile CRUD
+# TEST 4: Business Config CRUD
 # ============================================================================
 
 
-class TestTenantProfile:
-    def test_update_profile_fields(self, mock_tenant_1):
-        """Actualizar perfil debe modificar campos del tenant."""
-        mock_tenant_1.email = "nuevo@test.com"
-        mock_tenant_1.phone = "+56999999999"
-        mock_tenant_1.address = "Nueva Dirección 789"
-        mock_tenant_1.city = "Valparaíso"
-        mock_tenant_1.website = "https://nueva.cl"
-        mock_tenant_1.logo_url = "https://example.com/new-logo.png"
-        mock_tenant_1.business_hours = {"lunes": {"open": "09:00", "close": "21:00"}}
+class TestBusinessConfig:
+    def test_update_profile_fields(self, mock_business_config):
+        """Actualizar perfil debe modificar campos de la configuración."""
+        mock_business_config.email = "nuevo@test.com"
+        mock_business_config.phone = "+56999999999"
+        mock_business_config.address = "Nueva Dirección 789"
+        mock_business_config.city = "Valparaíso"
+        mock_business_config.website = "https://nueva.cl"
+        mock_business_config.logo_url = "https://example.com/new-logo.png"
+        mock_business_config.business_hours = {
+            "lunes": {"open": "09:00", "close": "21:00"}
+        }
 
-        assert mock_tenant_1.email == "nuevo@test.com"
-        assert mock_tenant_1.phone == "+56999999999"
-        assert mock_tenant_1.business_hours["lunes"]["open"] == "09:00"
+        assert mock_business_config.email == "nuevo@test.com"
+        assert mock_business_config.phone == "+56999999999"
+        assert mock_business_config.business_hours["lunes"]["open"] == "09:00"
 
-    def test_get_business_hours_display(self, mock_tenant_1):
+    def test_get_business_hours_display(self, mock_business_config):
         """Display de horarios debe formatear correctamente."""
-        hours_display = mock_tenant_1.get_business_hours_display()
+        hours_display = mock_business_config.get_business_hours_display()
 
         assert "10:00" in hours_display or "lunes" in hours_display.lower()
 
-    def test_get_business_hours_display_empty(self, mock_tenant_2):
-        """Sin horarios configurados, debe retornar default."""
-        hours_display = mock_tenant_2.get_business_hours_display()
-
-        assert "Consultar horarios" in hours_display
-
-    def test_tenant_getters(self, mock_tenant_1):
-        """Getters de config deben retornar valores correctos."""
-        assert mock_tenant_1.get_instruction() == "Eres el asistente de San Miguel."
-        assert "nemotron" in mock_tenant_1.get_model()
-        assert mock_tenant_1.get_api_key() == "sk-test-key-1"
-
 
 # ============================================================================
-# TEST 6: Admin Agent Config
-# ============================================================================
-
-
-class TestAdminAgentConfig:
-    def test_update_agent_model(self, mock_tenant_1):
-        """Admin debe poder actualizar modelo del agente."""
-        new_model = "openrouter/anthropic/claude-3-haiku:free"
-        mock_tenant_1.config["model"] = new_model
-
-        assert mock_tenant_1.get_model() == new_model
-
-    def test_update_agent_instruction(self, mock_tenant_1):
-        """Admin debe poder actualizar instruction del agente."""
-        new_instruction = "Eres un asistente especializado en vinos."
-        mock_tenant_1.config["instruction"] = new_instruction
-
-        assert mock_tenant_1.get_instruction() == new_instruction
-
-    def test_update_agent_api_key(self, mock_tenant_1):
-        """Admin debe poder actualizar API key del agente."""
-        new_api_key = "sk-or-v1-new-key-123"
-        mock_tenant_1.config["api_key"] = new_api_key
-
-        assert mock_tenant_1.get_api_key() == new_api_key
-
-    def test_agent_config_preserves_other_fields(self, mock_tenant_1):
-        """Actualizar config no debe afectar otros campos."""
-        original_name = mock_tenant_1.name
-        original_slug = mock_tenant_1.slug
-
-        mock_tenant_1.config["model"] = "new-model"
-
-        assert mock_tenant_1.name == original_name
-        assert mock_tenant_1.slug == original_slug
-
-    def test_toggle_tenant_status(self, mock_tenant_1):
-        """Admin debe poder activar/desactivar tenant."""
-        assert mock_tenant_1.status == "active"
-
-        mock_tenant_1.status = "inactive"
-        assert mock_tenant_1.status == "inactive"
-
-        mock_tenant_1.status = "active"
-        assert mock_tenant_1.status == "active"
-
-
-# ============================================================================
-# TEST 7: Rate Limiting (configuration validation)
+# TEST 5: Rate Limiting (configuration validation)
 # ============================================================================
 
 
