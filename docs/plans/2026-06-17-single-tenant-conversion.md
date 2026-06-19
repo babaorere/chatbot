@@ -5,7 +5,7 @@
 
 ## Contexto
 
-El proyecto `botilleria-core` fue diseñado como multi-tenant con:
+El proyecto `chatbot-core` fue diseñado como multi-tenant con:
 - Row-Level Security (RLS) en PostgreSQL
 - Resolución dinámica de tenant por canal (Telegram token → ChannelRoute → Tenant)
 - `tenant_id` en todos los modelos (User, Conversation, Message, Product, KB)
@@ -122,7 +122,7 @@ El proyecto `botilleria-core` fue diseñado como multi-tenant con:
 
 ### 15. Docker
 - **docker-compose.yml**: Eliminar `shared_db_net`, tunnel token hardcoded como env var, DB propia
-- **docker-compose.botilleria.yml**: Simplificar sin shared DB
+- **docker-compose.chatbot.yml**: Simplificar sin shared DB
 - **docker-compose.prod.yml**: Review
 
 ### 16. Settings

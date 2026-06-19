@@ -13,23 +13,23 @@ alerting:
             - "alertmanager:9093"
 
 scrape_configs:
-  # ── Botilleria API (health endpoint as basic metric) ───────────────────────
-  - job_name: "botilleria_api"
+  # ── Chatbot API (health endpoint as basic metric) ───────────────────────
+  - job_name: "chatbot_api"
     metrics_path: "/health"
     scrape_interval: 30s
     static_configs:
       - targets:
-          - "botilleria_core_api:8000"
+          - "chatbot_core_api:8000"
         labels:
-          service: "botilleria"
+          service: "chatbot"
           env: "production"
 
   # ── Nginx (via stub_status if enabled) ─────────────────────────────────────
-  - job_name: "botilleria_nginx"
+  - job_name: "chatbot_nginx"
     scrape_interval: 30s
     static_configs:
       - targets:
-          - "botilleria_nginx:80"
+          - "chatbot_nginx:80"
         labels:
           service: "nginx"
           env: "production"

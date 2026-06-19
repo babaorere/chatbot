@@ -56,7 +56,7 @@ def mock_db():
 def mock_business_config():
     config = MagicMock()
     config.id = uuid.uuid4()
-    config.name = "Botillería El Buen Trago"
+    config.name = "Negocio El Buen Trago"
     config.email = "contacto@elbuentrago.cl"
     config.phone = "+56912345678"
     config.address = "Av. Principal 123"

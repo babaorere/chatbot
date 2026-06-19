@@ -170,11 +170,11 @@ class AdminApp {
             <form id="tenantForm">
                 <div class="form-group">
                     <label>Slug</label>
-                    <input type="text" id="tenantSlug" required placeholder="mi_botilleria">
+                    <input type="text" id="tenantSlug" required placeholder="mi_chatbot">
                 </div>
                 <div class="form-group">
                     <label>Nombre</label>
-                    <input type="text" id="tenantName" required placeholder="Botillería Mi Negocio">
+                    <input type="text" id="tenantName" required placeholder="Negocio Mi Negocio">
                 </div>
                 <div class="form-group">
                     <label>Instrucción del Agente</label>

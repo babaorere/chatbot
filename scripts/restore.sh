@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
 # ============================================================================
-# BOTILLERIA CORE — Database Restore Script
+# CHATBOT CORE — Database Restore Script
 # ============================================================================
-# Restores a botilleria database backup with pre-flight checks and safety.
+# Restores a chatbot database backup with pre-flight checks and safety.
 # ============================================================================
 # Usage: ./restore.sh <backup_file> [target_db]
 #   backup_file — Path to backup file (or 'latest' for most recent)
-#   target_db   — Target database name (default: botilleria)
+#   target_db   — Target database name (default: chatbot)
 #
 # Examples:
 #   ./restore.sh latest
-#   ./restore.sh /opt/botilleria/backups/botilleria_full_20260521_020000.sql.gz
-#   ./restore.sh botilleria_custom_20260520.dump botilleria_staging
+#   ./restore.sh /opt/chatbot/backups/chatbot_full_20260521_020000.sql.gz
+#   ./restore.sh chatbot_custom_20260520.dump chatbot_staging
 # ============================================================================
 set -euo pipefail
 
 # ── Configuration ────────────────────────────────────────────────────────────
 BACKUP_FILE="${1:-}"
-TARGET_DB="${2:-botilleria}"
-BACKUP_DIR="${BACKUP_DIR:-/opt/botilleria/backups}"
-LOG_DIR="${LOG_DIR:-/opt/botilleria/logs}"
+TARGET_DB="${2:-chatbot}"
+BACKUP_DIR="${BACKUP_DIR:-/opt/chatbot/backups}"
+LOG_DIR="${LOG_DIR:-/opt/chatbot/logs}"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 DATE_HUMAN="$(date +%Y-%m-%d\ %H:%M:%S)"
 
@@ -47,7 +47,7 @@ if [ -z "$BACKUP_FILE" ]; then
     echo "Usage: $0 <backup_file> [target_db]"
     echo ""
     echo "Available backups:"
-    ls -lht "$BACKUP_DIR"/botilleria_* 2>/dev/null | head -10 || echo "  (none found)"
+    ls -lht "$BACKUP_DIR"/chatbot_* 2>/dev/null | head -10 || echo "  (none found)"
     exit 1
 fi
 
@@ -75,7 +75,7 @@ log "INFO" "Restore target: $TARGET_DB"
 log "INFO" "Backup file: $BACKUP_FILE ($(du -h "$BACKUP_FILE" | cut -f1))"
 
 # ── Safety Confirmation ──────────────────────────────────────────────────────
-if [ "$TARGET_DB" = "botilleria" ] && [ -z "$FORCE" ]; then
+if [ "$TARGET_DB" = "chatbot" ] && [ -z "$FORCE" ]; then
     log "WARN" "WARNING: You are about to restore to the PRODUCTION database!"
     log "WARN" "This will OVERWRITE all existing data."
     log "WARN" "Set FORCE=1 to skip this confirmation."

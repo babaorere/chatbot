@@ -115,7 +115,7 @@ class FakeRedis:
 def create_redis_session_service(fake_redis: FakeRedis) -> RedisSessionService:
     return RedisSessionService(
         fake_redis,
-        namespace="botilleria:test:v1",
+        namespace="chatbot:test:v1",
         session_ttl_seconds=3600,
         lock_timeout_seconds=5.0,
         lock_blocking_timeout_seconds=1.0,
@@ -127,7 +127,7 @@ async def test_redis_session_service_create_and_merge_state() -> None:
     service = create_redis_session_service(fake_redis)
 
     session = await service.create_session(
-        app_name="botilleria",
+        app_name="chatbot",
         user_id="cliente-1",
         session_id="session-1",
         state={
@@ -148,7 +148,7 @@ async def test_redis_session_service_append_event_persists_session_and_state() -
     service = create_redis_session_service(fake_redis)
 
     session = await service.create_session(
-        app_name="botilleria",
+        app_name="chatbot",
         user_id="cliente-1",
         session_id="session-append",
     )
@@ -164,7 +164,7 @@ async def test_redis_session_service_append_event_persists_session_and_state() -
 
     await service.append_event(session, event)
     stored = await service.get_session(
-        app_name="botilleria",
+        app_name="chatbot",
         user_id="cliente-1",
         session_id="session-append",
     )
@@ -182,7 +182,7 @@ async def test_redis_session_service_filters_recent_events() -> None:
     service = create_redis_session_service(fake_redis)
 
     session = await service.create_session(
-        app_name="botilleria",
+        app_name="chatbot",
         user_id="cliente-2",
         session_id="session-filter",
     )
@@ -193,7 +193,7 @@ async def test_redis_session_service_filters_recent_events() -> None:
     await service.append_event(session, second)
 
     filtered = await service.get_session(
-        app_name="botilleria",
+        app_name="chatbot",
         user_id="cliente-2",
         session_id="session-filter",
         config=GetSessionConfig(num_recent_events=1),
@@ -209,7 +209,7 @@ async def test_redis_session_service_list_sessions_omits_events() -> None:
     service = create_redis_session_service(fake_redis)
 
     session = await service.create_session(
-        app_name="botilleria",
+        app_name="chatbot",
         user_id="cliente-3",
         session_id="session-list",
         state={"user:favorite": "vino"},
@@ -220,7 +220,7 @@ async def test_redis_session_service_list_sessions_omits_events() -> None:
     )
 
     response = await service.list_sessions(
-        app_name="botilleria",
+        app_name="chatbot",
         user_id="cliente-3",
     )
 
@@ -234,18 +234,18 @@ async def test_redis_session_service_delete_session_removes_it() -> None:
     service = create_redis_session_service(fake_redis)
 
     await service.create_session(
-        app_name="botilleria",
+        app_name="chatbot",
         user_id="cliente-4",
         session_id="session-delete",
     )
     await service.delete_session(
-        app_name="botilleria",
+        app_name="chatbot",
         user_id="cliente-4",
         session_id="session-delete",
     )
 
     deleted = await service.get_session(
-        app_name="botilleria",
+        app_name="chatbot",
         user_id="cliente-4",
         session_id="session-delete",
     )

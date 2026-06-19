@@ -45,31 +45,31 @@ def get_current_datetime(query: str | None = None) -> str:
     return f"Fecha/hora actual: {dias[now.weekday()]} {now.strftime('%d/%m/%Y %H:%M')} (hora Chile)"
 
 
-def get_botilleria_info(query: str | None = None) -> str:
-    """Retorna información estática de la Botillería El Buen Trago: horarios
+def get_chatbot_info(query: str | None = None) -> str:
+    """Retorna información estática de la Negocio El Buen Trago: horarios
     de atención, servicios ofrecidos y ubicación física.
 
     Invoca esta herramienta cuando el usuario pregunte por horarios de
     atención, ubicación, dirección, servicios disponibles, o cualquier
-    dato general sobre la botillería (ej: 'a qué hora abren?', 'dónde
+    dato general sobre la negocio (ej: 'a qué hora abren?', 'dónde
     están ubicados?', 'hacen delivery?', 'qué venden?'). NO la invoques
     para consultas sobre stock, precios de productos específicos, o temas
     que requieran datos dinámicos del inventario.
 
     Args:
         query: Texto opcional con la consulta del usuario sobre la
-            botillería (ej: 'horario', 'ubicación', 'delivery'). Puede
+            negocio (ej: 'horario', 'ubicación', 'delivery'). Puede
             ser None si el contexto ya indica que se necesita información
             general sin una pregunta explícita.
 
     Returns:
-        str: Cadena multilínea con el nombre de la botillería, horarios
+        str: Cadena multilínea con el nombre de la negocio, horarios
             diferenciados por día (Lunes-Sábado vs Domingo), lista de
             servicios (licores, cervezas artesanales, vinos, pedidos a
             domicilio) y ubicación (Santiago, Chile).
     """
     return (
-        "Botillería El Buen Trago.\n"
+        "Negocio El Buen Trago.\n"
         "Horario: Lunes a Sábado 10:00-22:00, Domingo 12:00-20:00.\n"
         "Servicios: Venta de licores, cervezas artesanales, vinos, pedidos a domicilio.\n"
         "Ubicación: Santiago, Chile."
@@ -78,14 +78,14 @@ def get_botilleria_info(query: str | None = None) -> str:
 
 def consultar_stock(producto: str | None = None) -> str:
     """Inicia una consulta de disponibilidad de un producto específico en el
-    inventario de la botillería.
+    inventario de la negocio.
 
     Invoca esta herramienta cuando el usuario pregunte si un producto está
     disponible, si tienen cierto licor/cerveza/vino en stock, o cuando
     exprese intención de comprar algo y necesites confirmar existencia
     (ej: 'tienen pisco sour?', 'hay cerveza artesanal de trigo?', 'tienen
     vino casillero del diablo?'). NO la invoques para preguntas sobre
-    precios (usa consultar_precio), horarios (usa get_botilleria_info),
+    precios (usa consultar_precio), horarios (usa get_chatbot_info),
     o saludos generales. Si el usuario no especifica un producto, invoca
     la herramienta con producto=None para pedirle que especifique.
 
@@ -126,7 +126,7 @@ def consultar_stock(producto: str | None = None) -> str:
 
 def consultar_precio(producto: str | None = None) -> str:
     """Inicia una consulta de precio para un producto específico de la
-    botillería.
+    negocio.
 
     Invoca esta herramienta cuando el usuario pregunte cuánto cuesta un
     producto, el valor de un licor/cerveza/vino, o solicite una cotización
@@ -172,7 +172,7 @@ def consultar_precio(producto: str | None = None) -> str:
 
 def contactar_humano(motivo: str | None = None) -> str:
     """Solicita la transferencia de la conversación actual a un agente humano
-    del equipo de la botillería.
+    del equipo de la negocio.
 
     Invoca esta herramienta cuando el usuario solicite explícitamente hablar
     con una persona, cuando la consulta esté fuera del scope de tus
@@ -200,9 +200,9 @@ def contactar_humano(motivo: str | None = None) -> str:
     return f"Transferencia a humano solicitada. Motivo: {motivo or 'consulta general'}."
 
 
-_BOTILLERIA_TOOLS = [
+_CHATBOT_TOOLS = [
     get_current_datetime,
-    get_botilleria_info,
+    get_chatbot_info,
     consultar_stock,
     consultar_precio,
     contactar_humano,
@@ -247,7 +247,7 @@ def _get_agent() -> Agent:
             name=f"{GADK_APP_NAME}_{int(time.time())}",
             model=model_obj,
             instruction=GADK_INSTRUCTION,
-            tools=cast("list[Any]", _BOTILLERIA_TOOLS),
+            tools=cast("list[Any]", _CHATBOT_TOOLS),
         )
     return _agent_cache
 

@@ -3,9 +3,9 @@ requires = ["setuptools>=82", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "botilleria-core"
+name = "chatbot-core"
 version = "0.3.0"
-description = "Sistema de control de mensajería multiusuario para botillería"
+description = "Sistema de control de mensajería multiusuario para negocio"
 requires-python = ">=3.12"
 dependencies = [
     "google-adk[extensions]>=2.0.0",
@@ -33,7 +33,7 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-cache_dir = "/tmp/botilleria_core_pytest_cache"
+cache_dir = "/tmp/chatbot_core_pytest_cache"
 markers = [
     "integration: tests that require a running API service or external process",
 ]

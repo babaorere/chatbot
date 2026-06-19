@@ -1,5 +1,5 @@
 # ============================================================================
-# BOTILLERIA CORE — Production Docker Compose
+# CHATBOT CORE — Production Docker Compose
 # ============================================================================
 # Nginx (static files + reverse proxy) + FastAPI (4 workers) + PostgreSQL
 # ============================================================================
@@ -14,14 +14,14 @@ x-logging: &default-logging
 services:
   redis:
     image: redis:7.4-alpine
-    container_name: botilleria_redis
+    container_name: chatbot_redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--save", "60", "1000"]
     stop_grace_period: 30s
     volumes:
       - redis_data:/data
     networks:
-      - botilleria_net
+      - chatbot_net
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 15s
@@ -38,7 +38,7 @@ services:
   # ── Nginx: Static files + Reverse Proxy ──────────────────────────────────
   nginx:
     image: nginx:1.27-alpine
-    container_name: botilleria_nginx
+    container_name: chatbot_nginx
     restart: unless-stopped
     stop_grace_period: 15s
     ports:
@@ -73,7 +73,7 @@ services:
       context: ./core
       dockerfile: Dockerfile
       target: production
-    container_name: botilleria_api
+    container_name: chatbot_api
     restart: unless-stopped
     stop_grace_period: 30s
     env_file:
@@ -81,7 +81,7 @@ services:
     expose:
       - "8000"
     networks:
-      - botilleria_net
+      - chatbot_net
       - booking-titanium-wm_default
     depends_on:
       redis:
@@ -100,17 +100,17 @@ services:
         reservations:
           memory: 1024M
 
-  # ── Init DB: Creates 'botilleria' database if not exists ─────────────────
+  # ── Init DB: Creates 'chatbot' database if not exists ─────────────────
   init_db:
     image: postgres:17-alpine
-    container_name: botilleria_init_db
+    container_name: chatbot_init_db
     restart: "no"
     environment:
       - PGPASSWORD=windmill
     command: >
       sh -c "
-      psql -h booking-titanium-wm-db-1 -U windmill -d windmill -tc \"SELECT 1 FROM pg_database WHERE datname = 'botilleria'\" | grep -q 1 ||
-      psql -h booking-titanium-wm-db-1 -U windmill -d windmill -c 'CREATE DATABASE botilleria;'
+      psql -h booking-titanium-wm-db-1 -U windmill -d windmill -tc \"SELECT 1 FROM pg_database WHERE datname = 'chatbot'\" | grep -q 1 ||
+      psql -h booking-titanium-wm-db-1 -U windmill -d windmill -c 'CREATE DATABASE chatbot;'
       "
     networks:
       - booking-titanium-wm_default
@@ -124,7 +124,7 @@ volumes:
   nginx_run:
 
 networks:
-  botilleria_net:
+  chatbot_net:
     driver: bridge
   booking-titanium-wm_default:
     external: true

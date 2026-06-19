@@ -1,7 +1,7 @@
 {
   "dashboard": {
     "id": null,
-    "title": "Botilleria Core - System Overview",
+    "title": "Chatbot Core - System Overview",
     "timezone": "Etc/UTC",
     "schemaVersion": 38,
     "version": 1,
@@ -14,7 +14,7 @@
         "datasource": "Prometheus",
         "targets": [
           {
-            "expr": "up{job=\"botilleria_api\"}",
+            "expr": "up{job=\"chatbot_api\"}",
             "legendFormat": "{{instance}}",
             "refId": "A"
           }
@@ -57,7 +57,7 @@
         "datasource": "Prometheus",
         "targets": [
           {
-            "expr": "up{job=\"botilleria_nginx\"}",
+            "expr": "up{job=\"chatbot_nginx\"}",
             "legendFormat": "{{instance}}",
             "refId": "A"
           }
@@ -143,7 +143,7 @@
         "datasource": "Prometheus",
         "targets": [
           {
-            "expr": "rate(http_requests_total{job=\"botilleria_api\"}[5m])",
+            "expr": "rate(http_requests_total{job=\"chatbot_api\"}[5m])",
             "legendFormat": "{{method}} {{endpoint}}",
             "refId": "A"
           }
@@ -162,7 +162,7 @@
         "datasource": "Prometheus",
         "targets": [
           {
-            "expr": "rate(http_requests_total{job=\"botilleria_api\",status=~\"5..\"}[5m])",
+            "expr": "rate(http_requests_total{job=\"chatbot_api\",status=~\"5..\"}[5m])",
             "legendFormat": "{{instance}}",
             "refId": "A"
           }
@@ -181,7 +181,7 @@
         "datasource": "Prometheus",
         "targets": [
           {
-            "expr": "probe_duration_seconds{job=\"botilleria_api\"}",
+            "expr": "probe_duration_seconds{job=\"chatbot_api\"}",
             "legendFormat": "{{instance}}",
             "refId": "A"
           }
@@ -200,7 +200,7 @@
         "datasource": "Prometheus",
         "targets": [
           {
-            "expr": "pg_stat_activity_count{datname=\"botilleria\"}",
+            "expr": "pg_stat_activity_count{datname=\"chatbot\"}",
             "legendFormat": "Active Connections",
             "refId": "A"
           }

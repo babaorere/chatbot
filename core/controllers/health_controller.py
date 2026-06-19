@@ -12,7 +12,7 @@ router = APIRouter(tags=["health"])
 def health_check() -> dict[str, str]:
     return {
         "status": "ok",
-        "service": "botilleria-core",
+        "service": "chatbot-core",
         "version": "1.0.0",
         "multi_tenant": "false",
         "session_backend": settings.session_backend,

@@ -87,7 +87,7 @@ async def telegram_webhook(
             response_text = (
                 "Por favor, escribe el nombre del producto para consultar su precio:"
             )
-        elif intent == "get_botilleria_info":
+        elif intent == "get_chatbot_info":
             response_text = "Nuestro horario de atención es de Lunes a Sábado de 10:00 a 22:00, y Domingo de 12:00 a 20:00."
         elif intent == "contactar_humano":
             response_text = "Un ejecutivo se pondrá en contacto contigo pronto. ¿En qué más puedo ayudarte?"

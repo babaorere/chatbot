@@ -15,7 +15,7 @@ receivers:
     # - name: 'email'
     #   email_configs:
     #     - to: 'alerts@tu-dominio.com'
-    #       from: 'botilleria@tu-dominio.com'
+    #       from: 'chatbot@tu-dominio.com'
     #       smarthost: 'smtp.gmail.com:587'
     #       auth_username: 'alerts@tu-dominio.com'
     #       auth_password: '${SMTP_PASSWORD}'

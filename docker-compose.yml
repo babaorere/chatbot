@@ -79,6 +79,7 @@ services:
       - ADK_DISABLE_JSON_SCHEMA_FOR_FUNC_DECL=true
     volumes:
       - ./core:/app
+      - ./nginx.conf:/nginx.conf:ro
     networks:
       - chatbot_net
     depends_on:

@@ -6,7 +6,7 @@
 
 ## Contexto
 
-El proyecto `botilleria-core` fue diseñado como multi-tenant con:
+El proyecto `chatbot-core` fue diseñado como multi-tenant con:
 - Row-Level Security (RLS) en PostgreSQL
 - Resolución dinámica de tenant por canal: Telegram token → `ChannelRoute` → `Tenant`
 - `tenant_id` en todos los modelos principales: `User`, `Conversation`, `Message`, `Product`, `KnowledgeBase`
@@ -330,7 +330,7 @@ Actualizar `root_agent.py`:
 
 Actualizar herramientas:
 - `get_current_datetime()` → puede mantenerse.
-- `get_botilleria_info()` → debe responder info general.
+- `get_chatbot_info()` → debe responder info general.
 - `consultar_stock()` → debe consultar DB real.
 - `consultar_precio()` → debe consultar DB real.
 - `contactar_humano()` → idealmente debe registrar ticket o evento de escalación.
@@ -394,7 +394,7 @@ Crear si aplica:
 
 Actualizar:
 - `docker-compose.yml`
-- `docker-compose.botilleria.yml`
+- `docker-compose.chatbot.yml`
 - `docker-compose.prod.yml`
 
 Reglas:

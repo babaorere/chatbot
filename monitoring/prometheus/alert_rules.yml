@@ -1,147 +1,147 @@
 groups:
   # ── API Health Alerts ──────────────────────────────────────────────────────
-  - name: botilleria_api_health
+  - name: chatbot_api_health
     rules:
-      - alert: BotilleriaAPIDown
-        expr: up{job="botilleria_api"} == 0
+      - alert: ChatbotAPIDown
+        expr: up{job="chatbot_api"} == 0
         for: 1m
         labels:
           severity: critical
-          team: botilleria
+          team: chatbot
         annotations:
-          summary: "Botilleria API is down"
-          description: "The botilleria API at {{ $labels.instance }} has been unreachable for over 1 minute."
-          runbook: "Check container logs: docker logs botilleria_api"
+          summary: "Chatbot API is down"
+          description: "The chatbot API at {{ $labels.instance }} has been unreachable for over 1 minute."
+          runbook: "Check container logs: docker logs chatbot_api"
 
-      - alert: BotilleriaAPISlowResponse
-        expr: probe_duration_seconds{job="botilleria_api"} > 5
+      - alert: ChatbotAPISlowResponse
+        expr: probe_duration_seconds{job="chatbot_api"} > 5
         for: 5m
         labels:
           severity: warning
-          team: botilleria
+          team: chatbot
         annotations:
-          summary: "Botilleria API slow responses"
+          summary: "Chatbot API slow responses"
           description: "API response time is {{ $value }}s (threshold: 5s) for the last 5 minutes."
           runbook: "Check OpenRouter latency, database query performance, and memory usage."
 
-      - alert: BotilleriaAPIHighErrorRate
-        expr: rate(http_requests_total{job="botilleria_api", status=~"5.."}[5m]) > 0.1
+      - alert: ChatbotAPIHighErrorRate
+        expr: rate(http_requests_total{job="chatbot_api", status=~"5.."}[5m]) > 0.1
         for: 5m
         labels:
           severity: critical
-          team: botilleria
+          team: chatbot
         annotations:
-          summary: "Botilleria API high error rate"
+          summary: "Chatbot API high error rate"
           description: "Error rate is {{ $value }} errors/sec over the last 5 minutes."
           runbook: "Check API logs for stack traces. Verify database connectivity."
 
   # ── Nginx Alerts ───────────────────────────────────────────────────────────
-  - name: botilleria_nginx_health
+  - name: chatbot_nginx_health
     rules:
-      - alert: BotilleriaNginxDown
-        expr: up{job="botilleria_nginx"} == 0
+      - alert: ChatbotNginxDown
+        expr: up{job="chatbot_nginx"} == 0
         for: 1m
         labels:
           severity: critical
-          team: botilleria
+          team: chatbot
         annotations:
-          summary: "Botilleria Nginx is down"
+          summary: "Chatbot Nginx is down"
           description: "Nginx at {{ $labels.instance }} has been unreachable for over 1 minute."
-          runbook: "Check container: docker logs botilleria_nginx. Verify ports 80/443."
+          runbook: "Check container: docker logs chatbot_nginx. Verify ports 80/443."
 
-      - alert: BotilleriaNginxHigh4xxRate
+      - alert: ChatbotNginxHigh4xxRate
         expr: rate(nginx_http_requests_total{status=~"4.."}[5m]) > 10
         for: 5m
         labels:
           severity: warning
-          team: botilleria
+          team: chatbot
         annotations:
-          summary: "Botilleria Nginx high 4xx rate"
+          summary: "Chatbot Nginx high 4xx rate"
           description: "4xx error rate is {{ $value }} req/sec. Possible misconfiguration or abuse."
           runbook: "Check Nginx access logs for patterns. Verify rate limiting is active."
 
   # ── Database Alerts ────────────────────────────────────────────────────────
-  - name: botilleria_database_health
+  - name: chatbot_database_health
     rules:
-      - alert: BotilleriaDatabaseDown
+      - alert: ChatbotDatabaseDown
         expr: up{job="postgres"} == 0
         for: 1m
         labels:
           severity: critical
-          team: botilleria
+          team: chatbot
         annotations:
           summary: "PostgreSQL database is down"
           description: "PostgreSQL at {{ $labels.instance }} has been unreachable for over 1 minute."
           runbook: "Check database container: docker logs booking-titanium-wm-db-1. Verify disk space."
 
-      - alert: BotilleriaDatabaseHighConnections
-        expr: pg_stat_activity_count{datname="botilleria"} > 50
+      - alert: ChatbotDatabaseHighConnections
+        expr: pg_stat_activity_count{datname="chatbot"} > 50
         for: 5m
         labels:
           severity: warning
-          team: botilleria
+          team: chatbot
         annotations:
-          summary: "Botilleria database high connection count"
-          description: "Database has {{ $value }} active connections to botilleria DB."
+          summary: "Chatbot database high connection count"
+          description: "Database has {{ $value }} active connections to chatbot DB."
           runbook: "Check for connection leaks. Verify API worker count and pool settings."
 
-      - alert: BotilleriaDatabaseLongRunningQueries
-        expr: pg_stat_activity_max_tx_duration{datname="botilleria"} > 30
+      - alert: ChatbotDatabaseLongRunningQueries
+        expr: pg_stat_activity_max_tx_duration{datname="chatbot"} > 30
         for: 5m
         labels:
           severity: warning
-          team: botilleria
+          team: chatbot
         annotations:
-          summary: "Botilleria database long-running queries"
-          description: "Queries running longer than 30s detected on botilleria DB."
+          summary: "Chatbot database long-running queries"
+          description: "Queries running longer than 30s detected on chatbot DB."
           runbook: "Check pg_stat_activity for blocking queries. Review FTS index health."
 
   # ── Backup Alerts ──────────────────────────────────────────────────────────
-  - name: botilleria_backup_health
+  - name: chatbot_backup_health
     rules:
-      - alert: BotilleriaBackupMissing
-        expr: absent(botilleria_backup_last_success_timestamp) or (time() - botilleria_backup_last_success_timestamp) > 172800
+      - alert: ChatbotBackupMissing
+        expr: absent(chatbot_backup_last_success_timestamp) or (time() - chatbot_backup_last_success_timestamp) > 172800
         for: 1h
         labels:
           severity: critical
-          team: botilleria
+          team: chatbot
         annotations:
-          summary: "Botilleria backup is missing or stale"
+          summary: "Chatbot backup is missing or stale"
           description: "No successful backup in the last 48 hours."
           runbook: "Check backup cron job. Run manual backup: ./scripts/backup.sh full"
 
-      - alert: BotilleriaBackupFailed
-        expr: botilleria_backup_last_status == 1
+      - alert: ChatbotBackupFailed
+        expr: chatbot_backup_last_status == 1
         for: 0m
         labels:
           severity: critical
-          team: botilleria
+          team: chatbot
         annotations:
-          summary: "Botilleria backup failed"
+          summary: "Chatbot backup failed"
           description: "The most recent backup attempt failed."
-          runbook: "Check backup logs: /opt/botilleria/logs/backup_*.log"
+          runbook: "Check backup logs: /opt/chatbot/logs/backup_*.log"
 
   # ── Disk Space Alerts ──────────────────────────────────────────────────────
-  - name: botilleria_disk_health
+  - name: chatbot_disk_health
     rules:
-      - alert: BotilleriaDiskSpaceLow
+      - alert: ChatbotDiskSpaceLow
         expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.1
         for: 5m
         labels:
           severity: warning
-          team: botilleria
+          team: chatbot
         annotations:
-          summary: "Botilleria disk space low"
+          summary: "Chatbot disk space low"
           description: "Less than 10% disk space remaining on {{ $labels.instance }}."
-          runbook: "Clean up old backups, logs, and Docker images. Check /opt/botilleria/backups."
+          runbook: "Clean up old backups, logs, and Docker images. Check /opt/chatbot/backups."
 
-      - alert: BotilleriaDiskSpaceCritical
+      - alert: ChatbotDiskSpaceCritical
         expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.05
         for: 5m
         labels:
           severity: critical
-          team: botilleria
+          team: chatbot
         annotations:
-          summary: "Botilleria disk space critical"
+          summary: "Chatbot disk space critical"
           description: "Less than 5% disk space remaining on {{ $labels.instance }}."
           runbook: "URGENT: Clean up immediately. Remove old backups, prune Docker: docker system prune -af"

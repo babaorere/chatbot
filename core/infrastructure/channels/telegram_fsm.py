@@ -44,7 +44,7 @@ class FSMState(str, Enum):
 _CALLBACK_INTENTS: dict[str, str] = {
     "menu:stock": "consultar_stock",
     "menu:precio": "consultar_precio",
-    "menu:horario": "get_botilleria_info",
+    "menu:horario": "get_chatbot_info",
     "menu:contacto": "contactar_humano",
     "menu:inicio": "inicio",
     "confirm:si": "confirmacion_si",
@@ -153,7 +153,7 @@ class TelegramConversationFSM:
             "consultar_stock": FSMState.AWAITING_PRODUCT_NAME,
             "consultar_precio": FSMState.AWAITING_PRODUCT_NAME,
             "contactar_humano": FSMState.IDLE,
-            "get_botilleria_info": FSMState.IDLE,
+            "get_chatbot_info": FSMState.IDLE,
             "inicio": FSMState.IDLE,
             "confirmacion_si": FSMState.IDLE,
             "confirmacion_no": FSMState.IDLE,

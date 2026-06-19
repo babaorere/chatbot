@@ -46,7 +46,7 @@ class TestBackupScript:
         
         content = config_file.read_text()
         assert "scrape_interval:" in content
-        assert "botilleria_api" in content
+        assert "chatbot_api" in content
         assert "alert_rules.yml" in content
 
     def test_alert_rules_exist(self) -> None:
@@ -55,9 +55,9 @@ class TestBackupScript:
         assert rules_file.is_file()
         
         content = rules_file.read_text()
-        assert "BotilleriaAPIDown" in content
-        assert "BotilleriaBackupMissing" in content
-        assert "BotilleriaDatabaseDown" in content
+        assert "ChatbotAPIDown" in content
+        assert "ChatbotBackupMissing" in content
+        assert "ChatbotDatabaseDown" in content
 
     def test_grafana_dashboard_exists(self) -> None:
         dashboard_file = WORKSPACE_ROOT / "monitoring" / "grafana" / "dashboards" / "system-overview.json"
@@ -65,7 +65,7 @@ class TestBackupScript:
         assert dashboard_file.is_file()
         
         content = dashboard_file.read_text()
-        assert '"title": "Botilleria Core - System Overview"' in content
+        assert '"title": "Chatbot Core - System Overview"' in content
         assert "API Status" in content
         assert "Database Status" in content
 

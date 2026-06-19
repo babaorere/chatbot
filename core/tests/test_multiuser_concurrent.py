@@ -2,7 +2,7 @@
 Test de conversaciones multiusuario concurrentes — Happy Path (Mock LLM).
 
 Simula 5 clientes interactuando simultáneamente con el asistente de la
-botillería. Usa un mock del servicio LLM para evitar límites de API.
+negocio. Usa un mock del servicio LLM para evitar límites de API.
 
 Verifica:
 1. Aislamiento de sesiones (no se mezclan conversaciones)
@@ -107,7 +107,7 @@ class MockLLMService:
                     "¿En qué puedo ayudarte?"
                 )
             return (
-                "¡Hola! Bienvenido a la Botillería El Buen Trago. "
+                "¡Hola! Bienvenido a la Negocio El Buen Trago. "
                 "¿En qué puedo ayudarte hoy?"
             )
 

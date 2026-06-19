@@ -25,10 +25,10 @@ La implementación Redis vive en `services/redis_session_service.py` y sigue el 
 
 ### Claves Redis
 
-- `botilleria:adk:v1:session:{app}:{user}:{session}`
-- `botilleria:adk:v1:user_state:{app}:{user}`
-- `botilleria:adk:v1:app_state:{app}`
-- `botilleria:adk:v1:lock:session:{app}:{user}:{session}`
+- `chatbot:adk:v1:session:{app}:{user}:{session}`
+- `chatbot:adk:v1:user_state:{app}:{user}`
+- `chatbot:adk:v1:app_state:{app}`
+- `chatbot:adk:v1:lock:session:{app}:{user}:{session}`
 
 ### Qué se guarda
 

@@ -1,7 +1,7 @@
-# Botilleria Core — Runbook (Operations Manual)
+# Chatbot Core — Runbook (Operations Manual)
 
 ## Overview
-This runbook contains procedures for operating, troubleshooting, and recovering the Botilleria Core multi-tenant system in production.
+This runbook contains procedures for operating, troubleshooting, and recovering the Chatbot Core multi-tenant system in production.
 
 ## Table of Contents
 1. [System Architecture](#system-architecture)
@@ -71,7 +71,7 @@ docker system prune -af --volumes
 
 ### API Metrics
 Access Grafana at `http://<host>/monitoring` (default credentials in `.env`):
-- Dashboard: "Botilleria Core - System Overview"
+- Dashboard: "Chatbot Core - System Overview"
 - Panels: API status, request rates, error rates, response times, DB connections
 
 ---
@@ -94,26 +94,26 @@ Backups run daily at 2:00 AM via cron (configured in deployment):
 ### Restore Procedures
 ```bash
 # List available backups
-ls -lht /opt/botilleria/backups/
+ls -lht /opt/chatbot/backups/
 
 # Restore most recent (requires FORCE=1 for production)
 ./scripts/restore.sh latest
 
 # Restore specific backup
-./scripts/restore.sh /opt/botilleria/backups/botilleria_full_20260521_020000.sql.gz
+./scripts/restore.sh /opt/chatbot/backups/chatbot_full_20260521_020000.sql.gz
 
 # Restore to different database (testing)
-./scripts/restore.sh latest botilleria_test
+./scripts/restore.sh latest chatbot_test
 ```
 
 ### Backup Verification
 ```bash
 # Verify backup integrity
-gzip -t /opt/botilleria/backups/botilleria_full_*.sql.gz  # for gzipped
-pg_restore --list /opt/botilleria/backups/*.dump          # for custom format
+gzip -t /opt/chatbot/backups/chatbot_full_*.sql.gz  # for gzipped
+pg_restore --list /opt/chatbot/backups/*.dump          # for custom format
 
 # Check latest symlink
-ls -l /opt/botilleria/backups/latest
+ls -l /opt/chatbot/backups/latest
 ```
 
 ### Off-site Sync (if configured)
@@ -165,11 +165,11 @@ docker-compose -f docker-compose.prod.yml exec api pg_isready -h booking-titaniu
 
 # 4. Verify database exists
 docker-compose -f docker-compose.prod.yml exec api psql -h booking-titanium-wm-db-1 -U windmill -d windmill -c \
-    "\l" | grep botilleria
+    "\l" | grep chatbot
 
 # 5. Check connection count
-docker-compose -f docker-compose.prod.yml exec api psql -h booking-titanium-wm-db-1 -U windmill -d botilleria -c \
-    "SELECT count(*) FROM pg_stat_activity WHERE datname = 'botilleria';"
+docker-compose -f docker-compose.prod.yml exec api psql -h booking-titanium-wm-db-1 -U windmill -d chatbot -c \
+    "SELECT count(*) FROM pg_stat_activity WHERE datname = 'chatbot';"
 ```
 
 ### High Latency / Timeouts
@@ -178,7 +178,7 @@ docker-compose -f docker-compose.prod.yml exec api psql -h booking-titanium-wm-d
 #    (Requires API key - check logs for provider errors)
 
 # 2. Check database query performance
-docker-compose -f docker-compose.prod.yml exec api psql -h booking-titanium-wm-db-1 -U windmill -d botilleria -c \
+docker-compose -f docker-compose.prod.yml exec api psql -h booking-titanium-wm-db-1 -U windmill -d chatbot -c \
     "SELECT query, mean_time FROM pg_stat_statements ORDER BY mean_time DESC LIMIT 5;"
 
 # 3. Check Nginx error rates
@@ -203,11 +203,11 @@ docker-compose -f docker-compose.prod.yml exec nginx nginx -s reload
 ### Backup Failures
 ```bash
 # 1. Check backup logs
-ls -lht /opt/botilleria/logs/
+ls -lht /opt/chatbot/logs/
 cat /opt/botelleria/logs/backup_*.log | tail -50
 
 # 2. Verify disk space
-df -h /opt/botilleria/backups
+df -h /opt/chatbot/backups
 
 # 3. Verify database connectivity (run backup manually with verbose)
 ./scripts/backup.sh full 1  # Short retention for testing
@@ -236,14 +236,14 @@ api:
 ### Horizontal Scaling (API Workers)
 The API uses Uvicorn workers (configured via environment):
 ```bash
-# In botilleria_core/.env:
+# In chatbot_core/.env:
 UVICORN_WORKERS=4  # Default, increase based on CPU cores
 ```
 
 ### Database Connection Pool
 Adjust in SQLAlchemy configuration:
 ```bash
-# In botilleria_core/.env:
+# In chatbot_core/.env:
 DB_POOL_SIZE=20
 DB_MAX_OVERFLOW=30
 ```
@@ -291,7 +291,7 @@ docker-compose -f docker-compose.prod.yml logs api | grep -i openrouter
 ### Database Password Rotation
 ```bash
 # 1. Update password in:
-#    - botilleria_core/.env (DB_PASSWORD)
+#    - chatbot_core/.env (DB_PASSWORD)
 #    - Windmill's PostgreSQL user 'windmill' (external)
 
 # 2. Restart affected services:

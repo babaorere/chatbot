@@ -1,5 +1,5 @@
 # ============================================================================
-# BOTILLERIA CORE — Monitoring Stack (Prometheus + Grafana + Alertmanager)
+# CHATBOT CORE — Monitoring Stack (Prometheus + Grafana + Alertmanager)
 # ============================================================================
 # Run alongside production: docker-compose -f docker-compose.monitoring.yml up -d
 # ============================================================================
@@ -15,7 +15,7 @@ services:
   # ── Prometheus: Metrics Collection ─────────────────────────────────────────
   prometheus:
     image: prom/prometheus:v2.51.0
-    container_name: botilleria_prometheus
+    container_name: chatbot_prometheus
     restart: unless-stopped
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -31,7 +31,7 @@ services:
     expose:
       - "9090"
     networks:
-      - botilleria_net
+      - chatbot_net
       - booking-titanium-wm_default
     logging: *default-logging
     deploy:
@@ -44,7 +44,7 @@ services:
   # ── Grafana: Dashboards & Visualization ────────────────────────────────────
   grafana:
     image: grafana/grafana:10.4.0
-    container_name: botilleria_grafana
+    container_name: chatbot_grafana
     restart: unless-stopped
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
@@ -52,7 +52,7 @@ services:
       - grafana_data:/var/lib/grafana
     environment:
       - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-botilleria_monitor}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-chatbot_monitor}
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-/monitoring}
       - GF_AUTH_ANONYMOUS_ENABLED=false
@@ -61,7 +61,7 @@ services:
     depends_on:
       - prometheus
     networks:
-      - botilleria_net
+      - chatbot_net
     logging: *default-logging
     deploy:
       resources:
@@ -73,7 +73,7 @@ services:
   # ── Alertmanager: Alert Routing ────────────────────────────────────────────
   alertmanager:
     image: prom/alertmanager:v0.27.0
-    container_name: botilleria_alertmanager
+    container_name: chatbot_alertmanager
     restart: unless-stopped
     volumes:
       - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
@@ -85,7 +85,7 @@ services:
     expose:
       - "9093"
     networks:
-      - botilleria_net
+      - chatbot_net
     logging: *default-logging
     deploy:
       resources:
@@ -100,7 +100,7 @@ volumes:
   alertmanager_data:
 
 networks:
-  botilleria_net:
+  chatbot_net:
     driver: bridge
   booking-titanium-wm_default:
     external: true

@@ -1,9 +1,9 @@
-# AGENTS.md — BOTILLERIA CORE v0.4.0
+# AGENTS.md — CHATBOT CORE v0.4.0
 
 ## MISSION
 
 ROLE: SR-PY/ADK ENG
-OBJ : BUILD SINGLE-TENANT MESSAGING SYSTEM FOR BOTILLERÍA
+OBJ : BUILD SINGLE-TENANT MESSAGING SYSTEM FOR NEGOCIO
 MODE: STRICT / DETERMINISTIC / ZERO-AMBIGUITY
 
 ---
@@ -130,14 +130,14 @@ def tool_name(param: str | None = None) -> str:
 ```python
 def consultar_stock(producto: str | None = None) -> str:
     """Inicia una consulta de disponibilidad de un producto específico en el
-    inventario de la botillería.
+    inventario de la negocio.
 
     Invoca esta herramienta cuando el usuario pregunte si un producto está
     disponible, si tienen cierto licor/cerveza/vino en stock, o cuando
     exprese intención de comprar algo y necesites confirmar existencia
     (ej: 'tienen pisco sour?', 'hay cerveza artesanal de trigo?').
     NO la invoques para preguntas sobre precios (usa consultar_precio),
-    horarios (usa get_botilleria_info), o saludos generales.
+    horarios (usa get_chatbot_info), o saludos generales.
 
     Args:
         producto: Nombre del producto que el usuario busca, en formato
@@ -164,16 +164,16 @@ from google.adk.sessions import InMemorySessionService
 
 # LiteLlm + OpenRouter (NOT direct Gemini)
 agent = Agent(
-    name="botilleria_assistant",
+    name="chatbot_assistant",
     model=LiteLlm(model="openrouter/nvidia/nemotron-3-super-120b-a12b:free", api_key=openrouter_key),
-    instruction="Eres el asistente virtual de la Botillería El Buen Trago...",
-    tools=[get_current_datetime, get_botilleria_info, consultar_stock, consultar_precio, contactar_humano],
+    instruction="Eres el asistente virtual de la Negocio El Buen Trago...",
+    tools=[get_current_datetime, get_chatbot_info, consultar_stock, consultar_precio, contactar_humano],
 )
 
 # InMemorySessionService (NOT DatabaseSessionService)
 runner = Runner(
     agent=agent,
-    app_name="botilleria_assistant",
+    app_name="chatbot_assistant",
     session_service=InMemorySessionService(),
     auto_create_session=True,
 )
@@ -241,10 +241,10 @@ test_<unit>_<case>_<expected>
 
 ## WINDMILL INTEGRATION
 
-botilleria_core is mounted as read-only volume in Windmill workers:
-- Path: `/opt/botilleria_core`
-- Usage: `sys.path.insert(0, '/opt/botilleria_core')`
-- Windmill scripts call the FastAPI API via HTTP: `http://botilleria_core_api:8000/chat`
+chatbot_core is mounted as read-only volume in Windmill workers:
+- Path: `/opt/chatbot_core`
+- Usage: `sys.path.insert(0, '/opt/chatbot_core')`
+- Windmill scripts call the FastAPI API via HTTP: `http://chatbot_core_api:8000/chat`
 
 ---
 
@@ -253,14 +253,14 @@ botilleria_core is mounted as read-only volume in Windmill workers:
 ### Docker:
 
 ```bash
-docker compose -f docker-compose.botilleria.yml up -d --build
+docker compose -f docker-compose.chatbot.yml up -d --build
 ```
 
 ### Health Check:
 
 ```
 GET http://localhost:8001/health
-→ {"status":"ok","service":"botilleria-core","model":"nemotron-3-super-120b:free","worker_pid":"7"}
+→ {"status":"ok","service":"chatbot-core","model":"nemotron-3-super-120b:free","worker_pid":"7"}
 ```
 
 ### Workers:

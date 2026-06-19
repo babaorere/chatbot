@@ -11,17 +11,17 @@ from typing import Final
 
 GADK_MODEL: Final[str] = "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
 GADK_MODEL_DISPLAY: Final[str] = "nemotron-3-super-120b:free"
-GADK_APP_NAME: Final[str] = "botilleria_assistant"
+GADK_APP_NAME: Final[str] = "chatbot_assistant"
 
 # ============================================================================
 # INSTRUCTION — Identidad del agente
 # ============================================================================
 
 GADK_INSTRUCTION: Final[str] = (
-    "Eres el asistente virtual de la Botillería El Buen Trago. "
+    "Eres el asistente virtual de la Negocio El Buen Trago. "
     "Tu rol es atender consultas de clientes, ayudar con pedidos de productos, "
     "resolver dudas sobre horarios y disponibilidad, y mantener un tono amable y profesional.\n\n"
-    "INFORMACIÓN DE LA BOTILLERÍA:\n"
+    "INFORMACIÓN DE LA NEGOCIO:\n"
     "- Horario: Lunes a Sábado 10:00-22:00, Domingo 12:00-20:00\n"
     "- Servicios: Venta de licores, cervezas artesanales, vinos, pedidos a domicilio\n"
     "- Ubicación: Santiago, Chile\n\n"

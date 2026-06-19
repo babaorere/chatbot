@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# BOTILLERIA CORE — Database Backup Script
+# CHATBOT CORE — Database Backup Script
 # ============================================================================
 # Automated PostgreSQL backup with retention, verification, and off-site sync.
 # Designed for cron execution (daily at 2:00 AM).
@@ -10,22 +10,22 @@
 #   schema   — Schema-only dump
 #   custom   — Custom format (pg_restore compatible)
 #
-# Cron: 0 2 * * * /opt/botilleria/scripts/backup.sh full 30
+# Cron: 0 2 * * * /opt/chatbot/scripts/backup.sh full 30
 # ============================================================================
 set -euo pipefail
 
 # ── Configuration ────────────────────────────────────────────────────────────
 BACKUP_TYPE="${1:-full}"
 RETENTION_DAYS="${2:-30}"
-BACKUP_DIR="${BACKUP_DIR:-/opt/botilleria/backups}"
-LOG_DIR="${LOG_DIR:-/opt/botilleria/logs}"
+BACKUP_DIR="${BACKUP_DIR:-/opt/chatbot/backups}"
+LOG_DIR="${LOG_DIR:-/opt/chatbot/logs}"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 DATE_HUMAN="$(date +%Y-%m-%d\ %H:%M:%S)"
 
 # Database connection (from environment or defaults)
 DB_HOST="${DB_HOST:-booking-titanium-wm-db-1}"
 DB_PORT="${DB_PORT:-5432}"
-DB_NAME="${DB_NAME:-botilleria}"
+DB_NAME="${DB_NAME:-chatbot}"
 DB_USER="${DB_USER:-windmill}"
 DB_PASSWORD="${DB_PASSWORD:-windmill}"
 
@@ -57,17 +57,17 @@ mkdir -p "$BACKUP_DIR"
 # ── Determine filename and flags ─────────────────────────────────────────────
 case "$BACKUP_TYPE" in
     full)
-        FILENAME="botilleria_full_${TIMESTAMP}.sql.gz"
+        FILENAME="chatbot_full_${TIMESTAMP}.sql.gz"
         PG_DUMP_FLAGS="--format=plain --no-owner --no-privileges"
         COMPRESS="gzip"
         ;;
     schema)
-        FILENAME="botilleria_schema_${TIMESTAMP}.sql"
+        FILENAME="chatbot_schema_${TIMESTAMP}.sql"
         PG_DUMP_FLAGS="--schema-only"
         COMPRESS="none"
         ;;
     custom)
-        FILENAME="botilleria_custom_${TIMESTAMP}.dump"
+        FILENAME="chatbot_custom_${TIMESTAMP}.dump"
         PG_DUMP_FLAGS="--format=custom --compress=6"
         COMPRESS="none"
         ;;
@@ -135,7 +135,7 @@ while IFS= read -r -d '' old_file; do
     log "INFO" "Deleting old backup: $(basename "$old_file")"
     rm -f "$old_file"
     DELETED_COUNT=$((DELETED_COUNT + 1))
-done < <(find "$BACKUP_DIR" -name "botilleria_*" -type f -mtime +"$RETENTION_DAYS" -print0)
+done < <(find "$BACKUP_DIR" -name "chatbot_*" -type f -mtime +"$RETENTION_DAYS" -print0)
 
 log "INFO" "Deleted $DELETED_COUNT old backup(s)"
 
@@ -159,7 +159,7 @@ if [ -n "$S3_BUCKET" ]; then
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────────────
-BACKUP_COUNT="$(find "$BACKUP_DIR" -name "botilleria_*" -type f | wc -l)"
+BACKUP_COUNT="$(find "$BACKUP_DIR" -name "chatbot_*" -type f | wc -l)"
 TOTAL_SIZE="$(du -sh "$BACKUP_DIR" | cut -f1)"
 
 log "INFO" "=== Backup Summary ==="

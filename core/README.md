@@ -1,6 +1,6 @@
-# Botilleria Core
+# Chatbot Core
 
-Backend multi-tenant para atención conversacional de botillerías y comercios similares. Expone una API FastAPI para recibir mensajes, resolver a qué tenant pertenece cada conversación, recuperar contexto desde base de conocimiento, consultar un modelo LLM vía OpenRouter y devolver la respuesta al canal de origen.
+Backend multi-tenant para atención conversacional de negocios y comercios similares. Expone una API FastAPI para recibir mensajes, resolver a qué tenant pertenece cada conversación, recuperar contexto desde base de conocimiento, consultar un modelo LLM vía OpenRouter y devolver la respuesta al canal de origen.
 
 Está pensado para operar como núcleo de mensajería detrás de integraciones como Telegram, WhatsApp, webchat o flujos externos en Windmill.
 
@@ -79,7 +79,7 @@ flowchart TD
 ## Arquitectura del proyecto
 
 ```text
-botilleria_core/
+chatbot_core/
 ├── main.py
 ├── config/         # settings, engines y helpers de DB
 ├── controllers/    # routers FastAPI
@@ -162,7 +162,7 @@ botilleria_core/
 ### Ejemplo de `.env`
 
 ```env
-DATABASE_URL=postgresql://botilleria:botilleria@localhost:5432/botilleria_core
+DATABASE_URL=postgresql://chatbot:chatbot@localhost:5432/chatbot_core
 OPENROUTER_API_KEY=<OPENROUTER_API_KEY>
 MODEL_NAME=openrouter/nvidia/nemotron-3-super-120b-a12b:free
 MODEL_DISPLAY=nemotron-3-super-120b:free
@@ -210,8 +210,8 @@ La imagen actual usa:
 Comando de referencia:
 
 ```bash
-docker build -t botilleria-core .
-docker run --rm -p 8000:8000 --env-file .env botilleria-core
+docker build -t chatbot-core .
+docker run --rm -p 8000:8000 --env-file .env chatbot-core
 ```
 
 La imagen expone `8000/tcp`.
@@ -239,7 +239,7 @@ Respuesta esperada:
 ```json
 {
   "status": "ok",
-  "service": "botilleria-core",
+  "service": "chatbot-core",
   "version": "1.0.0",
   "multi_tenant": "true",
   "worker_pid": "123"
@@ -322,9 +322,9 @@ Rutas principales:
 curl -X POST http://localhost:8000/tenants \
   -H "Content-Type: application/json" \
   -d '{
-    "slug": "botilleria_centro",
-    "name": "Botillería Centro",
-    "instruction": "Eres el asistente virtual de Botillería Centro.",
+    "slug": "chatbot_centro",
+    "name": "Negocio Centro",
+    "instruction": "Eres el asistente virtual de Negocio Centro.",
     "model": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
     "api_key": "<OPENROUTER_API_KEY>"
   }'
@@ -379,15 +379,15 @@ curl "http://localhost:8000/sessions/<SESSION_ID>/history?user_id=cliente_001" \
 
 El proyecto está preparado para operar como backend HTTP detrás de workers externos.
 
-- El código puede montarse en `/opt/botilleria_core`.
-- Los scripts externos pueden llamar a `http://botilleria_core_api:8000/chat`.
+- El código puede montarse en `/opt/chatbot_core`.
+- Los scripts externos pueden llamar a `http://chatbot_core_api:8000/chat`.
 - El mapeo `X-Platform` + `X-Channel-Identifier` permite resolver el tenant sin exponer UUIDs.
 
 ```mermaid
 flowchart LR
     A[Webhook externo] --> B[Worker Windmill]
     B --> C[POST /chat]
-    C --> D[Botilleria Core]
+    C --> D[Chatbot Core]
     D --> E[OpenRouter]
     D --> F[PostgreSQL]
     D --> C
@@ -545,7 +545,7 @@ Esto da más espacio para:
 ```mermaid
 flowchart LR
     A[Internet / Canales] --> B[Reverse Proxy]
-    B --> C[Botilleria Core]
+    B --> C[Chatbot Core]
     C --> D[PostgreSQL]
     C --> E[OpenRouter]
 ```
@@ -635,7 +635,7 @@ Las pruebas presentes cubren, entre otros casos:
 
 ## Resumen operativo
 
-Botilleria Core ya tiene una base sólida para operar como backend conversacional multi-tenant en un VPS pequeño o mediano. Para una puesta en producción estable con 30 usuarios concurrentes, la combinación más equilibrada es:
+Chatbot Core ya tiene una base sólida para operar como backend conversacional multi-tenant en un VPS pequeño o mediano. Para una puesta en producción estable con 30 usuarios concurrentes, la combinación más equilibrada es:
 
 - 4 vCPU
 - 8 GB RAM

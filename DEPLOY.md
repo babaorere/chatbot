@@ -1,4 +1,4 @@
-# Botilleria Core — Production Deployment
+# Chatbot Core — Production Deployment
 
 ## Architecture
 
@@ -37,12 +37,12 @@ sudo apt install -y git
 ### 2. Clone & Configure
 
 ```bash
-git clone <repo-url> /opt/botilleria
-cd /opt/botilleria
+git clone <repo-url> /opt/chatbot
+cd /opt/chatbot
 
 # Configure environment
-cp botilleria_core/.env.example botilleria_core/.env
-nano botilleria_core/.env  # Edit with your values
+cp chatbot_core/.env.example chatbot_core/.env
+nano chatbot_core/.env  # Edit with your values
 ```
 
 ### 3. Deploy
@@ -70,7 +70,7 @@ curl http://localhost/admin/
 ## File Structure
 
 ```
-botilleria_workspace/
+chatbot_workspace/
 ├── docker-compose.prod.yml    # Production compose (Nginx + API)
 ├── nginx.conf                 # Nginx configuration
 ├── Dockerfile.nginx           # Nginx Docker image
@@ -85,7 +85,7 @@ botilleria_workspace/
 │       ├── index.html
 │       ├── css/style.css
 │       └── js/app.js
-└── botilleria_core/
+└── chatbot_core/
     ├── Dockerfile             # FastAPI Docker image
     ├── .env                   # Environment variables
     └── ...                    # Backend code
@@ -107,7 +107,7 @@ botilleria_workspace/
 
 ```bash
 # One-command SSL setup
-sudo ./setup-ssl.sh botilleria.tu-dominio.com admin@tu-dominio.com
+sudo ./setup-ssl.sh chatbot.tu-dominio.com admin@tu-dominio.com
 ```
 
 This script will:
@@ -124,7 +124,7 @@ This script will:
 docker compose -f docker-compose.prod.yml stop nginx
 
 # Get certificate
-sudo certbot certonly --standalone -d botilleria.tu-dominio.com -m admin@tu-dominio.com
+sudo certbot certonly --standalone -d chatbot.tu-dominio.com -m admin@tu-dominio.com
 
 # Update nginx.conf (uncomment SSL lines)
 # Then restart
@@ -183,13 +183,13 @@ docker-compose -f docker-compose.prod.yml logs api
 
 ```bash
 # Backup database
-pg_dump -h booking-titanium-wm-db-1 -U windmill botilleria > backup_$(date +%Y%m%d).sql
+pg_dump -h booking-titanium-wm-db-1 -U windmill chatbot > backup_$(date +%Y%m%d).sql
 
 # Backup frontend
 tar -czf frontend_backup_$(date +%Y%m%d).tar.gz frontend/
 
 # Backup environment
-cp botilleria_core/.env .env.backup_$(date +%Y%m%d)
+cp chatbot_core/.env .env.backup_$(date +%Y%m%d)
 ```
 
 ## Troubleshooting
@@ -231,7 +231,7 @@ conn.close()
 │       │                                                             │
 │       ▼                                                             │
 │  ┌──────────────────┐    ┌──────────────────┐    ┌───────────────┐ │
-│  │ botilleria_flow  │───>│botilleria_webhook│───>│ botilleria_   │ │
+│  │ chatbot_flow  │───>│chatbot_webhook│───>│ chatbot_   │ │
 │  │ (orchestrator)   │    │ (parse + route)  │    │    chat       │ │
 │  │                  │<───┘                  │    │ (HTTP /chat)  │ │
 │  │                  │    └──────────────────┘    └───────┬───────┘ │
@@ -247,7 +247,7 @@ conn.close()
                                                            │
                                                            ▼
                                               ┌────────────────────────┐
-                                              │  botilleria_core_api   │
+                                              │  chatbot_core_api   │
                                               │  :8000                 │
                                               │                        │
                                               │  - Tenant resolution   │
@@ -261,51 +261,51 @@ conn.close()
 
 | Script | Path | Purpose |
 |--------|------|---------|
-| **botilleria_chat** | `f/botilleria_chat/main.py` | Generic chat client for botilleria API. Accepts user_id, message, platform, channel_identifier, tenant_id, session_id. |
-| **botilleria_webhook** | `f/botilleria_webhook/main.py` | Telegram webhook receiver. Parses Telegram payload, extracts bot_token for tenant resolution, calls botilleria API. |
-| **botilleria_flow** | `f/botilleria_flow/main.py` | Workflow orchestrator. Chains webhook → chat → telegram_send. |
-| **botilleria_health_check** | `f/botilleria_health_check/main.py` | Health check + API endpoint verification. |
+| **chatbot_chat** | `f/chatbot_chat/main.py` | Generic chat client for chatbot API. Accepts user_id, message, platform, channel_identifier, tenant_id, session_id. |
+| **chatbot_webhook** | `f/chatbot_webhook/main.py` | Telegram webhook receiver. Parses Telegram payload, extracts bot_token for tenant resolution, calls chatbot API. |
+| **chatbot_flow** | `f/chatbot_flow/main.py` | Workflow orchestrator. Chains webhook → chat → telegram_send. |
+| **chatbot_health_check** | `f/chatbot_health_check/main.py` | Health check + API endpoint verification. |
 
 ### Configuration
 
 #### Windmill Variable
 
-Create a Windmill variable at `u/admin/BOTILLERIA_API_URL`:
+Create a Windmill variable at `u/admin/CHATBOT_API_URL`:
 ```
-http://botilleria_core_api:8000
+http://chatbot_core_api:8000
 ```
 
 If not set, scripts default to the internal Docker network URL above.
 
 #### Docker Volume Mount
 
-The botilleria_core package is mounted as read-only on all Windmill workers:
+The chatbot_core package is mounted as read-only on all Windmill workers:
 ```yaml
 # docker-compose.windmill.yml
 services:
   windmill_worker:
     volumes:
-      - ../botilleria_workspace/botilleria_core:/opt/botilleria_core:ro
+      - ../chatbot_workspace/chatbot_core:/opt/chatbot_core:ro
 ```
 
 ### Tenant Resolution
 
-The botilleria API resolves tenants via two strategies:
+The chatbot API resolves tenants via two strategies:
 
 1. **Direct Tenant ID**: Pass `X-Tenant-ID` header with tenant UUID
 2. **Channel Mapping**: Pass `X-Platform` + `X-Channel-Identifier` headers (e.g., `telegram` + bot token)
 
-The `botilleria_webhook` script automatically uses strategy 2 with:
+The `chatbot_webhook` script automatically uses strategy 2 with:
 - `X-Platform: telegram`
 - `X-Channel-Identifier: <bot_token>`
 
 ### Usage Examples
 
-#### Direct Chat (botilleria_chat)
+#### Direct Chat (chatbot_chat)
 
 ```python
 # Windmill script inputs
-result = botilleria_chat(
+result = chatbot_chat(
     user_id="12345",
     message="Qué cervezas tienen?",
     platform="telegram",
@@ -322,11 +322,11 @@ result = botilleria_chat(
 # }
 ```
 
-#### Full Flow (botilleria_flow)
+#### Full Flow (chatbot_flow)
 
 ```python
 # Triggered by Telegram webhook
-result = botilleria_flow(
+result = chatbot_flow(
     update_id=123456,
     message_chat_id=789,
     message_text="Hola, qué ofrecen?",

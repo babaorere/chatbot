@@ -1,5 +1,5 @@
 # ============================================================================
-# BOTILLERIA CORE — Docker Compose
+# CHATBOT CORE — Docker Compose
 # ============================================================================
 # Servicio FastAPI de negocio single-tenant + PostgreSQL local/compartido
 # ============================================================================
@@ -14,11 +14,11 @@ x-logging: &default-logging
 services:
   redis:
     image: redis:7.4-alpine
-    container_name: botilleria_redis
+    container_name: chatbot_redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--save", "60", "1000"]
     volumes:
-      - botilleria_redis_data:/data
+      - chatbot_redis_data:/data
     networks:
       - booking-titanium-wm_default
     healthcheck:
@@ -34,11 +34,11 @@ services:
         reservations:
           memory: 64M
 
-  botilleria_api:
+  chatbot_api:
     build:
       context: ./core
       dockerfile: Dockerfile
-    container_name: botilleria_core_api
+    container_name: chatbot_core_api
     restart: unless-stopped
     env_file:
       - .env
@@ -46,7 +46,7 @@ services:
       - "8001:8000"
     volumes:
       - ./core:/app
-      - botilleria_venv:/app/.venv
+      - chatbot_venv:/app/.venv
     networks:
       - booking-titanium-wm_default
     depends_on:
@@ -66,26 +66,26 @@ services:
       start_period: 45s
     logging: *default-logging
 
-  # ── Init DB: crea la base de datos 'botilleria' en el PostgreSQL de Windmill ──
-  botilleria_init_db:
+  # ── Init DB: crea la base de datos 'chatbot' en el PostgreSQL de Windmill ──
+  chatbot_init_db:
     image: postgres:17-alpine
-    container_name: botilleria_init_db
+    container_name: chatbot_init_db
     restart: "no"
     environment:
       - PGPASSWORD=windmill
     command: >
       sh -c "
-      psql -h booking-titanium-wm-db-1 -U windmill -d windmill -tc \"SELECT 1 FROM pg_database WHERE datname = 'botilleria'\" | grep -q 1 ||
-      psql -h booking-titanium-wm-db-1 -U windmill -d windmill -c 'CREATE DATABASE botilleria;'
+      psql -h booking-titanium-wm-db-1 -U windmill -d windmill -tc \"SELECT 1 FROM pg_database WHERE datname = 'chatbot'\" | grep -q 1 ||
+      psql -h booking-titanium-wm-db-1 -U windmill -d windmill -c 'CREATE DATABASE chatbot;'
       "
     networks:
       - booking-titanium-wm_default
     depends_on:
-      - botilleria_api
+      - chatbot_api
 
 volumes:
-  botilleria_venv:
-  botilleria_redis_data:
+  chatbot_venv:
+  chatbot_redis_data:
 
 networks:
   booking-titanium-wm_default:

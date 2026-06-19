@@ -26,7 +26,7 @@ logging.basicConfig(
 )
 
 app = FastAPI(
-    title="Botilleria Core",
+    title="Chatbot Core",
     version="1.0.0",
     lifespan=lifespan,
 )

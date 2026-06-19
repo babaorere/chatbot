@@ -1,8 +1,8 @@
 #!/bin/bash
 # ============================================================================
-# Botilleria Core — SSL Setup with Let's Encrypt
+# Chatbot Core — SSL Setup with Let's Encrypt
 # ============================================================================
-# Usage: sudo ./setup-ssl.sh botilleria.tu-dominio.com your@email.com
+# Usage: sudo ./setup-ssl.sh chatbot.tu-dominio.com your@email.com
 # ============================================================================
 
 set -euo pipefail
@@ -54,14 +54,14 @@ log "Updating Nginx configuration..."
 
 # Uncomment SSL lines in nginx.conf
 sed -i 's/# listen 443 ssl http2;/listen 443 ssl http2;/' nginx.conf
-sed -i "s/# server_name botilleria.tu-dominio.com;/server_name $DOMAIN;/" nginx.conf
-sed -i "s|# ssl_certificate /etc/letsencrypt/live/botilleria.tu-dominio.com/fullchain.pem;|ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;|" nginx.conf
-sed -i "s|# ssl_certificate_key /etc/letsencrypt/live/botilleria.tu-dominio.com/privkey.pem;|ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;|" nginx.conf
+sed -i "s/# server_name chatbot.tu-dominio.com;/server_name $DOMAIN;/" nginx.conf
+sed -i "s|# ssl_certificate /etc/letsencrypt/live/chatbot.tu-dominio.com/fullchain.pem;|ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;|" nginx.conf
+sed -i "s|# ssl_certificate_key /etc/letsencrypt/live/chatbot.tu-dominio.com/privkey.pem;|ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;|" nginx.conf
 
 # Uncomment HTTP → HTTPS redirect block
 sed -i 's/# server {/server {/' nginx.conf
 sed -i "s/#     listen 80;/    listen 80;/" nginx.conf
-sed -i "s/#     server_name botilleria.tu-dominio.com;/    server_name $DOMAIN;/" nginx.conf
+sed -i "s/#     server_name chatbot.tu-dominio.com;/    server_name $DOMAIN;/" nginx.conf
 sed -i 's/#     location \/\.well-known/    location \/\.well-known/' nginx.conf
 sed -i 's/#         root \/var\/www\/certbot;/        root \/var\/www\/certbot;/' nginx.conf
 sed -i 's/#     }/    }/' nginx.conf
@@ -103,15 +103,15 @@ fi
 log "Setting up auto-renewal..."
 
 # Create renewal script
-cat > /usr/local/bin/botilleria-certbot-renew.sh << 'EOF'
+cat > /usr/local/bin/chatbot-certbot-renew.sh << 'EOF'
 #!/bin/bash
-certbot renew --quiet --deploy-hook "docker compose -f /opt/botilleria/docker-compose.prod.yml restart nginx"
+certbot renew --quiet --deploy-hook "docker compose -f /opt/chatbot/docker-compose.prod.yml restart nginx"
 EOF
 
-chmod +x /usr/local/bin/botilleria-certbot-renew.sh
+chmod +x /usr/local/bin/chatbot-certbot-renew.sh
 
 # Add to crontab (runs daily at 3am)
-(crontab -l 2>/dev/null; echo "0 3 * * * /usr/local/bin/botilleria-certbot-renew.sh") | crontab -
+(crontab -l 2>/dev/null; echo "0 3 * * * /usr/local/bin/chatbot-certbot-renew.sh") | crontab -
 
 log "Auto-renewal configured (daily at 3:00 AM)"
 

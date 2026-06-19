@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================================
-# Botilleria Core — Deploy Script
+# Chatbot Core — Deploy Script
 # ============================================================================
 # Usage: ./deploy.sh [production|staging]
 # ============================================================================
@@ -27,8 +27,8 @@ log "Checking prerequisites..."
 command -v docker &>/dev/null || error "Docker not found. Install Docker first."
 command -v docker-compose &>/dev/null || command -v docker &>/dev/null || error "Docker Compose not found."
 
-if [[ ! -f "botilleria_core/.env" ]]; then
-    error "botilleria_core/.env not found. Copy .env.example and configure it."
+if [[ ! -f "chatbot_core/.env" ]]; then
+    error "chatbot_core/.env not found. Copy .env.example and configure it."
 fi
 
 if [[ ! -f "nginx.conf" ]]; then
