@@ -24,10 +24,10 @@ TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 DATE_HUMAN="$(date +%Y-%m-%d\ %H:%M:%S)"
 
 # Database connection
-DB_HOST="${DB_HOST:-booking-titanium-wm-db-1}"
-DB_PORT="${DB_PORT:-5432}"
-DB_USER="${DB_USER:-windmill}"
-DB_PASSWORD="${DB_PASSWORD:-windmill}"
+DB_HOST="${DB_HOST:-127.0.0.1}"
+DB_PORT="${DB_PORT:-5433}"
+DB_USER="${DB_USER:-shared}"
+DB_PASSWORD="${DB_PASSWORD:-shared_secret}"
 
 # Safety: require explicit confirmation for production
 FORCE="${FORCE:-}"
@@ -121,17 +121,17 @@ log "INFO" "Detected backup type: $BACKUP_TYPE"
 export PGPASSWORD="$DB_PASSWORD"
 
 # ── Create Target Database if Needed ─────────────────────────────────────────
-DB_EXISTS="$(psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d windmill -tc \
+DB_EXISTS="$(psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -tc \
     "SELECT 1 FROM pg_database WHERE datname = '$TARGET_DB'" | tr -d ' ')"
 
 if [ "$DB_EXISTS" != "1" ]; then
     log "INFO" "Creating database: $TARGET_DB"
-    psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d windmill -c "CREATE DATABASE $TARGET_DB;"
+    psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c "CREATE DATABASE $TARGET_DB;"
 fi
 
 # ── Terminate Existing Connections ───────────────────────────────────────────
 log "INFO" "Terminating existing connections to $TARGET_DB"
-psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d windmill -c \
+psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c \
     "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$TARGET_DB' AND pid <> pg_backend_pid();" 2>/dev/null || true
 
 # ── Execute Restore ──────────────────────────────────────────────────────────

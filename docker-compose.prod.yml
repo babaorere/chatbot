@@ -1,7 +1,7 @@
 # ============================================================================
-# CHATBOT CORE — Production Docker Compose
+# CHATBOT CORE — Production Docker Compose (Independent Stack)
 # ============================================================================
-# Nginx (static files + reverse proxy) + FastAPI (4 workers) + PostgreSQL
+# Nginx (static files + SSL proxy) + FastAPI (4 workers) + PostgreSQL 18 (pgvector) + Redis
 # ============================================================================
 
 x-logging: &default-logging
@@ -35,6 +35,36 @@ services:
         reservations:
           memory: 64M
 
+  db:
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    container_name: chatbot_db
+    restart: unless-stopped
+    stop_grace_period: 30s
+    environment:
+      POSTGRES_USER: ${DB_USER:-shared}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-shared_secret}
+      POSTGRES_DB: ${DB_NAME:-chatbot}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - db_data:/var/lib/postgresql
+    networks:
+      - chatbot_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-shared} -d ${DB_NAME:-chatbot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+        reservations:
+          memory: 256M
+
   # ── Nginx: Static files + Reverse Proxy ──────────────────────────────────
   nginx:
     image: nginx:1.27-alpine
@@ -54,6 +84,8 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    networks:
+      - chatbot_net
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost/health"]
       interval: 30s
@@ -80,11 +112,16 @@ services:
       - .env
     expose:
       - "8000"
+    environment:
+      - REDIS_URL=${REDIS_URL:-redis://chatbot_redis:6379/0}
+      - DATABASE_URL=postgresql://${DB_USER:-shared}:${DB_PASSWORD:-shared_secret}@db:5432/${DB_NAME:-chatbot}
+      - ADK_DISABLE_JSON_SCHEMA_FOR_FUNC_DECL=true
     networks:
       - chatbot_net
-      - booking-titanium-wm_default
     depends_on:
       redis:
+        condition: service_healthy
+      db:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
@@ -100,31 +137,12 @@ services:
         reservations:
           memory: 1024M
 
-  # ── Init DB: Creates 'chatbot' database if not exists ─────────────────
-  init_db:
-    image: postgres:17-alpine
-    container_name: chatbot_init_db
-    restart: "no"
-    environment:
-      - PGPASSWORD=windmill
-    command: >
-      sh -c "
-      psql -h booking-titanium-wm-db-1 -U windmill -d windmill -tc \"SELECT 1 FROM pg_database WHERE datname = 'chatbot'\" | grep -q 1 ||
-      psql -h booking-titanium-wm-db-1 -U windmill -d windmill -c 'CREATE DATABASE chatbot;'
-      "
-    networks:
-      - booking-titanium-wm_default
-    depends_on:
-      api:
-        condition: service_healthy
-
 volumes:
   redis_data:
+  db_data:
   nginx_cache:
   nginx_run:
 
 networks:
   chatbot_net:
     driver: bridge
-  booking-titanium-wm_default:
-    external: true

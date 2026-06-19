@@ -23,11 +23,11 @@ TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 DATE_HUMAN="$(date +%Y-%m-%d\ %H:%M:%S)"
 
 # Database connection (from environment or defaults)
-DB_HOST="${DB_HOST:-booking-titanium-wm-db-1}"
-DB_PORT="${DB_PORT:-5432}"
+DB_HOST="${DB_HOST:-127.0.0.1}"
+DB_PORT="${DB_PORT:-5433}"
 DB_NAME="${DB_NAME:-chatbot}"
-DB_USER="${DB_USER:-windmill}"
-DB_PASSWORD="${DB_PASSWORD:-windmill}"
+DB_USER="${DB_USER:-shared}"
+DB_PASSWORD="${DB_PASSWORD:-shared_secret}"
 
 # Off-site sync (optional, set S3_BUCKET to enable)
 S3_BUCKET="${S3_BUCKET:-}"
