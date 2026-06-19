@@ -17,6 +17,7 @@ services:
     container_name: botilleria_redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--save", "60", "1000"]
+    stop_grace_period: 30s
     volumes:
       - redis_data:/data
     networks:
@@ -39,6 +40,7 @@ services:
     image: nginx:1.27-alpine
     container_name: botilleria_nginx
     restart: unless-stopped
+    stop_grace_period: 15s
     ports:
       - "80:80"
       - "443:443"
@@ -70,14 +72,14 @@ services:
     build:
       context: ./core
       dockerfile: Dockerfile
+      target: production
     container_name: botilleria_api
     restart: unless-stopped
+    stop_grace_period: 30s
     env_file:
       - .env
     expose:
       - "8000"
-    volumes:
-      - botilleria_venv:/app/.venv
     networks:
       - botilleria_net
       - booking-titanium-wm_default
@@ -117,7 +119,6 @@ services:
         condition: service_healthy
 
 volumes:
-  botilleria_venv:
   redis_data:
   nginx_cache:
   nginx_run:

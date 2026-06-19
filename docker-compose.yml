@@ -13,6 +13,7 @@ services:
     container_name: chatbot_redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--save", "60", "1000"]
+    stop_grace_period: 30s
     volumes:
       - redis_data:/data
     networks:
@@ -23,32 +24,81 @@ services:
       timeout: 5s
       retries: 5
     logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 64M
+
+  db:
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    container_name: chatbot_db
+    restart: unless-stopped
+    stop_grace_period: 30s
+    environment:
+      POSTGRES_USER: ${DB_USER:-shared}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-shared_secret}
+      POSTGRES_DB: ${DB_NAME:-chatbot}
+    ports:
+      - "5433:5432"
+    volumes:
+      - db_data:/var/lib/postgresql
+    networks:
+      - chatbot_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-shared} -d ${DB_NAME:-chatbot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+        reservations:
+          memory: 256M
 
   api:
     build:
       context: ./core
       dockerfile: Dockerfile
+      target: development
     container_name: chatbot_api
     restart: unless-stopped
+    stop_grace_period: 30s
     env_file:
       - .env
     ports:
       - "8001:8000"
     environment:
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=${REDIS_URL:-redis://chatbot_redis:6379/0}
+      - DATABASE_URL=postgresql://${DB_USER:-shared}:${DB_PASSWORD:-shared_secret}@db:5432/${DB_NAME:-chatbot}
       - ADK_DISABLE_JSON_SCHEMA_FOR_FUNC_DECL=true
     volumes:
-      - chatbot_venv:/app/.venv
+      - ./core:/app
     networks:
       - chatbot_net
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
     logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+        reservations:
+          memory: 512M
 
   nginx:
     image: nginx:1.27-alpine
     container_name: chatbot_nginx
     restart: unless-stopped
+    stop_grace_period: 15s
     ports:
       - "7080:7080"
       - "8443:443"
@@ -69,6 +119,12 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+        reservations:
+          memory: 16M
 
   tunnel:
     image: cloudflare/cloudflared:latest
@@ -80,6 +136,12 @@ services:
     networks:
       - chatbot_net
     logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
 
   certbot:
     image: certbot/certbot
@@ -91,10 +153,16 @@ services:
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
     networks:
       - chatbot_net
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+        reservations:
+          memory: 16M
 
 volumes:
-  chatbot_venv:
   redis_data:
+  db_data:
   nginx_cache:
   nginx_run:
 

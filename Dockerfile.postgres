@@ -1,0 +1,15 @@
+FROM postgres:18-alpine
+
+# Instalar dependencias necesarias para compilar pgvector
+RUN apk add --no-cache --virtual .build-deps \
+    git \
+    build-base \
+    postgresql-dev
+
+# Clonar, compilar e instalar la última versión de pgvector (deshabilitando LLVM JIT para evitar dependencia de clang-21)
+RUN git clone https://github.com/pgvector/pgvector.git /tmp/pgvector \
+    && cd /tmp/pgvector \
+    && make with_llvm=no \
+    && make with_llvm=no install \
+    && rm -rf /tmp/pgvector \
+    && apk del .build-deps
