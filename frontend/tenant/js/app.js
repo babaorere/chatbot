@@ -73,6 +73,7 @@ class TenantApp {
                     website: document.getElementById('profileWebsite').value || null,
                     logo_url: document.getElementById('profileLogo').value || null,
                     business_hours: this.parseJSON(document.getElementById('profileHours').value),
+                    human_agent_available: document.getElementById('profileHumanAvailable').checked,
                 };
                 await this.fetch('/tenants/me/profile', { method: 'PUT', body: JSON.stringify(data) });
                 this.showToast('Perfil actualizado', 'success');
@@ -147,6 +148,7 @@ class TenantApp {
             document.getElementById('profileWebsite').value = profile.website || '';
             document.getElementById('profileLogo').value = profile.logo_url || '';
             document.getElementById('profileHours').value = profile.business_hours ? JSON.stringify(profile.business_hours, null, 2) : '';
+            document.getElementById('profileHumanAvailable').checked = !!profile.human_agent_available;
             document.getElementById('statusBadge').textContent = profile.status === 'active' ? 'Activo' : 'Inactivo';
         } catch (err) {
             console.error('Profile load failed:', err);

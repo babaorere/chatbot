@@ -64,6 +64,7 @@ def mock_business_config():
     config.website = "https://elbuentrago.cl"
     config.logo_url = "https://example.com/logo.png"
     config.business_hours = {"lunes": {"open": "10:00", "close": "22:00"}}
+    config.human_agent_available = True
 
     def get_business_hours_display():
         hours = config.business_hours or {}

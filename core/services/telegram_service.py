@@ -40,22 +40,24 @@ async def send_telegram_message(
         return False
 
 
-def build_main_menu() -> dict:
+def build_main_menu(human_agent_available: bool = True) -> dict:
     """Construye el menú principal de Telegram."""
-    return {
-        "inline_keyboard": [
-            [
-                {"text": "🏷️ Ver Categorías", "callback_data": "menu:categorias"},
-                {"text": "📦 Consultar Stock", "callback_data": "menu:stock"},
-            ],
-            [
-                {"text": "💰 Ver Precios", "callback_data": "menu:precio"},
-                {"text": "🕒 Horarios", "callback_data": "menu:horario"},
-            ],
-            [
-                {"text": "👤 Hablar con Humano", "callback_data": "menu:contacto"},
-            ],
+    buttons = [
+        [
+            {"text": "🏷️ Ver Categorías", "callback_data": "menu:categorias"},
+            {"text": "📦 Consultar Stock", "callback_data": "menu:stock"},
+        ],
+        [
+            {"text": "💰 Ver Precios", "callback_data": "menu:precio"},
+            {"text": "🕒 Horarios", "callback_data": "menu:horario"},
         ]
+    ]
+    if human_agent_available:
+        buttons.append([
+            {"text": "👤 Hablar con Humano", "callback_data": "menu:contacto"},
+        ])
+    return {
+        "inline_keyboard": buttons
     }
 
 

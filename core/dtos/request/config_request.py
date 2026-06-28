@@ -12,6 +12,7 @@ class BusinessConfigUpdateRequest(BaseModel):
     website: str | None = Field(None, max_length=255)
     logo_url: str | None = Field(None, max_length=500)
     business_hours: dict | None = None
+    human_agent_available: bool | None = None
 
 
 class ProductCreateRequest(BaseModel):

@@ -70,6 +70,7 @@ def update_profile(
                 website=data.website,
                 logo_url=data.logo_url,
                 business_hours=data.business_hours,
+                human_agent_available=data.human_agent_available,
             )
         return BusinessConfigResponse.model_validate(config)
     except Exception as e:

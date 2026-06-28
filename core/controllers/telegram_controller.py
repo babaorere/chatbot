@@ -43,6 +43,21 @@ def get_fsm_store() -> FSMStateStore:
     return _memory_fsm_store
 
 
+def _get_human_agent_available() -> bool:
+    """Retrieves whether a human agent is currently available from business configuration."""
+    from config.database import SessionLocal
+    from services.business_config_service import BusinessConfigService
+    db = SessionLocal()
+    try:
+        cfg_svc = BusinessConfigService(db)
+        cfg = cfg_svc.get_config()
+        return cfg.human_agent_available if cfg else True
+    except Exception:
+        return True
+    finally:
+        db.close()
+
+
 @router.post("/webhook/{token}")
 async def telegram_webhook(
     token: str,
@@ -153,7 +168,7 @@ async def telegram_webhook(
                 bot_token=token,
                 chat_id=chat_id,
                 text="¿En qué puedo ayudarte hoy?",
-                reply_markup=build_main_menu()
+                reply_markup=build_main_menu(_get_human_agent_available())
             )
             return {"status": "ok"}
 
@@ -179,7 +194,7 @@ async def telegram_webhook(
             bot_token=token,
             chat_id=chat_id,
             text=response_text,
-            reply_markup=build_main_menu() if new_state == FSMState.IDLE else None,
+            reply_markup=build_main_menu(_get_human_agent_available()) if new_state == FSMState.IDLE else None,
         )
         return {"status": "ok"}
 
@@ -216,7 +231,7 @@ async def telegram_webhook(
             bot_token=token,
             chat_id=chat_id,
             text=welcome_text,
-            reply_markup=build_main_menu(),
+            reply_markup=build_main_menu(_get_human_agent_available()),
         )
         return {"status": "ok"}
 
@@ -249,7 +264,7 @@ async def telegram_webhook(
         bot_token=token,
         chat_id=chat_id,
         text=response_text,
-        reply_markup=build_main_menu() if current_state == FSMState.IDLE else None,
+        reply_markup=build_main_menu(_get_human_agent_available()) if current_state == FSMState.IDLE else None,
     )
 
     return {"status": "ok"}

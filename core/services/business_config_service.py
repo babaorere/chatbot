@@ -31,6 +31,7 @@ class BusinessConfigService:
         website: str | None = None,
         logo_url: str | None = None,
         business_hours: dict[str, Any] | None = None,
+        human_agent_available: bool | None = None,
     ) -> BusinessConfig:
         try:
             config = self.repo.get_config()
@@ -50,6 +51,8 @@ class BusinessConfigService:
                 config.logo_url = logo_url
             if business_hours is not None:
                 config.business_hours = business_hours
+            if human_agent_available is not None:
+                config.human_agent_available = human_agent_available
 
             self.db.flush()
             self.db.refresh(config)

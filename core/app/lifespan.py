@@ -66,6 +66,15 @@ def _run_migrations(conn: object) -> None:
         conn.execute(text("ALTER TABLE products ADD COLUMN format VARCHAR(100);"))
         logger.info("Added 'format' column to products table")
 
+    # Add human_agent_available column if missing
+    check_human = conn.execute(text("""
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name='business_config' AND column_name='human_agent_available';
+    """)).first()
+    if not check_human:
+        conn.execute(text("ALTER TABLE business_config ADD COLUMN human_agent_available BOOLEAN NOT NULL DEFAULT TRUE;"))
+        logger.info("Added 'human_agent_available' column to business_config table")
+
     # Add foreign key constraint if not exists
     check_fk = conn.execute(text("""
         SELECT 1 FROM pg_constraint WHERE conname = 'fk_products_category';

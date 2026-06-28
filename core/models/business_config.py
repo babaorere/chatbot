@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Column, String, DateTime, JSON, Text, func
+from sqlalchemy import Column, String, DateTime, JSON, Text, Boolean, func
 from sqlalchemy.dialects.postgresql import UUID
 from config.database import Base
 
@@ -19,6 +19,7 @@ class BusinessConfig(Base):
     website = Column(String(255), nullable=True)
     logo_url = Column(String(500), nullable=True)
     business_hours = Column(JSON, nullable=True, default=dict)
+    human_agent_available = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
