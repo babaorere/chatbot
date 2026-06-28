@@ -74,6 +74,10 @@ class ProcessMessageUseCase:
             # 2. Session ID
             session_id = cmd.session_id or str(uuid.uuid4())
 
+            # Set contextvar for GADK tool invocation
+            from agents.root_agent import current_session_id_var
+            current_session_id_var.set(session_id)
+
             # 3. Persist conversation si es nueva
             self._ensure_conversation(user_id=user.id, session_id=session_id)
 

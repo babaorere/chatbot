@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextvars
 import datetime
 import os
 import time
@@ -12,6 +13,8 @@ from google.adk.models.lite_llm import LiteLlm
 from services.session_service_factory import create_session_service
 from config.settings import settings
 from .constants import GADK_APP_NAME, GADK_INSTRUCTION, GADK_MODEL
+
+current_session_id_var = contextvars.ContextVar("current_session_id", default=None)
 
 
 # ============================================================================
@@ -197,6 +200,21 @@ def contactar_humano(motivo: str | None = None) -> str:
             si fue proporcionado, o 'consulta general' como valor por
             defecto si motivo es None.
     """
+    session_id = current_session_id_var.get()
+    if session_id:
+        from config.database import SessionLocal
+        from services.conversation_service import ConversationService
+        db = SessionLocal()
+        try:
+            conv_svc = ConversationService(db)
+            conv = conv_svc.get_by_session_id(session_id)
+            if conv:
+                conv.is_bot_paused = True
+                db.commit()
+        except Exception:
+            pass
+        finally:
+            db.close()
     return f"Transferencia a humano solicitada. Motivo: {motivo or 'consulta general'}."
 
 
