@@ -249,12 +249,16 @@ def _get_agent() -> Agent:
                 fb2_key = settings.deepseek_api_key or os.getenv("DEEPSEEK_API_KEY", "")
             fallbacks.append({"model": settings.fallback_model_2, "api_key": fb2_key})
 
-        model_obj = LiteLlm(
-            model=model_name,
-            api_key=api_key,
-            num_retries=3,
-            fallbacks=fallbacks,
-        )
+        model_kwargs: dict[str, Any] = {
+            "model": model_name,
+            "api_key": api_key,
+            "num_retries": 3,
+            "fallbacks": fallbacks,
+        }
+        if "deepseek" in model_name.lower():
+            model_kwargs["thinking"] = {"type": settings.deepseek_thinking}
+
+        model_obj = LiteLlm(**model_kwargs)
 
         _agent_cache = Agent(
             name=f"{GADK_APP_NAME}_{int(time.time())}",

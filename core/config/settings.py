@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     nvidia_api_key: str = ""
     groq_api_key: str = ""
     deepseek_api_key: str = ""
+    deepseek_thinking: str = "disabled"
     model_name: str = "nvidia_nim/google/gemma-4-31b-it"
     model_display: str = "gemma-4-31b-it"
     fallback_model_1: str = "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
