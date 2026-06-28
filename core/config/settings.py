@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     )
 
     # ── Database ─────────────────────────────────────────────────
-    database_url: str = "sqlite:///./chatbot.db"
+    database_url: str = "postgresql://shared:shared_secret@127.0.0.1:5433/chatbot"
     db_echo: bool = False
 
     # ── LLM (OpenRouter via LiteLlm, patrón wmill) ───────────────

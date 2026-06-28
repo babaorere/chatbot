@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: botilleria_core
+        working-directory: core
 
     steps:
       - uses: actions/checkout@v4
@@ -50,15 +50,15 @@ jobs:
       - name: Build API image
         uses: docker/build-push-action@v5
         with:
-          context: ./botilleria_core
+          context: ./core
           push: false
-          tags: botilleria-api:latest
+          tags: chatbot-api:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Build Nginx image
         run: |
-          docker build -f Dockerfile.nginx -t botilleria-nginx:latest .
+          docker build -f Dockerfile.nginx -t chatbot-nginx:latest .
 
   # ── Deploy to VPS ────────────────────────────────────────────────────────
   deploy:
@@ -76,7 +76,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            cd /opt/botilleria
+            cd /opt/chatbot
             git pull
             chmod +x deploy.sh
             ./deploy.sh production

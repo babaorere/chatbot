@@ -77,8 +77,8 @@ class ProductRepository(JpaRepository[Product]):
             sql = text("""
                 SELECT id, sku, name, description, price, stock, category, is_available, cost, margin, provider, taxes, unit_of_measure, created_at, updated_at
                 FROM products
-                WHERE similarity(name, :query) > 0.25 OR name ILIKE :ilike_query
-                ORDER BY similarity(name, :query) DESC, name ASC
+                WHERE similarity(name, CAST(:query AS TEXT)) > 0.25 OR name ILIKE CAST(:ilike_query AS TEXT)
+                ORDER BY similarity(name, CAST(:query AS TEXT)) DESC, name ASC
                 LIMIT :limit
             """)
             result = self.db.execute(sql, {"query": query, "ilike_query": f"%{query}%", "limit": limit})
