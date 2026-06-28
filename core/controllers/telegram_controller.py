@@ -118,6 +118,25 @@ async def telegram_webhook(
     current_state = await fsm.get_state()
     fsm_context = await fsm.get_context()
 
+    # Interceptar comandos de Telegram (/start)
+    if message_text.strip().lower() == "/start":
+        await fsm.reset()
+        welcome_text = (
+            "¡Bienvenido! 🙂\n\n"
+            "Negocio El Buen Trago.\n"
+            "Horario: Lunes a Sábado 10:00-22:00, Domingo 12:00-20:00.\n"
+            "Servicios: Venta de licores, cervezas artesanales, vinos, pedidos a domicilio.\n"
+            "Ubicación: Santiago, Chile.\n\n"
+            "¿En qué puedo ayudarte hoy?"
+        )
+        await send_telegram_message(
+            bot_token=token,
+            chat_id=chat_id,
+            text=welcome_text,
+            reply_markup=build_main_menu(),
+        )
+        return {"status": "ok"}
+
     # Si estamos esperando algo específico (ej: producto), podemos prefijar el texto
     if current_state == FSMState.AWAITING_PRODUCT_NAME:
         intent = fsm_context.get("intent")
