@@ -101,6 +101,8 @@ def test_complete_sales_workflow(db_session):
 
     # 6. Verify order details
     assert order.id is not None
+    assert order.status == "pending"
+    order_svc.update_order_status(order.id, "confirmed")
     assert order.status == "confirmed"
     assert order.session_id == "session_abc"
     assert order.delivery_address == "Av. Providencia 1234"

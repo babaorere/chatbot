@@ -51,6 +51,11 @@ class OrderStatusUpdateRequest(BaseModel):
     )
 
 
+class OrderCancelRequest(BaseModel):
+    user_id: str = Field(..., description="ID del usuario en la plataforma")
+    platform: str = Field(..., description="Plataforma de origen (ej: telegram)")
+
+
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 
@@ -196,3 +201,26 @@ def update_order_status(
     except Exception as e:
         logger.error("update_order_status endpoint failed: %s", e)
         raise HTTPException(500, f"Failed to update order status: {e}")
+
+
+@router.post("/{order_id}/cancel")
+def cancel_order(
+    order_id: uuid.UUID,
+    data: OrderCancelRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Client endpoint to cancel their own order if it is still pending."""
+    try:
+        user_svc = UserService(db)
+        user = user_svc.get_or_create(external_id=data.user_id, platform=data.platform)
+
+        order_svc = OrderService(db)
+        with safe_transaction(db):
+            order = order_svc.cancel_order(order_id, user.id)
+
+        return {"status": "success", "order": order.to_dict()}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        logger.error("cancel_order endpoint failed [order_id=%s]: %s", order_id, e)
+        raise HTTPException(500, f"Failed to cancel order: {e}")

@@ -109,9 +109,9 @@ class OrderService:
                 order_items.append(order_item)
                 self.db.add(order_item)
 
-            # Update order total and status to confirmed (since stock is successfully reserved)
+            # Update order total and status to pending (awaiting operator pickup/confirmation)
             order.total_amount = total_amount
-            order.status = "confirmed"
+            order.status = "pending"
 
             # 5. Clear the cart
             self.cart_svc.clear_cart(user_id)
@@ -136,6 +136,20 @@ class OrderService:
             order = self.get_order(order_id)
             if not order:
                 raise ValueError("Order not found")
+            
+            # If transitioning to cancelled from pending/confirmed, restore stock
+            if status == "cancelled" and order.status in ("pending", "confirmed"):
+                for item in order.items:
+                    product = (
+                        self.db.query(Product)
+                        .filter(Product.id == item.product_id)
+                        .with_for_update()
+                        .first()
+                    )
+                    if product:
+                        product.stock += item.quantity
+                        product.is_available = True
+
             order.status = status
             self.db.flush()
             self.db.refresh(order)
@@ -143,5 +157,42 @@ class OrderService:
         except Exception as e:
             logger.error(
                 "OrderService.update_order_status failed [id=%s]: %s", order_id, e
+            )
+            raise
+
+    def cancel_order(self, order_id: uuid.UUID, user_id: int) -> Order:
+        """Allows a user to cancel their own order only if it is still in 'pending' status, restoring product stock."""
+        try:
+            order = self.get_order(order_id)
+            if not order:
+                raise ValueError("Pedido no encontrado")
+            if order.user_id != user_id:
+                raise ValueError("No autorizado para cancelar este pedido")
+            if order.status != "pending":
+                raise ValueError("Solo se pueden cancelar pedidos en estado 'pending'")
+
+            # Restore stock for each item
+            for item in order.items:
+                product = (
+                    self.db.query(Product)
+                    .filter(Product.id == item.product_id)
+                    .with_for_update()
+                    .first()
+                )
+                if product:
+                    product.stock += item.quantity
+                    product.is_available = True
+
+            order.status = "cancelled"
+            self.db.flush()
+            self.db.refresh(order)
+            logger.info("Order successfully cancelled by user [order_id=%s]", order.id)
+            return order
+        except Exception as e:
+            logger.error(
+                "OrderService.cancel_order failed [id=%s, user=%s]: %s",
+                order_id,
+                user_id,
+                e,
             )
             raise
