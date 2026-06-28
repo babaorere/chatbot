@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
-from config.database import get_db
+from config.database import get_db, safe_transaction
 from app.security import get_admin_api_key
 from services.user_service import UserService
 from services.cart_service import CartService
@@ -64,7 +64,7 @@ def add_to_cart(
         user = user_svc.get_or_create(external_id=data.user_id, platform=data.platform)
 
         cart_svc = CartService(db)
-        with db.begin():
+        with safe_transaction(db):
             cart = cart_svc.add_to_cart(
                 user_id=user.id, product_id=data.product_id, quantity=data.quantity
             )
@@ -87,7 +87,7 @@ def remove_from_cart(
         user = user_svc.get_or_create(external_id=data.user_id, platform=data.platform)
 
         cart_svc = CartService(db)
-        with db.begin():
+        with safe_transaction(db):
             cart = cart_svc.remove_from_cart(
                 user_id=user.id, product_id=data.product_id, quantity=data.quantity
             )
@@ -126,7 +126,7 @@ def checkout(
         user = user_svc.get_or_create(external_id=data.user_id, platform=data.platform)
 
         order_svc = OrderService(db)
-        with db.begin():
+        with safe_transaction(db):
             order = order_svc.checkout_cart(
                 user_id=user.id,
                 session_id=data.session_id,
@@ -188,7 +188,7 @@ def update_order_status(
     """Secured admin endpoint to update the status of an order."""
     try:
         order_svc = OrderService(db)
-        with db.begin():
+        with safe_transaction(db):
             order = order_svc.update_order_status(order_id, data.status)
         return {"status": "success", "order": order.to_dict()}
     except ValueError as e:
