@@ -53,13 +53,56 @@ class ProductRepository(JpaRepository[Product]):
         limit: int = 20,
     ) -> list[Product]:
         try:
-            return (
-                self.db.query(Product)
-                .filter(Product.name.ilike(f"%{query}%"))
-                .order_by(Product.name)
-                .limit(limit)
-                .all()
-            )
+            from sqlalchemy import text
+            
+            # Detect dialect to support SQLite/Mock fallback for tests
+            is_sqlite = True
+            try:
+                dialect_name = self.db.bind.dialect.name
+                if isinstance(dialect_name, str) and dialect_name != "sqlite":
+                    is_sqlite = False
+            except Exception:
+                pass
+
+            if is_sqlite:
+                return (
+                    self.db.query(Product)
+                    .filter(Product.name.like(f"%{query}%"))
+                    .order_by(Product.name)
+                    .limit(limit)
+                    .all()
+                )
+
+            # PostgreSQL trigram similarity query
+            sql = text("""
+                SELECT id, sku, name, description, price, stock, category, is_available, cost, margin, provider, taxes, unit_of_measure, created_at, updated_at
+                FROM products
+                WHERE similarity(name, :query) > 0.25 OR name ILIKE :ilike_query
+                ORDER BY similarity(name, :query) DESC, name ASC
+                LIMIT :limit
+            """)
+            result = self.db.execute(sql, {"query": query, "ilike_query": f"%{query}%", "limit": limit})
+            rows = result.mappings().all()
+            return [
+                Product(
+                    id=row["id"],
+                    sku=row["sku"],
+                    name=row["name"],
+                    description=row["description"],
+                    price=row["price"],
+                    stock=row["stock"],
+                    category=row["category"],
+                    is_available=row["is_available"],
+                    cost=row["cost"],
+                    margin=row["margin"],
+                    provider=row["provider"],
+                    taxes=row["taxes"],
+                    unit_of_measure=row["unit_of_measure"],
+                    created_at=row["created_at"],
+                    updated_at=row["updated_at"]
+                )
+                for row in rows
+            ]
         except Exception as e:
             logger.error(
                 "ProductRepository.search_by_name failed [query=%s]: %s",

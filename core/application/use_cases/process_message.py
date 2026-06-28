@@ -67,6 +67,10 @@ class ProcessMessageUseCase:
                 platform=cmd.platform,
             )
 
+            # Set user context in the session for Postgres Row-Level Security (RLS)
+            from sqlalchemy import text
+            self._db.execute(text("SET app.current_user_id = :user_id"), {"user_id": user.id})
+
             # 2. Session ID
             session_id = cmd.session_id or str(uuid.uuid4())
 

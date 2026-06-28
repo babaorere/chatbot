@@ -52,6 +52,8 @@ def list_conversations(
     fastapi_request: Request = None,
 ) -> list[ConversationResponse]:
     try:
+        from sqlalchemy import text
+        db.execute(text("SET app.current_user_id = :user_id"), {"user_id": user_id})
         conv_svc = ConversationService(db)
         conversations = conv_svc.get_by_user_id(user_id)
         return [ConversationResponse.model_validate(c) for c in conversations]

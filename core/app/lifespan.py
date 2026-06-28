@@ -65,6 +65,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT
                 AS $$ SELECT public.unaccent('public.unaccent', $1) $$;
             """))
+            # Enable pg_trgm for fuzzy search similarity
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
             # Check if search_vector column exists on knowledge_base table
             check_col = conn.execute(text("""
                 SELECT 1 FROM information_schema.columns 
@@ -81,8 +83,28 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 """))
                 conn.execute(text("CREATE INDEX IF NOT EXISTS idx_kb_search_vector ON knowledge_base USING GIN(search_vector);"))
                 logger.info("Created unaccent function and search_vector on knowledge_base")
+
+            # Enable RLS policies on multi-user tables
+            for table in ["conversations", "orders"]:
+                conn.execute(text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;"))
+                conn.execute(text(f"DROP POLICY IF EXISTS user_isolation ON {table};"))
+                conn.execute(text(f"CREATE POLICY user_isolation ON {table} USING (user_id = current_setting('app.current_user_id')::integer);"))
+
+            # Enable RLS on messages using subquery matching conversations
+            conn.execute(text("ALTER TABLE messages ENABLE ROW LEVEL SECURITY;"))
+            conn.execute(text("DROP POLICY IF EXISTS user_isolation ON messages;"))
+            conn.execute(text("""
+                CREATE POLICY user_isolation ON messages USING (
+                    conversation_id IN (
+                        SELECT id FROM conversations 
+                        WHERE user_id = current_setting('app.current_user_id')::integer
+                    )
+                );
+            """))
+
+            logger.info("Fuzzy search and user RLS policies successfully initialized in database")
     except Exception as e:
-        logger.error("Failed to run database FTS unaccent setup: %s", e)
+        logger.error("Failed to run database FTS unaccent, pg_trgm, or RLS setups: %s", e)
 
     # 2. Seed
     with SessionLocal() as seed_db:
