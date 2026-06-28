@@ -225,19 +225,32 @@ def _get_agent() -> Agent:
     """Crea o retorna el agente ADK cacheado (singleton por proceso)."""
     global _agent_cache
     if _agent_cache is None:
-        api_key = settings.openrouter_api_key or os.getenv("OPENROUTER_API_KEY", "")
+        model_name = settings.model_name or GADK_MODEL
+        if "deepseek" in model_name.lower():
+            api_key = settings.deepseek_api_key or os.getenv("DEEPSEEK_API_KEY", "")
+            os.environ["DEEPSEEK_API_KEY"] = api_key
+        else:
+            api_key = settings.openrouter_api_key or os.getenv("OPENROUTER_API_KEY", "")
 
         fallbacks = []
         if settings.fallback_model_1:
-            fallbacks.append({"model": settings.fallback_model_1, "api_key": api_key})
+            fb1_key = api_key
+            if "groq" in settings.fallback_model_1.lower():
+                fb1_key = settings.groq_api_key or os.getenv("GROQ_API_KEY", "")
+            elif "deepseek" in settings.fallback_model_1.lower():
+                fb1_key = settings.deepseek_api_key or os.getenv("DEEPSEEK_API_KEY", "")
+            fallbacks.append({"model": settings.fallback_model_1, "api_key": fb1_key})
+
         if settings.fallback_model_2:
             fb2_key = api_key
             if "groq" in settings.fallback_model_2.lower():
-                fb2_key = settings.groq_api_key or os.getenv("GROQ_API_KEY", api_key)
+                fb2_key = settings.groq_api_key or os.getenv("GROQ_API_KEY", "")
+            elif "deepseek" in settings.fallback_model_2.lower():
+                fb2_key = settings.deepseek_api_key or os.getenv("DEEPSEEK_API_KEY", "")
             fallbacks.append({"model": settings.fallback_model_2, "api_key": fb2_key})
 
         model_obj = LiteLlm(
-            model=settings.model_name or GADK_MODEL,
+            model=model_name,
             api_key=api_key,
             num_retries=3,
             fallbacks=fallbacks,
