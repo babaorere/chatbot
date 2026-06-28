@@ -388,6 +388,19 @@ class TestProductsCRUD:
 
         assert categories == ["pisco", "vino", "whisky"]
 
+    def test_import_from_rows_propagates_exception(self, mock_db):
+        """Importar filas inválidas (sin nombre) debe propagar el error y registrar logs."""
+        from services.product_service import ProductService
+        import pytest
+
+        product_svc = ProductService(mock_db)
+        # Una fila sin nombre causará ValueError en upsert_by_sku, la cual debe propagarse
+        invalid_rows = [
+            {"sku": "SKU-ERROR", "name": "", "category": "General"}
+        ]
+        with pytest.raises(ValueError, match="El campo 'Nombre' es obligatorio"):
+            product_svc.import_from_rows(invalid_rows)
+
 
 # ============================================================================
 # TEST 4: Business Config CRUD

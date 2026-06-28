@@ -326,22 +326,25 @@ class ProductService:
         """
         Importa una lista de filas (dicts con claves = FIELD_NAMES).
         Estrategia de colisión: UPSERT por SKU.
-        Retorna un resumen: {"created": n, "updated": n, "errors": n}.
+        Retorna un resumen: {"created": n, "updated": n, "errors": 0}.
         """
         created = 0
         updated = 0
-        errors = 0
-        for index, row in enumerate(rows, start=2):
-            try:
-                _, was_created = self.upsert_by_sku(row)
-                if was_created:
-                    created += 1
-                else:
-                    updated += 1
-            except Exception as exc:
-                logger.error("import_from_rows error on row %d: %s", index, exc)
-                errors += 1
-        return {"created": created, "updated": updated, "errors": errors}
+        try:
+            for index, row in enumerate(rows, start=2):
+                try:
+                    _, was_created = self.upsert_by_sku(row)
+                    if was_created:
+                        created += 1
+                    else:
+                        updated += 1
+                except Exception as row_exc:
+                    logger.error("import_from_rows error on row %d: %s", index, row_exc)
+                    raise ValueError(f"Fila {index}: {row_exc}") from row_exc
+            return {"created": created, "updated": updated, "errors": 0}
+        except Exception as exc:
+            logger.error("import_from_rows failed: %s", exc)
+            raise
 
     def export_to_workbook(self) -> io.BytesIO:
         """Exporta todos los productos al formato Excel (.xlsx)."""
