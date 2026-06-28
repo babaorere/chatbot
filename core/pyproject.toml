@@ -24,6 +24,7 @@ dependencies = [
     "sse-starlette>=2.0",
     "openpyxl>=3.1",
     "python-multipart>=0.0.9",
+    "pgvector>=0.3.0",
 ]
 
 [project.optional-dependencies]

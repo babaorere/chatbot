@@ -106,6 +106,18 @@ def _run_migrations(conn: object) -> None:
         AS $$ SELECT public.unaccent('public.unaccent', $1) $$;
     """))
     conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
+    conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+
+    # Check and add embedding column on knowledge_base
+    check_emb = conn.execute(text("""
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name='knowledge_base' AND column_name='embedding';
+    """)).first()
+    if not check_emb:
+        conn.execute(text("ALTER TABLE knowledge_base ADD COLUMN embedding vector(1536);"))
+        # Add index for cosine search operator
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_kb_embedding ON knowledge_base USING ivfflat(embedding vector_cosine_ops) WITH(lists = 100);"))
+        logger.info("Added 'embedding' vector column to knowledge_base table")
 
     # search_vector column on knowledge_base
     check_col = conn.execute(text("""

@@ -308,18 +308,17 @@ def list_kb_entries(
 
 
 @router.post("/kb", response_model=KBEntryResponse)
-def create_kb_entry(
+async def create_kb_entry(
     data: KBEntryCreateRequest,
     db: Session = Depends(get_db),
 ) -> KBEntryResponse:
     try:
         kb_svc = KBService(db)
-        with db.begin():
-            entry = kb_svc.create_entry(
-                category=data.category,
-                title=data.title,
-                content=data.content,
-            )
+        entry = await kb_svc.create_entry(
+            category=data.category,
+            title=data.title,
+            content=data.content,
+        )
         return KBEntryResponse.model_validate(entry)
     except Exception as e:
         logger.error("create_kb_entry failed: %s", e)
@@ -327,21 +326,20 @@ def create_kb_entry(
 
 
 @router.put("/kb/{entry_id}", response_model=KBEntryResponse)
-def update_kb_entry(
+async def update_kb_entry(
     entry_id: str,
     data: KBEntryUpdateRequest,
     db: Session = Depends(get_db),
 ) -> KBEntryResponse:
     try:
         kb_svc = KBService(db)
-        with db.begin():
-            entry = kb_svc.update_entry(
-                entry_id=uuid.UUID(entry_id),
-                category=data.category,
-                title=data.title,
-                content=data.content,
-                is_active=data.is_active,
-            )
+        entry = await kb_svc.update_entry(
+            entry_id=uuid.UUID(entry_id),
+            category=data.category,
+            title=data.title,
+            content=data.content,
+            is_active=data.is_active,
+        )
         return KBEntryResponse.model_validate(entry)
     except Exception as e:
         logger.error("update_kb_entry failed: %s", e)
@@ -368,13 +366,13 @@ def delete_kb_entry(
 
 
 @router.post("/kb/search", response_model=KBSearchResponse)
-def search_kb(
+async def search_kb(
     data: KBSearchRequest,
     db: Session = Depends(get_db),
 ) -> KBSearchResponse:
     try:
         kb_svc = KBService(db)
-        results = kb_svc.search(
+        results = await kb_svc.search(
             query=data.query, top_k=data.top_k, category=data.category
         )
         return KBSearchResponse(

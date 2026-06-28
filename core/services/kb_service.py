@@ -46,17 +46,22 @@ class KBService:
             )
             raise
 
-    def create_entry(
+    async def create_entry(
         self,
         category: str,
         title: str,
         content: str,
     ) -> KnowledgeBase:
         try:
+            from services.embedding_service import EmbeddingService
+            emb_svc = EmbeddingService()
+            combined_text = f"{title}\n{content}"
+            embedding = await emb_svc.get_embedding(combined_text)
             entry = KnowledgeBase(
                 category=category,
                 title=title,
                 content=content,
+                embedding=embedding,
             )
             return self.repo.save(entry)
         except Exception as e:
@@ -67,7 +72,7 @@ class KBService:
             )
             raise
 
-    def update_entry(
+    async def update_entry(
         self,
         entry_id: uuid.UUID,
         category: str | None = None,
@@ -88,6 +93,13 @@ class KBService:
                 entry.content = content
             if is_active is not None:
                 entry.is_active = is_active
+
+            # Si se actualizó el título o el contenido, recalculamos embedding
+            if title is not None or content is not None:
+                from services.embedding_service import EmbeddingService
+                emb_svc = EmbeddingService()
+                combined_text = f"{entry.title}\n{entry.content}"
+                entry.embedding = await emb_svc.get_embedding(combined_text)
 
             self.db.flush()
             self.db.refresh(entry)
@@ -111,11 +123,19 @@ class KBService:
             )
             raise
 
-    def search(
+    async def search(
         self, query: str, top_k: int = 5, category: str | None = None
     ) -> list[dict[str, Any]]:
         try:
-            return self.repo.search_fts(query, top_k=top_k, category=category)
+            from services.embedding_service import EmbeddingService
+            emb_svc = EmbeddingService()
+            query_vector = await emb_svc.get_embedding(query)
+            return self.repo.search_hybrid(
+                query=query,
+                query_vector=query_vector,
+                top_k=top_k,
+                category=category,
+            )
         except Exception as e:
             logger.error(
                 "KBService.search failed [query=%s]: %s",

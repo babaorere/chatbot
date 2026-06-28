@@ -68,6 +68,5 @@ COPY --chown=appuser:appuser . .
 USER appuser
 EXPOSE 8000
 
-# Production run with multi-workers (FastAPI recommendation for single VPS)
-# stop_grace_period can be managed in compose
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--loop", "uvloop"]
+# Production run with 2 workers (limits CPU load)
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--loop", "uvloop"]

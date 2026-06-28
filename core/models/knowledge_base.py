@@ -4,6 +4,7 @@ import uuid
 
 from sqlalchemy import Column, String, DateTime, Text, Boolean, func
 from sqlalchemy.dialects.postgresql import UUID
+from pgvector.sqlalchemy import Vector
 from config.database import Base
 
 
@@ -15,6 +16,7 @@ class KnowledgeBase(Base):
     title = Column(Text, nullable=False)
     content = Column(Text, nullable=False)
     is_active = Column(Boolean, nullable=False, default=True)
+    embedding = Column(Vector(1536), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -25,6 +27,7 @@ class KnowledgeBase(Base):
             "title": self.title,
             "content": self.content,
             "is_active": self.is_active,
+            "embedding": list(self.embedding) if self.embedding is not None else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

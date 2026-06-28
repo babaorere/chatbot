@@ -52,15 +52,16 @@ def test_fsm_combinational_transitions(
 @pytest.mark.asyncio
 async def test_rag_combinational_empty_and_filled() -> None:
     # 1. Test builder with empty search results
+    from unittest.mock import AsyncMock
     kb_svc_mock = MagicMock()
-    kb_svc_mock.search = MagicMock(return_value=[])
+    kb_svc_mock.search = AsyncMock(return_value=[])
 
     rag_builder = RAGContextBuilder(kb_svc_mock)
     context = await rag_builder.build_context("unrelated query")
     assert context == ""
 
     # 2. Test builder with matching search results
-    kb_svc_mock.search = MagicMock(
+    kb_svc_mock.search = AsyncMock(
         return_value=[
             {
                 "id": str(uuid.uuid4()),

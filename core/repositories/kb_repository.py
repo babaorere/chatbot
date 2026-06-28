@@ -53,14 +53,57 @@ class KBRepository(JpaRepository[KnowledgeBase]):
             )
             raise
 
-    def search_fts(
+    def search_hybrid(
         self,
         query: str,
+        query_vector: list[float] | None = None,
         top_k: int = 5,
         category: str | None = None,
     ) -> list[dict[str, Any]]:
         try:
             category_filter = "AND kb.category = :category" if category else ""
+
+            # Si no hay vector, usamos FTS puro
+            if not query_vector:
+                sql = text(
+                    """
+                    WITH q AS (
+                        SELECT replace(
+                            plainto_tsquery('spanish', immutable_unaccent(:query))::text,
+                            ' & ', ' | '
+                        )::tsquery AS tsq
+                    )
+                    SELECT
+                        kb.id,
+                        kb.category,
+                        kb.title,
+                        kb.content,
+                        ts_rank(kb.search_vector, q.tsq) AS rank
+                    FROM knowledge_base kb, q
+                    WHERE kb.is_active = true
+                      AND q.tsq @@ kb.search_vector
+                      {category_filter}
+                    ORDER BY rank DESC
+                    LIMIT :top_k
+                """.format(category_filter=category_filter)
+                )
+                params: dict[str, Any] = {"query": query, "top_k": top_k}
+                if category:
+                    params["category"] = category
+                result = self.db.execute(sql, params)
+                rows = result.mappings().all()
+                return [
+                    {
+                        "id": str(row["id"]),
+                        "category": row["category"],
+                        "title": row["title"],
+                        "content": row["content"],
+                        "rank": float(row["rank"]),
+                    }
+                    for row in rows
+                ]
+
+            # Si hay vector, realizamos búsqueda híbrida combinando FTS y pgvector (Similitud del Coseno)
             sql = text(
                 """
                 WITH q AS (
@@ -74,18 +117,20 @@ class KBRepository(JpaRepository[KnowledgeBase]):
                     kb.category,
                     kb.title,
                     kb.content,
-                    ts_rank(kb.search_vector, q.tsq) AS rank
+                    (1.0 - (kb.embedding <=> CAST(:query_vector AS vector))) AS vector_similarity,
+                    coalesce(ts_rank(kb.search_vector, q.tsq), 0.0) AS fts_rank
                 FROM knowledge_base kb, q
                 WHERE kb.is_active = true
-                  AND q.tsq @@ kb.search_vector
+                  AND (q.tsq @@ kb.search_vector OR kb.embedding IS NOT NULL)
                   {category_filter}
-                ORDER BY rank DESC
+                ORDER BY (0.7 * (1.0 - (kb.embedding <=> CAST(:query_vector AS vector)))) + (0.3 * coalesce(ts_rank(kb.search_vector, q.tsq), 0.0)) DESC
                 LIMIT :top_k
             """.format(category_filter=category_filter)
             )
 
-            params: dict[str, Any] = {
+            params = {
                 "query": query,
+                "query_vector": query_vector,
                 "top_k": top_k,
             }
             if category:
@@ -99,17 +144,25 @@ class KBRepository(JpaRepository[KnowledgeBase]):
                     "category": row["category"],
                     "title": row["title"],
                     "content": row["content"],
-                    "rank": float(row["rank"]),
+                    "rank": float((0.7 * float(row["vector_similarity"])) + (0.3 * float(row["fts_rank"]))),
                 }
                 for row in rows
             ]
         except Exception as e:
             logger.error(
-                "KBRepository.search_fts failed [query=%s]: %s",
+                "KBRepository.search_hybrid failed [query=%s]: %s",
                 query,
                 e,
             )
             raise
+
+    def search_fts(
+        self,
+        query: str,
+        top_k: int = 5,
+        category: str | None = None,
+    ) -> list[dict[str, Any]]:
+        return self.search_hybrid(query=query, query_vector=None, top_k=top_k, category=category)
 
     def count_all(
         self,

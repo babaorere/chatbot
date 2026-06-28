@@ -9,7 +9,9 @@ x-logging: &default-logging
 
 services:
   db:
-    image: postgres:18-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
     container_name: chatbot_db
     restart: unless-stopped
     stop_grace_period: 30s
@@ -30,6 +32,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: '2.0'
           memory: 1024M
         reservations:
           memory: 256M
@@ -62,6 +65,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: '2.0'
           memory: 1024M
         reservations:
           memory: 512M
