@@ -70,9 +70,34 @@ async def telegram_webhook(
         chat_id = message_obj.get("chat", {}).get("id") if message_obj else None
         user_id = str(from_obj.get("id")) if from_obj else str(chat_id)
         callback_data = callback_query.get("data")
+        callback_query_id = callback_query.get("id")
 
         if not chat_id or not callback_data:
             return {"status": "ok", "detail": "invalid callback"}
+
+        # Verificar estado del FSM para validar si se permite la acción del menú
+        fsm = TelegramConversationFSM(user_id=user_id, state_store=get_fsm_store())
+        current_state = await fsm.get_state()
+
+        # Solo permitimos clicks en menús si estamos en IDLE o IN_MENU
+        if current_state not in {FSMState.IDLE, FSMState.IN_MENU}:
+            if callback_query_id:
+                from services.telegram_service import answer_telegram_callback_query
+                await answer_telegram_callback_query(
+                    bot_token=token,
+                    callback_query_id=callback_query_id,
+                    text="Esta opción ya no está disponible en este momento. Por favor responde al mensaje actual."
+                )
+            return {"status": "ok"}
+
+        # Si el click es válido, respondemos el callback query y removemos el teclado inline para deshabilitarlo
+        if callback_query_id:
+            from services.telegram_service import answer_telegram_callback_query
+            await answer_telegram_callback_query(bot_token=token, callback_query_id=callback_query_id)
+
+        if message_obj and message_obj.get("message_id"):
+            from services.telegram_service import clear_telegram_reply_markup
+            await clear_telegram_reply_markup(bot_token=token, chat_id=chat_id, message_id=message_obj["message_id"])
 
         # Interceptar botones de navegación de categorías
         if callback_data == "menu:categorias":
