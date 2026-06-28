@@ -115,7 +115,15 @@
                 <section id="products" class="section">
                     <div class="section-header">
                         <h3>Productos</h3>
-                        <button class="btn btn-primary" id="addProductBtn">+ Nuevo Producto</button>
+                        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+                            <button class="btn btn-secondary" id="exportProductsBtn" title="Exportar todos los productos a Excel">⬇ Exportar Excel</button>
+                            <button class="btn btn-secondary" id="exportTemplateBtn" title="Descargar plantilla vacía para importar">📋 Plantilla</button>
+                            <label class="btn btn-secondary" id="importProductsLabel" style="cursor:pointer;margin:0;" title="Importar productos desde Excel">
+                                ⬆ Importar Excel
+                                <input type="file" id="importProductsInput" accept=".xlsx" style="display:none;">
+                            </label>
+                            <button class="btn btn-primary" id="addProductBtn">+ Nuevo Producto</button>
+                        </div>
                     </div>
                     <div class="table-container">
                         <table class="data-table" id="productsTable">
@@ -123,6 +131,7 @@
                                 <tr>
                                     <th>Nombre</th>
                                     <th>Categoría</th>
+                                    <th>Formato</th>
                                     <th>Precio</th>
                                     <th>Stock</th>
                                     <th>Estado</th>

@@ -352,14 +352,19 @@ class TestProductsCRUD:
         assert result is False
 
     def test_search_products_by_name(self, mock_db):
-        """Buscar productos por nombre debe usar ILIKE."""
+        """Buscar productos por nombre debe usar trigrama similarity."""
         from services.product_service import ProductService
 
-        mock_product = MagicMock()
-        mock_product.name = "Pisco Control 35° 1L"
-        mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
-            mock_product
-        ]
+        # search_by_name usa db.execute() + mappings().all()
+        mock_row = MagicMock()
+        mock_row.__getitem__ = lambda self, key: {
+            "id": None, "sku": None, "name": "Pisco Control 35° 1L",
+            "description": None, "price": None, "stock": 0, "category": None,
+            "is_available": True, "cost": None, "margin": None, "provider": None,
+            "taxes": None, "unit_of_measure": "un", "format": None,
+            "created_at": None, "updated_at": None,
+        }[key]
+        mock_db.execute.return_value.mappings.return_value.all.return_value = [mock_row]
 
         product_svc = ProductService(mock_db)
         results = product_svc.search("pisco")
@@ -371,10 +376,11 @@ class TestProductsCRUD:
         """Obtener categorías debe retornar lista única."""
         from services.product_service import ProductService
 
-        mock_db.query.return_value.filter.return_value.distinct.return_value.pluck.return_value = [
-            "pisco",
-            "vino",
-            "whisky",
+        # get_categories usa .all() que retorna tuplas (name,)
+        mock_db.query.return_value.filter.return_value.distinct.return_value.all.return_value = [
+            ("pisco",),
+            ("vino",),
+            ("whisky",),
         ]
 
         product_svc = ProductService(mock_db)

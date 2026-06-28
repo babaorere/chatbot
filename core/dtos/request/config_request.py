@@ -27,6 +27,7 @@ class ProductCreateRequest(BaseModel):
     provider: str | None = Field(None, max_length=100)
     taxes: float | None = Field(0.19, ge=0, le=1)
     unit_of_measure: str | None = Field("un", max_length=20)
+    format: str | None = Field(None, max_length=100)
 
 
 class ProductUpdateRequest(BaseModel):
@@ -42,6 +43,7 @@ class ProductUpdateRequest(BaseModel):
     provider: str | None = Field(None, max_length=100)
     taxes: float | None = Field(None, ge=0, le=1)
     unit_of_measure: str | None = Field(None, max_length=20)
+    format: str | None = Field(None, max_length=100)
 
 
 class KBEntryCreateRequest(BaseModel):

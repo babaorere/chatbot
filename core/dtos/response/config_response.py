@@ -32,6 +32,7 @@ class ProductResponse(BaseModel):
     provider: str | None
     taxes: float | None
     unit_of_measure: str | None
+    format: str | None
 
     model_config = {"from_attributes": True}
 

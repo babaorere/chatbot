@@ -23,6 +23,7 @@ class Product(Base):
     provider = Column(String(100), nullable=True)
     taxes = Column(Numeric(5, 2), nullable=True, default=0.19)
     unit_of_measure = Column(String(20), nullable=True, default="un")
+    format = Column(String(100), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -41,6 +42,7 @@ class Product(Base):
             "provider": self.provider,
             "taxes": float(self.taxes) if self.taxes else None,
             "unit_of_measure": self.unit_of_measure,
+            "format": self.format,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

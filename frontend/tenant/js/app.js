@@ -92,6 +92,20 @@ class TenantApp {
             this.showProductModal();
         });
 
+        document.getElementById('exportProductsBtn').addEventListener('click', () => {
+            this.exportProducts();
+        });
+
+        document.getElementById('exportTemplateBtn').addEventListener('click', () => {
+            this.exportTemplate();
+        });
+
+        document.getElementById('importProductsInput').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            e.target.value = '';
+            this.importProducts(file);
+        });
+
         document.getElementById('addKbBtn').addEventListener('click', () => {
             this.showKBModal();
         });
@@ -149,6 +163,7 @@ class TenantApp {
                 tr.innerHTML = `
                     <td>${p.name}</td>
                     <td>${p.category || '-'}</td>
+                    <td>${p.format || '-'}</td>
                     <td>${p.price ? '$' + p.price.toLocaleString() : '-'}</td>
                     <td>${p.stock}</td>
                     <td>${p.is_available ? '✅' : '❌'}</td>
@@ -257,6 +272,16 @@ class TenantApp {
                         <input type="number" id="prodStock" value="${product?.stock || 0}">
                     </div>
                 </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Formato <small style="opacity:.6">(ej: 500cc, caja x12, unidad)</small></label>
+                        <input type="text" id="prodFormat" value="${product?.format || ''}" placeholder="ej: 750ml, caja x6, unidad">
+                    </div>
+                    <div class="form-group">
+                        <label>Unidad de medida</label>
+                        <input type="text" id="prodUnit" value="${product?.unit_of_measure || 'un'}" placeholder="un, kg, lt">
+                    </div>
+                </div>
                 <div class="form-group">
                     <label>Categoría</label>
                     <select id="prodCategory" class="form-control">${categoryOptions}</select>
@@ -272,6 +297,8 @@ class TenantApp {
                 description: document.getElementById('prodDesc').value || null,
                 price: parseFloat(document.getElementById('prodPrice').value) || null,
                 stock: parseInt(document.getElementById('prodStock').value) || 0,
+                format: document.getElementById('prodFormat').value || null,
+                unit_of_measure: document.getElementById('prodUnit').value || 'un',
                 category: document.getElementById('prodCategory').value || null,
                 is_available: true,
             };
@@ -306,6 +333,77 @@ class TenantApp {
             await this.loadProducts();
         } catch (err) {
             this.showToast(err.message, 'error');
+        }
+    }
+
+    async exportProducts() {
+        try {
+            const response = await fetch('/tenants/me/products/export', {
+                headers: { 'X-API-Key': this.apiKey },
+            });
+            if (!response.ok) throw new Error('Export failed');
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'productos.xlsx';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            this.showToast('Exportación completada', 'success');
+        } catch (err) {
+            this.showToast('Error al exportar: ' + err.message, 'error');
+        }
+    }
+
+    async exportTemplate() {
+        try {
+            const response = await fetch('/tenants/me/products/export/template', {
+                headers: { 'X-API-Key': this.apiKey },
+            });
+            if (!response.ok) throw new Error('Template export failed');
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'plantilla_productos.xlsx';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            this.showToast('Plantilla descargada', 'success');
+        } catch (err) {
+            this.showToast('Error al descargar plantilla: ' + err.message, 'error');
+        }
+    }
+
+    async importProducts(file) {
+        if (!file) return;
+        if (!file.name.endsWith('.xlsx')) {
+            this.showToast('Solo se aceptan archivos .xlsx', 'error');
+            return;
+        }
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const response = await fetch('/tenants/me/products/import', {
+                method: 'POST',
+                headers: { 'X-API-Key': this.apiKey },
+                body: formData,
+            });
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.detail || 'Import failed');
+            }
+            const result = await response.json();
+            this.showToast(
+                `Importación completada: ${result.created} creados, ${result.updated} actualizados, ${result.errors} errores`,
+                result.errors > 0 ? 'error' : 'success'
+            );
+            await this.loadProducts();
+        } catch (err) {
+            this.showToast('Error al importar: ' + err.message, 'error');
         }
     }
 

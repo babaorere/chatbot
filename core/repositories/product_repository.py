@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import uuid
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from models.product import Product
@@ -47,41 +48,33 @@ class ProductRepository(JpaRepository[Product]):
             )
             raise
 
+    def find_by_sku(self, sku: str) -> Product | None:
+        try:
+            return self.db.query(Product).filter(Product.sku == sku).first()
+        except Exception as e:
+            logger.error("ProductRepository.find_by_sku failed [sku=%s]: %s", sku, e)
+            raise
+
     def search_by_name(
         self,
         query: str,
         limit: int = 20,
     ) -> list[Product]:
         try:
-            from sqlalchemy import text
-            
-            # Detect dialect to support SQLite/Mock fallback for tests
-            is_sqlite = True
-            try:
-                dialect_name = self.db.bind.dialect.name
-                if isinstance(dialect_name, str) and dialect_name != "sqlite":
-                    is_sqlite = False
-            except Exception:
-                pass
-
-            if is_sqlite:
-                return (
-                    self.db.query(Product)
-                    .filter(Product.name.like(f"%{query}%"))
-                    .order_by(Product.name)
-                    .limit(limit)
-                    .all()
-                )
-
-            # PostgreSQL trigram similarity query
             sql = text("""
-                SELECT id, sku, name, description, price, stock, category, is_available, cost, margin, provider, taxes, unit_of_measure, created_at, updated_at
+                SELECT id, sku, name, description, price, stock, category,
+                       is_available, cost, margin, provider, taxes,
+                       unit_of_measure, format, created_at, updated_at
                 FROM products
-                WHERE similarity(name, CAST(:query AS TEXT)) > 0.25 OR name ILIKE CAST(:ilike_query AS TEXT)
+                WHERE similarity(name, CAST(:query AS TEXT)) > 0.25
+                   OR name ILIKE CAST(:ilike_query AS TEXT)
                 ORDER BY similarity(name, CAST(:query AS TEXT)) DESC, name ASC
                 LIMIT :limit
             """)
-            result = self.db.execute(sql, {"query": query, "ilike_query": f"%{query}%", "limit": limit})
+            result = self.db.execute(
+                sql,
+                {"query": query, "ilike_query": f"%{query}%", "limit": limit},
+            )
             rows = result.mappings().all()
             return [
                 Product(
@@ -98,8 +91,9 @@ class ProductRepository(JpaRepository[Product]):
                     provider=row["provider"],
                     taxes=row["taxes"],
                     unit_of_measure=row["unit_of_measure"],
+                    format=row["format"],
                     created_at=row["created_at"],
-                    updated_at=row["updated_at"]
+                    updated_at=row["updated_at"],
                 )
                 for row in rows
             ]
@@ -113,14 +107,13 @@ class ProductRepository(JpaRepository[Product]):
 
     def get_categories(self) -> list[str]:
         try:
-            return sorted(
-                list(
-                    self.db.query(Product.category)
-                    .filter(Product.category.isnot(None))
-                    .distinct()
-                    .pluck("category")
-                )
+            rows = (
+                self.db.query(Product.category)
+                .filter(Product.category.isnot(None))
+                .distinct()
+                .all()
             )
+            return sorted(row[0] for row in rows)
         except Exception as e:
             logger.error("ProductRepository.get_categories failed: %s", e)
             raise

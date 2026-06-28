@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import unicodedata
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -14,9 +13,19 @@ def slugify(text_val: str) -> str:
         c for c in unicodedata.normalize("NFD", text_val)
         if unicodedata.category(c) != "Mn"
     )
-    # Reemplazar caracteres no alfanuméricos por guiones
-    slug = re.sub(r"[^a-z0-9]+", "-", text_val)
-    return slug.strip("-")
+    # Reemplazar caracteres no alfanuméricos por guiones sin usar regex
+    parts: list[str] = []
+    current: list[str] = []
+    for ch in text_val:
+        if ch.isalnum():
+            current.append(ch)
+        else:
+            if current:
+                parts.append("".join(current))
+                current = []
+    if current:
+        parts.append("".join(current))
+    return "-".join(parts)
 
 
 def normalize_category_name(name: str) -> str:

@@ -1,20 +1,93 @@
 from __future__ import annotations
 
+import io
 import logging
 import uuid
+from decimal import Decimal
 
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
 from sqlalchemy.orm import Session
 
+from models.category import Category
 from models.product import Product
 from repositories.product_repository import ProductRepository
+from services.category_service import slugify
 
 logger = logging.getLogger(__name__)
+
+# ── Columnas del Excel (orden canónico) ───────────────────────────────────────
+
+EXCEL_COLUMNS: list[tuple[str, str]] = [
+    ("sku",             "SKU"),
+    ("name",            "Nombre *"),
+    ("description",     "Descripción"),
+    ("price",           "Precio"),
+    ("cost",            "Costo"),
+    ("stock",           "Stock"),
+    ("format",          "Formato (ej: 500cc, caja x12, unidad)"),
+    ("unit_of_measure", "Unidad de medida (ej: un, kg, lt)"),
+    ("category",        "Categoría"),
+    ("provider",        "Proveedor"),
+    ("taxes",           "IVA (0.0 – 1.0, ej: 0.19)"),
+    ("is_available",    "Disponible (TRUE/FALSE)"),
+    ("margin",          "Margen (%)"),
+]
+
+FIELD_NAMES = [col[0] for col in EXCEL_COLUMNS]
+HEADER_LABELS = [col[1] for col in EXCEL_COLUMNS]
 
 
 class ProductService:
     def __init__(self, db: Session) -> None:
         self.db = db
         self.repo = ProductRepository(db)
+
+    # ── Helpers internos ─────────────────────────────────────────────────────
+
+    def _ensure_category_exists(self, category_name: str | None) -> None:
+        if not category_name:
+            return
+        exists = self.db.query(Category).filter(Category.name == category_name).first()
+        if not exists:
+            slug = slugify(category_name)
+            existing_slug = (
+                self.db.query(Category).filter(Category.slug == slug).first()
+            )
+            if existing_slug:
+                slug = f"{slug}-auto"
+            cat = Category(name=category_name, slug=slug, is_system=False)
+            self.db.add(cat)
+            self.db.flush()
+
+    def _row_to_float(self, value: object) -> float | None:
+        if value is None or str(value).strip() == "":
+            return None
+        try:
+            return float(str(value).strip())
+        except ValueError:
+            return None
+
+    def _row_to_int(self, value: object) -> int:
+        if value is None or str(value).strip() == "":
+            return 0
+        try:
+            return int(float(str(value).strip()))
+        except ValueError:
+            return 0
+
+    def _row_to_bool(self, value: object) -> bool:
+        if value is None:
+            return True
+        return str(value).strip().upper() not in {"FALSE", "0", "NO", "FALSO", "F"}
+
+    def _row_to_str(self, value: object) -> str | None:
+        if value is None:
+            return None
+        stripped = str(value).strip()
+        return stripped if stripped else None
+
+    # ── CRUD ─────────────────────────────────────────────────────────────────
 
     def list_products(
         self,
@@ -45,21 +118,6 @@ class ProductService:
             )
             raise
 
-    def _ensure_category_exists(self, category_name: str | None) -> None:
-        if not category_name:
-            return
-        from models.category import Category
-        exists = self.db.query(Category).filter(Category.name == category_name).first()
-        if not exists:
-            from services.category_service import slugify
-            slug = slugify(category_name)
-            existing_slug = self.db.query(Category).filter(Category.slug == slug).first()
-            if existing_slug:
-                slug = f"{slug}-auto"
-            cat = Category(name=category_name, slug=slug, is_system=False)
-            self.db.add(cat)
-            self.db.flush()
-
     def create_product(
         self,
         name: str,
@@ -74,6 +132,7 @@ class ProductService:
         provider: str | None = None,
         taxes: float | None = 0.19,
         unit_of_measure: str | None = "un",
+        format: str | None = None,
     ) -> Product:
         try:
             self._ensure_category_exists(category)
@@ -90,6 +149,7 @@ class ProductService:
                 provider=provider,
                 taxes=taxes,
                 unit_of_measure=unit_of_measure,
+                format=format,
             )
             return self.repo.save(product)
         except Exception as e:
@@ -115,6 +175,7 @@ class ProductService:
         provider: str | None = None,
         taxes: float | None = None,
         unit_of_measure: str | None = None,
+        format: str | None = None,
     ) -> Product:
         try:
             product = self.repo.find_by_id(product_id)
@@ -146,6 +207,8 @@ class ProductService:
                 product.taxes = taxes
             if unit_of_measure is not None:
                 product.unit_of_measure = unit_of_measure
+            if format is not None:
+                product.format = format
 
             self.db.flush()
             self.db.refresh(product)
@@ -198,3 +261,181 @@ class ProductService:
         except Exception as e:
             logger.error("ProductService.count failed: %s", e)
             raise
+
+    # ── Importación / Exportación Excel ──────────────────────────────────────
+
+    def upsert_by_sku(
+        self,
+        row: dict[str, object],
+    ) -> tuple[Product, bool]:
+        """
+        Crea o actualiza un producto basado en su SKU.
+        Si el SKU ya existe → actualiza todos los campos presentes.
+        Si no existe → crea uno nuevo.
+        Retorna (producto, created: bool).
+        """
+        sku = self._row_to_str(row.get("sku"))
+        name = self._row_to_str(row.get("name"))
+        if not name:
+            raise ValueError("El campo 'Nombre' es obligatorio.")
+
+        category = self._row_to_str(row.get("category"))
+        self._ensure_category_exists(category)
+
+        existing: Product | None = None
+        if sku:
+            existing = self.repo.find_by_sku(sku)
+
+        if existing:
+            existing.name = name
+            existing.description = self._row_to_str(row.get("description"))
+            existing.price = self._row_to_float(row.get("price"))
+            existing.cost = self._row_to_float(row.get("cost"))
+            existing.stock = self._row_to_int(row.get("stock"))
+            existing.format = self._row_to_str(row.get("format"))
+            existing.unit_of_measure = self._row_to_str(row.get("unit_of_measure")) or "un"
+            existing.category = category
+            existing.provider = self._row_to_str(row.get("provider"))
+            existing.taxes = self._row_to_float(row.get("taxes"))
+            existing.is_available = self._row_to_bool(row.get("is_available"))
+            existing.margin = self._row_to_float(row.get("margin"))
+            self.db.flush()
+            self.db.refresh(existing)
+            return existing, False
+
+        product = Product(
+            sku=sku,
+            name=name,
+            description=self._row_to_str(row.get("description")),
+            price=self._row_to_float(row.get("price")),
+            cost=self._row_to_float(row.get("cost")),
+            stock=self._row_to_int(row.get("stock")),
+            format=self._row_to_str(row.get("format")),
+            unit_of_measure=self._row_to_str(row.get("unit_of_measure")) or "un",
+            category=category,
+            provider=self._row_to_str(row.get("provider")),
+            taxes=self._row_to_float(row.get("taxes")),
+            is_available=self._row_to_bool(row.get("is_available")),
+            margin=self._row_to_float(row.get("margin")),
+        )
+        return self.repo.save(product), True
+
+    def import_from_rows(
+        self, rows: list[dict[str, object]]
+    ) -> dict[str, int]:
+        """
+        Importa una lista de filas (dicts con claves = FIELD_NAMES).
+        Estrategia de colisión: UPSERT por SKU.
+        Retorna un resumen: {"created": n, "updated": n, "errors": n}.
+        """
+        created = 0
+        updated = 0
+        errors = 0
+        for index, row in enumerate(rows, start=2):
+            try:
+                _, was_created = self.upsert_by_sku(row)
+                if was_created:
+                    created += 1
+                else:
+                    updated += 1
+            except Exception as exc:
+                logger.error("import_from_rows error on row %d: %s", index, exc)
+                errors += 1
+        return {"created": created, "updated": updated, "errors": errors}
+
+    def export_to_workbook(self) -> io.BytesIO:
+        """Exporta todos los productos al formato Excel (.xlsx)."""
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Productos"
+
+        header_fill = PatternFill("solid", fgColor="1F4E79")
+        header_font = Font(bold=True, color="FFFFFF", size=11)
+        center_align = Alignment(horizontal="center", vertical="center")
+
+        for col_index, label in enumerate(HEADER_LABELS, start=1):
+            cell = ws.cell(row=1, column=col_index, value=label)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = center_align
+
+        products = self.repo.find_all(skip=0, limit=10000)
+        for row_index, product in enumerate(products, start=2):
+            price = float(product.price) if isinstance(product.price, Decimal) else product.price
+            cost = float(product.cost) if isinstance(product.cost, Decimal) else product.cost
+            margin = float(product.margin) if isinstance(product.margin, Decimal) else product.margin
+            taxes = float(product.taxes) if isinstance(product.taxes, Decimal) else product.taxes
+
+            row_values = [
+                product.sku,
+                product.name,
+                product.description,
+                price,
+                cost,
+                product.stock,
+                product.format,
+                product.unit_of_measure,
+                product.category,
+                product.provider,
+                taxes,
+                product.is_available,
+                margin,
+            ]
+            for col_index, value in enumerate(row_values, start=1):
+                ws.cell(row=row_index, column=col_index, value=value)
+
+        for col_index in range(1, len(HEADER_LABELS) + 1):
+            ws.column_dimensions[ws.cell(row=1, column=col_index).column_letter].width = 22
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return buf
+
+    def export_template_workbook(self) -> io.BytesIO:
+        """
+        Exporta una hoja Excel vacía con cabeceras documentadas y
+        una fila de ejemplo para orientar al usuario.
+        """
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Plantilla Productos"
+
+        header_fill = PatternFill("solid", fgColor="1F4E79")
+        header_font = Font(bold=True, color="FFFFFF", size=11)
+        example_fill = PatternFill("solid", fgColor="D9E1F2")
+        center_align = Alignment(horizontal="center", vertical="center")
+
+        for col_index, label in enumerate(HEADER_LABELS, start=1):
+            cell = ws.cell(row=1, column=col_index, value=label)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = center_align
+
+        example_values = [
+            "PROD-001",
+            "Pisco Control 35°",
+            "Botella de pisco 750ml grado 35",
+            4990,
+            3500,
+            24,
+            "750ml",
+            "un",
+            "Piscos",
+            "CCU",
+            0.19,
+            True,
+            0.30,
+        ]
+        for col_index, value in enumerate(example_values, start=1):
+            cell = ws.cell(row=2, column=col_index, value=value)
+            cell.fill = example_fill
+            cell.alignment = center_align
+
+        for col_index in range(1, len(HEADER_LABELS) + 1):
+            ws.column_dimensions[ws.cell(row=1, column=col_index).column_letter].width = 26
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return buf
