@@ -6,6 +6,7 @@ from .business_config_controller import router as business_config_router
 from .admin_controller import router as admin_router
 from .telegram_controller import router as telegram_router
 from .order_controller import router as order_router
+from .category_controller import router as category_router
 
 __all__ = [
     "health_router",
@@ -16,4 +17,5 @@ __all__ = [
     "admin_router",
     "telegram_router",
     "order_router",
+    "category_router",
 ]

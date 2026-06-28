@@ -17,6 +17,7 @@ from controllers import (
     admin_router,
     telegram_router,
     order_router,
+    category_router,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,3 +57,4 @@ app.include_router(business_config_router)
 app.include_router(admin_router)
 app.include_router(telegram_router)
 app.include_router(order_router)
+app.include_router(category_router)

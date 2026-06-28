@@ -18,6 +18,7 @@
                 <a href="#dashboard" class="nav-link active" data-section="dashboard">📊 Dashboard</a>
                 <a href="#profile" class="nav-link" data-section="profile">🏪 Perfil</a>
                 <a href="#products" class="nav-link" data-section="products">📦 Productos</a>
+                <a href="#categories" class="nav-link" data-section="categories">🏷️ Categorías</a>
                 <a href="#knowledge" class="nav-link" data-section="knowledge">🧠 Knowledge Base</a>
                 <a href="#channels" class="nav-link" data-section="channels">📱 Canales</a>
             </nav>
@@ -129,6 +130,26 @@
                                 </tr>
                             </thead>
                             <tbody id="productsBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Categories Section -->
+                <section id="categories" class="section">
+                    <div class="section-header">
+                        <h3>Categorías</h3>
+                        <button class="btn btn-primary" id="addCategoryBtn">+ Nueva Categoría</button>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="categoriesTable">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Slug</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="categoriesBody"></tbody>
                         </table>
                     </div>
                 </section>

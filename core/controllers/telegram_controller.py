@@ -74,6 +74,64 @@ async def telegram_webhook(
         if not chat_id or not callback_data:
             return {"status": "ok", "detail": "invalid callback"}
 
+        # Interceptar botones de navegación de categorías
+        if callback_data == "menu:categorias":
+            from config.database import SessionLocal
+            from services.category_service import CategoryService
+            db = SessionLocal()
+            try:
+                cat_svc = CategoryService(db)
+                categories = cat_svc.list_categories()
+                buttons = []
+                for i in range(0, len(categories), 2):
+                    row = []
+                    for cat in categories[i:i+2]:
+                        row.append({"text": f"🏷️ {cat.name}", "callback_data": f"cat_select:{cat.name}"})
+                    buttons.append(row)
+                buttons.append([{"text": "🔙 Menú Principal", "callback_data": "menu:back_to_main"}])
+                await send_telegram_message(
+                    bot_token=token,
+                    chat_id=chat_id,
+                    text="Selecciona una categoría para ver los productos disponibles:",
+                    reply_markup={"inline_keyboard": buttons}
+                )
+            finally:
+                db.close()
+            return {"status": "ok"}
+
+        elif callback_data.startswith("cat_select:"):
+            category_name = callback_data.split(":", 1)[1]
+            from config.database import SessionLocal
+            from models.product import Product
+            db = SessionLocal()
+            try:
+                products = db.query(Product).filter(Product.category == category_name, Product.is_available.is_(True)).all()
+                if not products:
+                    response_text = f"No hay productos disponibles en la categoría '{category_name}' en este momento."
+                else:
+                    lines = [f"Productos en '{category_name}':"]
+                    for p in products:
+                        lines.append(f"- {p.name}: ${float(p.price):,.0f} ({p.stock} un)")
+                    response_text = "\n".join(lines)
+                await send_telegram_message(
+                    bot_token=token,
+                    chat_id=chat_id,
+                    text=response_text,
+                    reply_markup={"inline_keyboard": [[{"text": "Volver a Categorías 🏷️", "callback_data": "menu:categorias"}], [{"text": "Menú Principal 🔙", "callback_data": "menu:back_to_main"}]]}
+                )
+            finally:
+                db.close()
+            return {"status": "ok"}
+
+        elif callback_data == "menu:back_to_main":
+            await send_telegram_message(
+                bot_token=token,
+                chat_id=chat_id,
+                text="¿En qué puedo ayudarte hoy?",
+                reply_markup=build_main_menu()
+            )
+            return {"status": "ok"}
+
         # Resolver FSM
         fsm = TelegramConversationFSM(user_id=user_id, state_store=get_fsm_store())
         new_state, context = await fsm.transition(callback_data)

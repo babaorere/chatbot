@@ -45,11 +45,14 @@ def build_main_menu() -> dict:
     return {
         "inline_keyboard": [
             [
+                {"text": "🏷️ Ver Categorías", "callback_data": "menu:categorias"},
                 {"text": "📦 Consultar Stock", "callback_data": "menu:stock"},
-                {"text": "💰 Ver Precios", "callback_data": "menu:precio"},
             ],
             [
+                {"text": "💰 Ver Precios", "callback_data": "menu:precio"},
                 {"text": "🕒 Horarios", "callback_data": "menu:horario"},
+            ],
+            [
                 {"text": "👤 Hablar con Humano", "callback_data": "menu:contacto"},
             ],
         ]

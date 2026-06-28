@@ -12,6 +12,8 @@ class TenantApp {
             if (this.tenantId) localStorage.setItem('tenant_id', this.tenantId);
         }
 
+        this.categories = [];
+        await this.loadCategories();
         this.setupNavigation();
         this.setupForms();
         this.setupModals();
@@ -93,6 +95,13 @@ class TenantApp {
         document.getElementById('addKbBtn').addEventListener('click', () => {
             this.showKBModal();
         });
+
+        const addCategoryBtn = document.getElementById('addCategoryBtn');
+        if (addCategoryBtn) {
+            addCategoryBtn.addEventListener('click', () => {
+                this.showCategoryModal();
+            });
+        }
 
         document.getElementById('kbSearchBtn').addEventListener('click', () => {
             this.searchKB();
@@ -223,6 +232,10 @@ class TenantApp {
         const title = document.getElementById('modalTitle');
         const body = document.getElementById('modalBody');
 
+        const categoryOptions = this.categories.map(c => `
+            <option value="${c.name}" ${product?.category === c.name ? 'selected' : ''}>${c.name}</option>
+        `).join('');
+
         title.textContent = product ? 'Editar Producto' : 'Nuevo Producto';
         body.innerHTML = `
             <form id="productForm">
@@ -246,7 +259,7 @@ class TenantApp {
                 </div>
                 <div class="form-group">
                     <label>Categoría</label>
-                    <input type="text" id="prodCategory" value="${product?.category || ''}">
+                    <select id="prodCategory" class="form-control">${categoryOptions}</select>
                 </div>
                 <button type="submit" class="btn btn-primary">Guardar</button>
             </form>
@@ -376,6 +389,92 @@ class TenantApp {
         } catch {
             return null;
         }
+    }
+
+    async loadCategories() {
+        try {
+            const categories = await this.fetch('/categories');
+            this.categories = categories;
+            const tbody = document.getElementById('categoriesBody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            categories.forEach(c => {
+                const tr = document.createElement('tr');
+                const actions = c.is_system 
+                    ? `<span class="badge status-badge" style="background: var(--bg-hover); color: var(--text-muted); cursor: not-allowed; border: 1px dashed var(--border-color);">🔒 Fijo</span>` 
+                    : `
+                        <button class="btn btn-sm btn-secondary" onclick="app.editCategory('${c.name}')">Editar</button>
+                        <button class="btn btn-sm btn-danger" onclick="app.deleteCategory('${c.name}')">Eliminar</button>
+                    `;
+                tr.innerHTML = `
+                    <td><strong>${c.name}</strong></td>
+                    <td><code>${c.slug}</code></td>
+                    <td style="display: flex; gap: 8px; align-items: center;">${actions}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        } catch (err) {
+            console.error('Categories load failed:', err);
+        }
+    }
+
+    showCategoryModal(category = null) {
+        const modal = document.getElementById('modal');
+        const title = document.getElementById('modalTitle');
+        const body = document.getElementById('modalBody');
+
+        title.textContent = category ? 'Editar Categoría' : 'Nueva Categoría';
+        body.innerHTML = `
+            <form id="categoryForm">
+                <div class="form-group">
+                    <label>Nombre de Categoría</label>
+                    <input type="text" id="catName" value="${category || ''}" required placeholder="Ej: Licores Premium">
+                </div>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </form>
+        `;
+
+        document.getElementById('categoryForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const newName = document.getElementById('catName').value;
+            try {
+                if (category) {
+                    await this.fetch(`/categories/${encodeURIComponent(category)}`, {
+                        method: 'PUT',
+                        body: JSON.stringify({ new_name: newName }),
+                    });
+                } else {
+                    await this.fetch('/categories', {
+                        method: 'POST',
+                        body: JSON.stringify({ name: newName }),
+                    });
+                }
+                this.showToast('Categoría guardada', 'success');
+                modal.classList.remove('active');
+                await this.loadCategories();
+                await this.loadProducts();
+            } catch (err) {
+                this.showToast(err.message, 'error');
+            }
+        });
+
+        modal.classList.add('active');
+    }
+
+    async deleteCategory(name) {
+        if (!confirm(`¿Estás seguro de que deseas eliminar la categoría '${name}'? Todos los productos asociados pasarán automáticamente a la categoría 'General'.`)) return;
+        try {
+            await this.fetch(`/categories/${encodeURIComponent(name)}`, { method: 'DELETE' });
+            this.showToast('Categoría eliminada con éxito', 'success');
+            await this.loadCategories();
+            await this.loadProducts();
+        } catch (err) {
+            this.showToast(err.message, 'error');
+        }
+    }
+
+    editCategory(name) {
+        this.showCategoryModal(name);
     }
 }
 

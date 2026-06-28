@@ -52,6 +52,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     redis_client = None
 
     # 1. Base de datos
+    from models.category import Category  # noqa: F401
     Base.metadata.create_all(bind=_sync_engine)
     logger.info("DB tables created/verified")
 
@@ -59,6 +60,36 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         from sqlalchemy import text
         with _sync_engine.begin() as conn:
+            # Seed default 'General' category first
+            conn.execute(text("INSERT INTO categories (name, slug, is_system) VALUES ('General', 'general', true) ON CONFLICT (name) DO NOTHING;"))
+            
+            # Migrate existing categories from products table
+            conn.execute(text("""
+                INSERT INTO categories (name, slug, is_system)
+                SELECT DISTINCT category, LOWER(category), false
+                FROM products
+                WHERE category IS NOT NULL AND category NOT IN (SELECT name FROM categories)
+                ON CONFLICT (name) DO NOTHING;
+            """))
+
+            # Ensure default value of products.category is 'General'
+            conn.execute(text("ALTER TABLE products ALTER COLUMN category SET DEFAULT 'General';"))
+
+            # Add foreign key constraint if not exists
+            check_fk = conn.execute(text("""
+                SELECT 1 FROM pg_constraint WHERE conname = 'fk_products_category';
+            """)).first()
+            if not check_fk:
+                # Update any null categories to 'General' to satisfy constraint
+                conn.execute(text("UPDATE products SET category = 'General' WHERE category IS NULL;"))
+                conn.execute(text("""
+                    ALTER TABLE products 
+                    ADD CONSTRAINT fk_products_category 
+                    FOREIGN KEY (category) REFERENCES categories(name) 
+                    ON DELETE SET DEFAULT ON UPDATE CASCADE;
+                """))
+                logger.info("Added foreign key constraint and default value for products category")
+
             conn.execute(text("CREATE EXTENSION IF NOT EXISTS unaccent;"))
             conn.execute(text("""
                 CREATE OR REPLACE FUNCTION immutable_unaccent(text)

@@ -45,6 +45,21 @@ class ProductService:
             )
             raise
 
+    def _ensure_category_exists(self, category_name: str | None) -> None:
+        if not category_name:
+            return
+        from models.category import Category
+        exists = self.db.query(Category).filter(Category.name == category_name).first()
+        if not exists:
+            from services.category_service import slugify
+            slug = slugify(category_name)
+            existing_slug = self.db.query(Category).filter(Category.slug == slug).first()
+            if existing_slug:
+                slug = f"{slug}-auto"
+            cat = Category(name=category_name, slug=slug, is_system=False)
+            self.db.add(cat)
+            self.db.flush()
+
     def create_product(
         self,
         name: str,
@@ -61,6 +76,7 @@ class ProductService:
         unit_of_measure: str | None = "un",
     ) -> Product:
         try:
+            self._ensure_category_exists(category)
             product = Product(
                 sku=sku,
                 name=name,
@@ -116,6 +132,7 @@ class ProductService:
             if stock is not None:
                 product.stock = stock
             if category is not None:
+                self._ensure_category_exists(category)
                 product.category = category
             if is_available is not None:
                 product.is_available = is_available

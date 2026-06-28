@@ -1,46 +1,10 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
-
-from config.settings import settings
 from services.user_service import UserService
 from services.product_service import ProductService
 from services.cart_service import CartService
 from services.order_service import OrderService
-
-
-@pytest.fixture
-def db_session():
-    # Use Postgres from configuration instead of sqlite
-    url = settings.database_url
-    if url.startswith("postgresql+asyncpg://"):
-        url = url.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
-    elif url.startswith("postgresql://"):
-        url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
-
-    engine = create_engine(url)
-    SessionLocal = sessionmaker(bind=engine)
-
-    db = SessionLocal()
-    # Ensure pg_trgm extension is enabled on the database used for testing
-    try:
-        db.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
-        db.commit()
-    except Exception:
-        db.rollback()
-
-    # Clean up tables before run to avoid conflicts
-    db.execute(text("TRUNCATE TABLE order_items, orders, cart_items, carts, messages, conversations, products, users CASCADE;"))
-    db.commit()
-    try:
-        yield db
-    finally:
-        # Clean up tables after run
-        db.execute(text("TRUNCATE TABLE order_items, orders, cart_items, carts, messages, conversations, products, users CASCADE;"))
-        db.commit()
-        db.close()
 
 
 def test_complete_sales_workflow(db_session):
