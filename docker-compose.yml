@@ -8,33 +8,8 @@ x-logging: &default-logging
     compress: "true"
 
 services:
-  redis:
-    image: redis:7.4-alpine
-    container_name: chatbot_redis
-    restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1000"]
-    stop_grace_period: 30s
-    volumes:
-      - redis_data:/data
-    networks:
-      - chatbot_net
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-    logging: *default-logging
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-        reservations:
-          memory: 64M
-
   db:
-    build:
-      context: .
-      dockerfile: Dockerfile.postgres
+    image: postgres:18-alpine
     container_name: chatbot_db
     restart: unless-stopped
     stop_grace_period: 30s
@@ -42,8 +17,6 @@ services:
       POSTGRES_USER: ${DB_USER:-shared}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-shared_secret}
       POSTGRES_DB: ${DB_NAME:-chatbot}
-    ports:
-      - "5433:5432"
     volumes:
       - db_data:/var/lib/postgresql
     networks:
@@ -74,7 +47,7 @@ services:
     ports:
       - "8001:8000"
     environment:
-      - REDIS_URL=${REDIS_URL:-redis://chatbot_redis:6379/0}
+      - REDIS_URL=${REDIS_URL}
       - DATABASE_URL=postgresql://${DB_USER:-shared}:${DB_PASSWORD:-shared_secret}@db:5432/${DB_NAME:-chatbot}
       - ADK_DISABLE_JSON_SCHEMA_FOR_FUNC_DECL=true
     volumes:
@@ -83,8 +56,6 @@ services:
     networks:
       - chatbot_net
     depends_on:
-      redis:
-        condition: service_healthy
       db:
         condition: service_healthy
     logging: *default-logging
@@ -162,7 +133,6 @@ services:
           memory: 16M
 
 volumes:
-  redis_data:
   db_data:
   nginx_cache:
   nginx_run:

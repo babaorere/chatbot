@@ -55,6 +55,35 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     Base.metadata.create_all(bind=_sync_engine)
     logger.info("DB tables created/verified")
 
+    # Run SQL setup for FTS unaccent and search_vector column if missing
+    try:
+        from sqlalchemy import text
+        with _sync_engine.begin() as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS unaccent;"))
+            conn.execute(text("""
+                CREATE OR REPLACE FUNCTION immutable_unaccent(text)
+                RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT
+                AS $$ SELECT public.unaccent('public.unaccent', $1) $$;
+            """))
+            # Check if search_vector column exists on knowledge_base table
+            check_col = conn.execute(text("""
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name='knowledge_base' AND column_name='search_vector';
+            """)).first()
+            if not check_col:
+                conn.execute(text("""
+                    ALTER TABLE knowledge_base 
+                    ADD COLUMN search_vector tsvector GENERATED ALWAYS AS (
+                        setweight(to_tsvector('spanish', coalesce(immutable_unaccent(title), '')), 'A') ||
+                        setweight(to_tsvector('spanish', coalesce(immutable_unaccent(content), '')), 'B') ||
+                        setweight(to_tsvector('spanish', coalesce(immutable_unaccent(category), '')), 'C')
+                    ) STORED;
+                """))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_kb_search_vector ON knowledge_base USING GIN(search_vector);"))
+                logger.info("Created unaccent function and search_vector on knowledge_base")
+    except Exception as e:
+        logger.error("Failed to run database FTS unaccent setup: %s", e)
+
     # 2. Seed
     with SessionLocal() as seed_db:
         _seed_business_config(seed_db)

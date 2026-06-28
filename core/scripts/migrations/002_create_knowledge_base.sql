@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS knowledge_base (
     category        VARCHAR(100) NOT NULL,
     title           TEXT NOT NULL,
     content         TEXT NOT NULL,
-    embedding       vector(1536),
+    embedding       double precision[],
     search_vector   tsvector GENERATED ALWAYS AS (
         setweight(to_tsvector('spanish', coalesce(immutable_unaccent(title), '')), 'A') ||
         setweight(to_tsvector('spanish', coalesce(immutable_unaccent(content), '')), 'B') ||
@@ -47,7 +47,7 @@ CREATE INDEX IF NOT EXISTS idx_kb_search_vector ON knowledge_base USING GIN(sear
 
 -- pgvector index (reserved for future use)
 -- Requires pgvector extension installed in production
-CREATE INDEX IF NOT EXISTS idx_kb_embedding ON knowledge_base USING ivfflat(embedding vector_cosine_ops) WITH(lists = 100);
+-- CREATE INDEX IF NOT EXISTS idx_kb_embedding ON knowledge_base USING ivfflat(embedding vector_cosine_ops) WITH(lists = 100);
 
 -- RLS for tenant isolation
 ALTER TABLE knowledge_base ENABLE ROW LEVEL SECURITY;
