@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, func
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, func
 from sqlalchemy.orm import relationship
 from config.database import Base
 
@@ -13,6 +13,7 @@ class Conversation(Base):
     session_id = Column(String, unique=True, nullable=False, index=True)
     created_at = Column(DateTime, server_default=func.now())
     state = Column(String, default="CHAT_LIBRE", nullable=False)
+    is_bot_paused = Column(Boolean, default=False, nullable=False)
     version = Column(Integer, default=0, nullable=False)
 
     user = relationship("User", backref="conversations")

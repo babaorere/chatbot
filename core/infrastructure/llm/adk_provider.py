@@ -173,6 +173,29 @@ class ADKLLMProvider:
             )
             raise
 
+    async def clear_session(
+        self,
+        user_id: str,
+        session_id: str,
+    ) -> None:
+        """Elimina el historial y limpia la sesión conversacional de ADK."""
+        try:
+            from agents.constants import GADK_APP_NAME
+            await self._session_service.delete_session(
+                app_name=GADK_APP_NAME,
+                user_id=user_id,
+                session_id=session_id,
+            )
+            logger.info("Cleared ADK session %s for user %s", session_id, user_id)
+        except Exception as e:
+            logger.error(
+                "ADKLLMProvider.clear_session failed [user=%s, session=%s]: %s",
+                user_id,
+                session_id,
+                e,
+            )
+            raise
+
     @staticmethod
     def _build_content(message: str, rag_context: str | None) -> types.Content:
         """Construye el objeto Content de ADK con el mensaje y contexto RAG.

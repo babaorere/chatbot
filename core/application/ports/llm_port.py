@@ -70,3 +70,16 @@ class ILLMProvider(Protocol):
             list[dict[str, str]]: Lista de mensajes con 'author' y 'content'.
         """
         ...
+
+    async def clear_session(
+        self,
+        user_id: str,
+        session_id: str,
+    ) -> None:
+        """Elimina el historial y limpia la sesión conversacional.
+
+        Args:
+            user_id: Identificador externo del usuario.
+            session_id: Identificador de la sesión de conversación.
+        """
+        ...

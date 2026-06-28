@@ -77,6 +77,18 @@ class ProcessMessageUseCase:
             # 3. Persist conversation si es nueva
             self._ensure_conversation(user_id=user.id, session_id=session_id)
 
+            # Check if bot is paused for this conversation (Human Takeover active)
+            from services.conversation_service import ConversationService
+            conv_svc = ConversationService(self._db)
+            conv = conv_svc.get_by_session_id(session_id)
+            if conv and getattr(conv, "is_bot_paused", False) is True:
+                logger.info("Chatbot is paused (human takeover active) for user %s / session %s", cmd.user_id, session_id)
+                return ProcessMessageResult(
+                    user_id=cmd.user_id,
+                    session_id=session_id,
+                    response="",
+                )
+
             # 4. RAG context — policy check before retrieval
             rag_policy = RAGPolicyService()
             rag_result = rag_policy.classify(query=cmd.message)
@@ -123,6 +135,14 @@ class ProcessMessageUseCase:
                 e,
             )
             raise
+
+    async def clear_session(self, user_id: str, session_id: str) -> None:
+        """Limpia la sesión de conversación del LLM."""
+        try:
+            await self._llm.clear_session(user_id=user_id, session_id=session_id)
+            logger.info("Cleared conversation session for user %s, session %s", user_id, session_id)
+        except Exception as e:
+            logger.error("Failed to clear session in UseCase: %s", e)
 
     def _get_or_create_user(
         self,

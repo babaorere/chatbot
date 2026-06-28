@@ -75,6 +75,15 @@ def _run_migrations(conn: object) -> None:
         conn.execute(text("ALTER TABLE business_config ADD COLUMN human_agent_available BOOLEAN NOT NULL DEFAULT TRUE;"))
         logger.info("Added 'human_agent_available' column to business_config table")
 
+    # Add is_bot_paused column if missing
+    check_paused = conn.execute(text("""
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name='conversations' AND column_name='is_bot_paused';
+    """)).first()
+    if not check_paused:
+        conn.execute(text("ALTER TABLE conversations ADD COLUMN is_bot_paused BOOLEAN NOT NULL DEFAULT FALSE;"))
+        logger.info("Added 'is_bot_paused' column to conversations table")
+
     # Add foreign key constraint if not exists
     check_fk = conn.execute(text("""
         SELECT 1 FROM pg_constraint WHERE conname = 'fk_products_category';
