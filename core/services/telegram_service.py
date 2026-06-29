@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +21,7 @@ async def send_telegram_message(
         return None
 
     try:
+        from app.container import get_http_client
         url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
         payload = {
             "chat_id": chat_id,
@@ -30,14 +30,14 @@ async def send_telegram_message(
         if reply_markup:
             payload["reply_markup"] = reply_markup
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(url, json=payload)
-            if resp.status_code == 200 and resp.json().get("ok"):
-                logger.info("Message successfully sent to Telegram chat: %s", chat_id)
-                return resp.json().get("result", {}).get("message_id")
-            else:
-                logger.error("Telegram API returned failure: %s", resp.text)
-                return None
+        client = get_http_client()
+        resp = await client.post(url, json=payload)
+        if resp.status_code == 200 and resp.json().get("ok"):
+            logger.info("Message successfully sent to Telegram chat: %s", chat_id)
+            return resp.json().get("result", {}).get("message_id")
+        else:
+            logger.error("Telegram API returned failure: %s", resp.text)
+            return None
     except Exception as e:
         logger.error("Failed to send Telegram message to chat %s: %s", chat_id, e)
         return None
@@ -91,15 +91,16 @@ async def clear_telegram_reply_markup(
     if not bot_token or not chat_id or not message_id:
         return False
     try:
+        from app.container import get_http_client
         url = f"https://api.telegram.org/bot{bot_token}/editMessageReplyMarkup"
         payload = {
             "chat_id": chat_id,
             "message_id": message_id,
             "reply_markup": None,
         }
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(url, json=payload)
-            return resp.status_code == 200 and resp.json().get("ok")
+        client = get_http_client()
+        resp = await client.post(url, json=payload)
+        return resp.status_code == 200 and resp.json().get("ok")
     except Exception as e:
         logger.error("Failed to clear Telegram reply markup for msg %s: %s", message_id, e)
         return False
@@ -112,15 +113,16 @@ async def answer_telegram_callback_query(
     if not bot_token or not callback_query_id:
         return False
     try:
+        from app.container import get_http_client
         url = f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery"
         payload = {
             "callback_query_id": callback_query_id,
         }
         if text:
             payload["text"] = text
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(url, json=payload)
-            return resp.status_code == 200 and resp.json().get("ok")
+        client = get_http_client()
+        resp = await client.post(url, json=payload)
+        return resp.status_code == 200 and resp.json().get("ok")
     except Exception as e:
         logger.error("Failed to answer callback query %s: %s", callback_query_id, e)
         return False

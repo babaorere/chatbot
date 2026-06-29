@@ -15,7 +15,7 @@ client = TestClient(app)
 async def test_webhook_rejects_expired_callback_via_message_id():
     """Prueba que el webhook rechace un callback_query si el message_id no coincide con el menú activo (Capa 1)."""
     store = FSMStateStore()
-    fsm = TelegramConversationFSM("123456", store)
+    fsm = TelegramConversationFSM("user_capa1", store)
     await fsm.set_active_menu_id(9999)  # Menú activo actual es el ID 9999
     await fsm.increment_fsm_version()  # Establece la versión a 2
 
@@ -28,10 +28,10 @@ async def test_webhook_rejects_expired_callback_via_message_id():
         payload = {
             "callback_query": {
                 "id": "query_123",
-                "from": {"id": 123456},
+                "from": {"id": "user_capa1"},
                 "message": {
                     "message_id": 8888,  # ID viejo/diferente
-                    "chat": {"id": 123456},
+                    "chat": {"id": "user_capa1"},
                     "date": 1000000000
                 },
                 "data": "menu:stock#2"
@@ -50,7 +50,7 @@ async def test_webhook_rejects_expired_callback_via_message_id():
         # Debe haber limpiado los botones del mensaje obsoleto
         mock_clear.assert_called_once_with(
             bot_token="fake_token",
-            chat_id=123456,
+            chat_id="user_capa1",
             message_id=8888
         )
 
@@ -59,7 +59,7 @@ async def test_webhook_rejects_expired_callback_via_message_id():
 async def test_webhook_rejects_expired_callback_via_version():
     """Prueba que el webhook rechace un callback si no hay active_menu_id pero la versión no coincide (Capa 2)."""
     store = FSMStateStore()
-    fsm = TelegramConversationFSM("123456", store)
+    fsm = TelegramConversationFSM("user_capa2", store)
     # No establecemos active_menu_id
     # Incrementar versión del FSM a 3
     await fsm.increment_fsm_version()
@@ -73,10 +73,10 @@ async def test_webhook_rejects_expired_callback_via_version():
         payload = {
             "callback_query": {
                 "id": "query_124",
-                "from": {"id": 123456},
+                "from": {"id": "user_capa2"},
                 "message": {
                     "message_id": 8888,
-                    "chat": {"id": 123456},
+                    "chat": {"id": "user_capa2"},
                     "date": 1000000000
                 },
                 "data": "menu:stock#2"  # Botón versión 2, pero FSM está en versión 3
@@ -93,6 +93,6 @@ async def test_webhook_rejects_expired_callback_via_version():
         )
         mock_clear.assert_called_once_with(
             bot_token="fake_token",
-            chat_id=123456,
+            chat_id="user_capa2",
             message_id=8888
         )

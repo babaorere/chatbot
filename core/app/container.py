@@ -35,6 +35,9 @@ def set_llm_provider(provider: object) -> None:
     _llm_provider = provider  # type: ignore[assignment]
 
 
+_http_client: Any = None
+
+
 def set_redis_client(client: object) -> None:
     """Registra el cliente Redis en el arranque (llamado desde lifespan)."""
     global _redis_client
@@ -43,14 +46,26 @@ def set_redis_client(client: object) -> None:
 
 def clear_providers() -> None:
     """Limpia los singletons al cerrar la app (llamado desde lifespan)."""
-    global _llm_provider, _redis_client
+    global _llm_provider, _redis_client, _http_client
     _llm_provider = None
     _redis_client = None
+    if _http_client is not None:
+        # Nota: cerrar en segundo plano o dejar al recolector de basura
+        _http_client = None
 
 
 def get_redis_client() -> Any:
     """Retorna el cliente Redis registrado."""
     return _redis_client
+
+
+def get_http_client() -> Any:
+    """Retorna o inicializa perezosamente el cliente HTTP global para Keep-Alive."""
+    global _http_client
+    if _http_client is None:
+        import httpx
+        _http_client = httpx.AsyncClient(timeout=10.0)
+    return _http_client
 
 
 # ============================================================================
