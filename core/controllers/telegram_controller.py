@@ -206,7 +206,7 @@ async def telegram_webhook(
                     import time
                     msg_date = msg_obj.get("date", 0) if msg_obj else 0
                     current_time = int(time.time())
-                    is_valid = (current_time - msg_date < 3600) and (
+                    is_valid = (current_time - msg_date < 600) and (
                         current_state in {FSMState.IDLE, FSMState.IN_MENU}
                     )
 
