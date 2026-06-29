@@ -203,6 +203,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     llm_provider = ADKLLMProvider(session_service=session_service)
     set_llm_provider(llm_provider)
 
+    # 5. Cliente HTTP Global (Inicialización Eager / Zero Lazy)
+    from app.container import get_http_client
+    get_http_client()
+
     logger.info(
         "ADKLLMProvider initialized — worker PID=%s, model=%s, session_backend=%s",
         os.getpid(),
@@ -213,7 +217,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
     # Shutdown
-    clear_providers()
+    await clear_providers()
     if redis_client is not None:
         await redis_client.aclose()
     logger.info("Application shutdown complete")

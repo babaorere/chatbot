@@ -44,13 +44,16 @@ def set_redis_client(client: object) -> None:
     _redis_client = client  # type: ignore[assignment]
 
 
-def clear_providers() -> None:
+async def clear_providers() -> None:
     """Limpia los singletons al cerrar la app (llamado desde lifespan)."""
     global _llm_provider, _redis_client, _http_client
     _llm_provider = None
     _redis_client = None
     if _http_client is not None:
-        # Nota: cerrar en segundo plano o dejar al recolector de basura
+        try:
+            await _http_client.aclose()
+        except Exception:
+            pass
         _http_client = None
 
 
