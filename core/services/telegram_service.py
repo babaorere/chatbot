@@ -8,15 +8,18 @@ logger = logging.getLogger(__name__)
 
 async def send_telegram_message(
     bot_token: str, chat_id: str | int, text: str, reply_markup: dict | None = None
-) -> bool:
-    """Envía un mensaje de texto a un chat de Telegram usando httpx de forma asíncrona."""
+) -> int | None:
+    """Envía un mensaje de texto a un chat de Telegram usando httpx de forma asíncrona.
+
+    Retorna el message_id si tiene éxito, o None si falla.
+    """
     if not bot_token or not chat_id:
         logger.warning(
             "Telegram credentials missing. Cannot send message. Token: %s, ChatId: %s",
             "OK" if bot_token else "MISSING",
             "OK" if chat_id else "MISSING",
         )
-        return False
+        return None
 
     try:
         url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
@@ -31,13 +34,33 @@ async def send_telegram_message(
             resp = await client.post(url, json=payload)
             if resp.status_code == 200 and resp.json().get("ok"):
                 logger.info("Message successfully sent to Telegram chat: %s", chat_id)
-                return True
+                return resp.json().get("result", {}).get("message_id")
             else:
                 logger.error("Telegram API returned failure: %s", resp.text)
-                return False
+                return None
     except Exception as e:
         logger.error("Failed to send Telegram message to chat %s: %s", chat_id, e)
-        return False
+        return None
+
+
+def inject_version_to_reply_markup(reply_markup: dict | None, version: int) -> dict | None:
+    """Sufija la versión del FSM al callback_data de todos los botones inline."""
+    if not reply_markup or "inline_keyboard" not in reply_markup:
+        return reply_markup
+
+    new_keyboard = []
+    for row in reply_markup["inline_keyboard"]:
+        new_row = []
+        for btn in row:
+            new_btn = btn.copy()
+            if "callback_data" in new_btn:
+                cb = new_btn["callback_data"]
+                base = cb.split("#")[0]
+                new_btn["callback_data"] = f"{base}#{version}"
+            new_row.append(new_btn)
+        new_keyboard.append(new_row)
+
+    return {"inline_keyboard": new_keyboard}
 
 
 def build_main_menu(human_agent_available: bool = True) -> dict:

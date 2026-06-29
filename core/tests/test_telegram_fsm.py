@@ -28,3 +28,39 @@ async def test_telegram_fsm_transitions():
     await fsm.reset()
     state = await fsm.get_state()
     assert state == FSMState.IDLE
+
+
+@pytest.mark.asyncio
+async def test_telegram_fsm_menu_tracking_and_versioning():
+    store = FSMStateStore()
+    fsm = TelegramConversationFSM("user999", store)
+
+    # El ID de menú activo inicial debe ser None
+    active_menu = await fsm.get_active_menu_id()
+    assert active_menu is None
+
+    # Establecer y recuperar el ID de menú activo
+    await fsm.set_active_menu_id(12345)
+    active_menu = await fsm.get_active_menu_id()
+    assert active_menu == 12345
+
+    # La versión inicial del FSM debe ser 1
+    version = await fsm.get_fsm_version()
+    assert version == 1
+
+    # Incrementar versión
+    new_version = await fsm.increment_fsm_version()
+    assert new_version == 2
+    assert await fsm.get_fsm_version() == 2
+
+    # Verificar que el ID del menú y la versión se guarden en el mismo estado sin solaparse
+    state = await fsm.get_state()
+    assert state == FSMState.IDLE  # No debe alterar el estado
+
+    # Transición debe incrementar versión
+    new_state, context = await fsm.transition("menu:stock")
+    # Versión era 2, transición incrementa a 3
+    assert await fsm.get_fsm_version() == 3
+    # El ID de menú activo anterior debe persistir en el contexto
+    assert await fsm.get_active_menu_id() == 12345
+

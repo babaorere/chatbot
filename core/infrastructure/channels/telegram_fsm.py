@@ -123,6 +123,33 @@ class TelegramConversationFSM:
             return {}
         return raw.get("context", {})
 
+    async def get_active_menu_id(self) -> int | None:
+        """Recupera el ID de mensaje del menú activo actualmente."""
+        ctx = await self.get_context()
+        return ctx.get("_active_menu_id")
+
+    async def set_active_menu_id(self, message_id: int) -> None:
+        """Establece el ID de mensaje del menú activo."""
+        ctx = await self.get_context()
+        ctx["_active_menu_id"] = message_id
+        state = await self.get_state()
+        await self.set_state(state, ctx)
+
+    async def get_fsm_version(self) -> int:
+        """Recupera la versión/turno actual del FSM."""
+        ctx = await self.get_context()
+        return ctx.get("_fsm_version", 1)
+
+    async def increment_fsm_version(self) -> int:
+        """Incrementa y retorna la nueva versión/turno del FSM."""
+        ctx = await self.get_context()
+        current = ctx.get("_fsm_version", 1)
+        next_ver = current + 1
+        ctx["_fsm_version"] = next_ver
+        state = await self.get_state()
+        await self.set_state(state, ctx)
+        return next_ver
+
     @staticmethod
     def resolve_callback_intent(callback_data: str) -> str | None:
         """Resuelve el intent semántico de un callback_data de Telegram.
@@ -133,7 +160,8 @@ class TelegramConversationFSM:
         Returns:
             str | None: Intent semántico o None si no está registrado.
         """
-        return _CALLBACK_INTENTS.get(callback_data)
+        base_data = callback_data.split("#")[0] if "#" in callback_data else callback_data
+        return _CALLBACK_INTENTS.get(base_data)
 
     async def transition(
         self,
@@ -147,7 +175,8 @@ class TelegramConversationFSM:
         Returns:
             tuple[FSMState, dict]: Nuevo estado y contexto resultante.
         """
-        intent = self.resolve_callback_intent(callback_data)
+        base_data = callback_data.split("#")[0] if "#" in callback_data else callback_data
+        intent = self.resolve_callback_intent(base_data)
 
         transitions: dict[str, FSMState] = {
             "consultar_stock": FSMState.AWAITING_PRODUCT_NAME,
@@ -160,14 +189,22 @@ class TelegramConversationFSM:
         }
 
         next_state = transitions.get(intent or "", FSMState.IDLE)
-        context: dict[str, Any] = {"intent": intent, "callback": callback_data}
+        
+        # Recuperar y actualizar el contexto existente para no perder variables ni _active_menu_id
+        context = await self.get_context()
+        context.update({"intent": intent, "callback": base_data})
+        
+        # Incrementar versión en transición
+        current_version = context.get("_fsm_version", 1)
+        context["_fsm_version"] = current_version + 1
 
         await self.set_state(next_state, context)
         logger.debug(
-            "FSM transition [user=%s]: callback='%s' → state=%s",
+            "FSM transition [user=%s]: callback='%s' → state=%s, version=%d",
             self._user_id,
             callback_data,
             next_state.value,
+            context["_fsm_version"],
         )
         return next_state, context
 

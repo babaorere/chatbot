@@ -22,7 +22,7 @@ from infrastructure.channels.telegram_fsm import (
     RedisFSMStateStore,
 )
 from config.settings import settings
-from services.telegram_service import send_telegram_message, build_main_menu
+from services.telegram_service import send_telegram_message, build_main_menu, inject_version_to_reply_markup
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,34 @@ def get_fsm_store() -> FSMStateStore:
                 ttl_seconds=settings.redis_session_ttl_seconds,
             )
     return _memory_fsm_store
+
+
+async def send_menu_message(
+    bot_token: str,
+    chat_id: int | str,
+    text: str,
+    reply_markup: dict | None,
+    fsm: TelegramConversationFSM,
+) -> int | None:
+    """Wrapper para enviar mensajes. Si contiene reply_markup, inyecta la versión del FSM
+
+    e incrementa el contador, guardando el message_id resultante como el menú activo.
+    """
+    if reply_markup and "inline_keyboard" in reply_markup:
+        version = await fsm.increment_fsm_version()
+        reply_markup = inject_version_to_reply_markup(reply_markup, version)
+
+    msg_id = await send_telegram_message(
+        bot_token=bot_token,
+        chat_id=chat_id,
+        text=text,
+        reply_markup=reply_markup,
+    )
+
+    if msg_id and reply_markup and "inline_keyboard" in reply_markup:
+        await fsm.set_active_menu_id(msg_id)
+
+    return msg_id
 
 
 def _get_human_agent_available() -> bool:
@@ -116,7 +144,11 @@ async def telegram_webhook(
                     callback_query_id = callback_query.get("id")
                     if callback_query_id:
                         from services.telegram_service import answer_telegram_callback_query
-                        await answer_telegram_callback_query(bot_token=token, callback_query_id=callback_query_id)
+                        await answer_telegram_callback_query(
+                            bot_token=token,
+                            callback_query_id=callback_query_id,
+                            text="Procesando tu solicitud anterior, por favor espera...",
+                        )
                 return {"status": "ok", "detail": "duplicate request blocked"}
         except Exception as e:
             logger.error("Redis concurrency lock error: %s", e)
@@ -127,7 +159,11 @@ async def telegram_webhook(
                 callback_query_id = callback_query.get("id")
                 if callback_query_id:
                     from services.telegram_service import answer_telegram_callback_query
-                    await answer_telegram_callback_query(bot_token=token, callback_query_id=callback_query_id)
+                    await answer_telegram_callback_query(
+                        bot_token=token,
+                        callback_query_id=callback_query_id,
+                        text="Procesando tu solicitud anterior, por favor espera...",
+                    )
             return {"status": "ok", "detail": "duplicate request blocked"}
         _local_locks.add(user_id)
         lock_acquired = True
@@ -135,35 +171,85 @@ async def telegram_webhook(
     try:
         if callback_query:
             # Es un click en el menú (InlineKeyboard)
-            callback_data = callback_query.get("data")
+            raw_callback_data = callback_query.get("data")
             callback_query_id = callback_query.get("id")
 
-            if not callback_data:
+            if not raw_callback_data:
                 return {"status": "ok", "detail": "invalid callback"}
 
             # Verificar estado del FSM para validar si se permite la acción del menú
             fsm = TelegramConversationFSM(user_id=user_id, state_store=get_fsm_store())
             current_state = await fsm.get_state()
+            active_menu_id = await fsm.get_active_menu_id()
+            current_fsm_version = await fsm.get_fsm_version()
+            msg_obj = callback_query.get("message")
 
-            # Solo permitimos clicks en menús si estamos en IDLE o IN_MENU
-            if current_state not in {FSMState.IDLE, FSMState.IN_MENU}:
+            # 2. Filtrado de Menú Expirado (Defensa en 3 Capas)
+            is_valid = False
+            btn_version = None
+
+            # Intentar Capa 1: ID de Mensaje
+            if active_menu_id is not None and msg_obj:
+                is_valid = (msg_obj.get("message_id") == active_menu_id)
+            else:
+                # Capa 2: Contador de Versión/Turnos
+                if "#" in raw_callback_data:
+                    try:
+                        btn_version = int(raw_callback_data.split("#")[1])
+                    except ValueError:
+                        pass
+
+                if btn_version is not None:
+                    is_valid = (btn_version == current_fsm_version)
+                else:
+                    # Capa 3: Validación Temporal (menos de 1 hora) y Estado FSM
+                    import time
+                    msg_date = msg_obj.get("date", 0) if msg_obj else 0
+                    current_time = int(time.time())
+                    is_valid = (current_time - msg_date < 3600) and (
+                        current_state in {FSMState.IDLE, FSMState.IN_MENU}
+                    )
+
+            if not is_valid:
+                logger.warning(
+                    "Rejected expired callback [user=%s]: msg_id=%s (active=%s), btn_ver=%s (current=%s)",
+                    user_id,
+                    msg_obj.get("message_id") if msg_obj else None,
+                    active_menu_id,
+                    btn_version,
+                    current_fsm_version,
+                )
                 if callback_query_id:
                     from services.telegram_service import answer_telegram_callback_query
                     await answer_telegram_callback_query(
                         bot_token=token,
                         callback_query_id=callback_query_id,
-                        text="Esta opción ya no está disponible en este momento. Por favor responde al mensaje actual."
+                        text="Este menú ha expirado o ya no está activo.",
+                    )
+                if msg_obj and msg_obj.get("message_id"):
+                    from services.telegram_service import clear_telegram_reply_markup
+                    await clear_telegram_reply_markup(
+                        bot_token=token,
+                        chat_id=chat_id,
+                        message_id=msg_obj["message_id"],
                     )
                 return {"status": "ok"}
 
-            # Si el click es válido, respondemos el callback query y removemos el teclado inline para deshabilitarlo
+            # Si el click es válido, respondemos el callback query y removemos el teclado inline para deshabilitarlo (UI fallback)
             if callback_query_id:
                 from services.telegram_service import answer_telegram_callback_query
                 await answer_telegram_callback_query(bot_token=token, callback_query_id=callback_query_id)
 
-            if message_obj and message_obj.get("message_id"):
+            if msg_obj and msg_obj.get("message_id"):
                 from services.telegram_service import clear_telegram_reply_markup
-                await clear_telegram_reply_markup(bot_token=token, chat_id=chat_id, message_id=message_obj["message_id"])
+                await clear_telegram_reply_markup(
+                    bot_token=token,
+                    chat_id=chat_id,
+                    message_id=msg_obj["message_id"],
+                )
+
+            # Limpiar callback_data de la versión para el procesamiento de intents
+            callback_data = raw_callback_data.split("#")[0]
 
             # Interceptar botones de navegación de categorías
             if callback_data == "menu:categorias":
@@ -177,14 +263,17 @@ async def telegram_webhook(
                     for i in range(0, len(categories), 2):
                         row = []
                         for cat in categories[i:i+2]:
-                            row.append({"text": f"🏷️ {cat.name}", "callback_data": f"cat_select:{cat.name}"})
+                            row.append(
+                                {"text": f"🏷️ {cat.name}", "callback_data": f"cat_select:{cat.name}"}
+                            )
                         buttons.append(row)
                     buttons.append([{"text": "🔙 Menú Principal", "callback_data": "menu:back_to_main"}])
-                    await send_telegram_message(
+                    await send_menu_message(
                         bot_token=token,
                         chat_id=chat_id,
                         text="Selecciona una categoría para ver los productos disponibles:",
-                        reply_markup={"inline_keyboard": buttons}
+                        reply_markup={"inline_keyboard": buttons},
+                        fsm=fsm,
                     )
                 finally:
                     db.close()
@@ -196,7 +285,11 @@ async def telegram_webhook(
                 from models.product import Product
                 db = SessionLocal()
                 try:
-                    products = db.query(Product).filter(Product.category == category_name, Product.is_available.is_(True)).all()
+                    products = (
+                        db.query(Product)
+                        .filter(Product.category == category_name, Product.is_available.is_(True))
+                        .all()
+                    )
                     if not products:
                         response_text = f"No hay productos disponibles en la categoría '{category_name}' en este momento."
                     else:
@@ -204,28 +297,44 @@ async def telegram_webhook(
                         for p in products:
                             lines.append(f"- {p.name}: ${float(p.price):,.0f} ({p.stock} un)")
                         response_text = "\n".join(lines)
-                    await send_telegram_message(
+                    await send_menu_message(
                         bot_token=token,
                         chat_id=chat_id,
                         text=response_text,
-                        reply_markup={"inline_keyboard": [[{"text": "Volver a Categorías 🏷️", "callback_data": "menu:categorias"}], [{"text": "Menú Principal 🔙", "callback_data": "menu:back_to_main"}]]}
+                        reply_markup={
+                            "inline_keyboard": [
+                                [
+                                    {
+                                        "text": "Volver a Categorías 🏷️",
+                                        "callback_data": "menu:categorias",
+                                    }
+                                ],
+                                [
+                                    {
+                                        "text": "Menú Principal 🔙",
+                                        "callback_data": "menu:back_to_main",
+                                    }
+                                ],
+                            ]
+                        },
+                        fsm=fsm,
                     )
                 finally:
                     db.close()
                 return {"status": "ok"}
 
             elif callback_data == "menu:back_to_main":
-                await send_telegram_message(
+                await send_menu_message(
                     bot_token=token,
                     chat_id=chat_id,
                     text="¿En qué puedo ayudarte hoy?",
-                    reply_markup=build_main_menu(_get_human_agent_available())
+                    reply_markup=build_main_menu(_get_human_agent_available()),
+                    fsm=fsm,
                 )
                 return {"status": "ok"}
 
             # Resolver FSM
-            fsm = TelegramConversationFSM(user_id=user_id, state_store=get_fsm_store())
-            new_state, context = await fsm.transition(callback_data)
+            new_state, context = await fsm.transition(raw_callback_data)
 
             intent = context.get("intent")
             response_text = f"Has seleccionado una opción no implementada: {callback_data}"
@@ -241,11 +350,14 @@ async def telegram_webhook(
             elif intent == "contactar_humano":
                 response_text = "Un ejecutivo se pondrá en contacto contigo pronto. ¿En qué más puedo ayudarte?"
 
-            await send_telegram_message(
+            await send_menu_message(
                 bot_token=token,
                 chat_id=chat_id,
                 text=response_text,
-                reply_markup=build_main_menu(_get_human_agent_available()) if new_state == FSMState.IDLE else None,
+                reply_markup=build_main_menu(_get_human_agent_available())
+                if new_state == FSMState.IDLE
+                else None,
+                fsm=fsm,
             )
             return {"status": "ok"}
 
@@ -289,18 +401,20 @@ async def telegram_webhook(
                     "Ubicación: Santiago, Chile.\n\n"
                     "¿En qué puedo ayudarte hoy?"
                 )
-                await send_telegram_message(
+                await send_menu_message(
                     bot_token=token,
                     chat_id=chat_id,
                     text=welcome_text,
                     reply_markup=build_main_menu(_get_human_agent_available()),
+                    fsm=fsm,
                 )
             else:
-                await send_telegram_message(
+                await send_menu_message(
                     bot_token=token,
                     chat_id=chat_id,
                     text="Sesión conversacional reiniciada y limpia. Tu carro de compra sigue conservado intacto. ¿En qué puedo ayudarte hoy?",
                     reply_markup=build_main_menu(_get_human_agent_available()),
+                    fsm=fsm,
                 )
             return {"status": "ok"}
 
@@ -333,11 +447,14 @@ async def telegram_webhook(
 
         # Enviar respuesta con el menú principal siempre activo si estamos en IDLE
         current_state = await fsm.get_state()
-        await send_telegram_message(
+        await send_menu_message(
             bot_token=token,
             chat_id=chat_id,
             text=response_text,
-            reply_markup=build_main_menu(_get_human_agent_available()) if current_state == FSMState.IDLE else None,
+            reply_markup=build_main_menu(_get_human_agent_available())
+            if current_state == FSMState.IDLE
+            else None,
+            fsm=fsm,
         )
 
         return {"status": "ok"}
