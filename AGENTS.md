@@ -28,44 +28,93 @@ RAG está prohibido para productos, stock, precios, catálogo, compras o cotizac
 ## PROJECT STRUCTURE
 
 ```
-chatbot_core/
-├── main.py                    # FastAPI app + endpoints + lifespan
-├── config/
-│   ├── __init__.py
-│   ├── database.py            # Sync engine (psycopg2) + async engine (asyncpg)
-│   └── settings.py            # Pydantic-settings: DATABASE_URL, OPENROUTER_API_KEY, etc.
-├── agents/
-│   ├── __init__.py
-│   ├── constants.py           # GADK_MODEL, GADK_INSTRUCTION, GADK_APP_NAME
-│   └── root_agent.py          # ADK Agent + Runner + TOOLS (function calling)
-├── models/
-│   ├── __init__.py
-│   ├── user.py
-│   ├── conversation.py
-│   ├── message.py
-│   └── business_config.py     # Local business configuration profile
-├── repositories/
-│   ├── __init__.py
-│   ├── base.py
-│   ├── user_repository.py
-│   ├── conversation_repository.py
-│   ├── message_repository.py
-│   └── business_config_repository.py
-├── services/
-│   ├── __init__.py
-│   ├── agent_factory.py       # Cache management
-│   ├── conversation_service.py
-│   ├── user_service.py
-│   └── business_config_service.py
-├── tests/
-│   ├── __init__.py
-│   └── test_agent_factory.py
-├── alembic/
-│   └── versions/
-├── scripts/
-├── Dockerfile
-├── pyproject.toml
-├── .env
+chatbot/
+├── core/                          # Aplicación principal (FastAPI)
+│   ├── main.py                    # FastAPI app entry point
+│   ├── app/
+│   │   ├── container.py           # Dependency injection container
+│   │   └── lifespan.py            # Startup/shutdown (DB, Redis, ADK)
+│   ├── agents/
+│   │   ├── constants.py           # MODEL, INSTRUCTION, APP_NAME
+│   │   └── root_agent.py          # ADK Agent + Runner + tools
+│   ├── application/               # Capa de aplicación (DDD)
+│   │   ├── ports/                 # Interfaces: channel_port, llm_port, rag_port
+│   │   └── use_cases/
+│   │       ├── commands.py
+│   │       └── process_message.py # Orquesta mensaje → LLM → respuesta
+│   ├── config/
+│   │   ├── database.py            # Sync (psycopg2) + Async (asyncpg) engines
+│   │   ├── redis.py               # Redis client factory (Upstash TLS)
+│   │   └── settings.py            # Pydantic-settings: todas las variables de entorno
+│   ├── controllers/               # FastAPI routers
+│   │   ├── admin_controller.py
+│   │   ├── business_config_controller.py
+│   │   ├── category_controller.py
+│   │   ├── chat_controller.py
+│   │   ├── health_controller.py
+│   │   ├── order_controller.py
+│   │   ├── session_controller.py
+│   │   ├── telegram_controller.py # Webhook Telegram
+│   │   └── user_controller.py
+│   ├── domain/                    # Entidades y lógica de dominio
+│   ├── dtos/
+│   │   ├── request/               # ChatRequest, ConfigRequest, UserRequest
+│   │   └── response/              # ChatResponse, ConfigResponse, etc.
+│   ├── exceptions/
+│   │   ├── global_handler.py      # FastAPI exception handlers
+│   │   └── *_exceptions.py        # Por dominio: user, conversation, config
+│   ├── infrastructure/
+│   │   ├── channels/
+│   │   │   └── telegram_fsm.py    # FSM del flujo Telegram
+│   │   ├── llm/
+│   │   │   └── adk_provider.py    # ADKLLMProvider (implementa llm_port)
+│   │   └── rag/
+│   │       └── kb_rag_provider.py # RAG sobre knowledge base
+│   ├── middleware/
+│   │   └── request_id.py
+│   ├── models/                    # SQLAlchemy ORM
+│   │   ├── business_config.py
+│   │   ├── cart.py
+│   │   ├── category.py
+│   │   ├── conversation.py
+│   │   ├── knowledge_base.py
+│   │   ├── message.py
+│   │   ├── order.py
+│   │   ├── product.py
+│   │   ├── system_setting.py
+│   │   └── user.py
+│   ├── repositories/              # Data access layer
+│   │   ├── conversation_repository.py
+│   │   ├── kb_repository.py
+│   │   ├── message_repository.py
+│   │   ├── product_repository.py
+│   │   ├── system_setting_repository.py
+│   │   └── user_repository.py
+│   ├── services/
+│   │   ├── agent_factory.py
+│   │   ├── cart_service.py
+│   │   ├── category_service.py
+│   │   ├── embedding_service.py
+│   │   ├── kb_service.py
+│   │   ├── order_service.py
+│   │   ├── product_service.py
+│   │   ├── rag_context_builder.py
+│   │   ├── rag_policy.py
+│   │   ├── redis_session_service.py  # RedisSessionService (Upstash)
+│   │   ├── session_service_factory.py
+│   │   ├── telegram_service.py
+│   │   ├── transactional.py
+│   │   └── user_service.py
+│   ├── scripts/
+│   │   └── seed_db.py
+│   ├── tests/                     # pytest — cobertura por módulo
+│   ├── Dockerfile
+│   └── pyproject.toml
+├── docker-compose.yml             # Solo desarrollo local
+├── docker-compose.prod.yml        # Producción (db + api + nginx + tunnel)
+├── docker-compose.monitoring.yml  # Observabilidad (opcional)
+├── nginx.conf                     # Reverse proxy + rate limiting
+├── .env                           # Variables de entorno (no commitear)
 └── .env.example
 ```
 
@@ -144,11 +193,12 @@ agent = Agent(
     tools=[get_current_datetime, get_chatbot_info, consultar_stock, consultar_precio, contactar_humano],
 )
 
-# InMemorySessionService (NOT DatabaseSessionService)
+# Session backend: Redis (Upstash TLS) en producción via RedisSessionService
+# InMemorySessionService solo en tests/desarrollo local sin Redis
 runner = Runner(
     agent=agent,
     app_name="chatbot_assistant",
-    session_service=InMemorySessionService(),
+    session_service=InMemorySessionService(),  # reemplazar por RedisSessionService en prod
     auto_create_session=True,
 )
 ```
@@ -224,22 +274,133 @@ chatbot_core is mounted as read-only volume in Windmill workers:
 
 ## DEPLOYMENT
 
-### Docker:
+### Compose file (producción):
 
 ```bash
-docker compose -f docker-compose.chatbot.yml up -d --build
+# Levantar stack completo (db → api → nginx → tunnel)
+docker compose -f docker-compose.prod.yml up -d --remove-orphans
+
+# Bajar stack limpio
+docker compose -f docker-compose.prod.yml down --remove-orphans
+
+# Rebuild API tras cambios de código
+docker compose -f docker-compose.prod.yml up -d --build api
+```
+
+> `docker-compose.yml` es solo para desarrollo local. NUNCA usar en prod.
+
+### Startup order y tiempos:
+
+```
+db      → healthy  ~11s
+api     → healthy  ~45-60s  (start_period en healthcheck)
+nginx   → started  inmediato tras api healthy
+tunnel  → started  inmediato tras nginx
 ```
 
 ### Health Check:
 
-```
-GET http://localhost:8001/health
-→ {"status":"ok","service":"chatbot-core","model":"nemotron-3-super-120b:free","worker_pid":"7"}
+```bash
+# Local
+curl http://localhost/health
+# → {"status":"ok","service":"chatbot-core","model":"deepseek-v4-flash","session_backend":"redis"}
+
+# Via tunnel (end-to-end)
+curl https://bot.stax.ink/health
 ```
 
 ### Workers:
 
-4 uvicorn workers with uvloop. Each worker has its own LLMService + ADK Runner.
+Uvicorn con WatchFiles en dev / uvloop en prod. Cada worker tiene su propio LLMService + ADK Runner.
+
+---
+
+## INFRASTRUCTURE
+
+### Redis — Upstash (externo TLS)
+
+- **Backend exclusivo de sesiones**: Upstash Redis Cloud (TLS, `rediss://`)
+- **NO hay Redis interno** en el stack de producción
+- URL configurada en `.env` como `REDIS_URL=rediss://...@master-grackle-154605.upstash.io:6379`
+- El `docker-compose.prod.yml` **no tiene** servicio `redis` — todo va a Upstash
+- Verificar conexión: `redis.ping()` → `True`
+
+### Cloudflare Tunnel
+
+- Servicio: `cloudflare_tunnel` en `docker-compose.prod.yml`
+- Rutea `bot.stax.ink` → `http://bot:7080` (configurado en dashboard Cloudflare)
+- El hostname `bot` es un **alias de red Docker** del contenedor `chatbot_nginx`
+- **CRÍTICO**: sin el alias `bot` en la red de nginx, el tunnel da `no such host` y el webhook falla con 530/502
+
+### Nginx — alias `bot` (OBLIGATORIO)
+
+El servicio nginx en `docker-compose.prod.yml` DEBE tener:
+
+```yaml
+networks:
+  chatbot_net:
+    aliases:
+      - bot
+```
+
+Sin este alias el tunnel de Cloudflare no puede resolver el origen y todos los requests fallan.
+
+### Nginx — resolver Docker DNS (OBLIGATORIO)
+
+El `nginx.conf` DEBE tener el resolver de Docker para evitar fallo al arrancar si `api` no está aún en DNS:
+
+```nginx
+resolver 127.0.0.11 valid=10s ipv6=off;
+
+server {
+    set $api_backend http://api:8000;
+    # ...
+    location / {
+        proxy_pass $api_backend;  # variable, NO upstream estático
+    }
+}
+```
+
+Sin esto, nginx crashea al inicio con `host not found in upstream "api:8000"`.
+
+### Puertos del host
+
+| Puerto | Servicio | Notas |
+|---|---|---|
+| `80` | nginx → API | Apache del sistema debe estar desinstalado |
+| `443` | nginx → API (SSL) | Certificados via Let's Encrypt |
+| `7080` | nginx interno | Usado por el tunnel (`bot:7080`) |
+| `5433` | PostgreSQL | Solo localhost, no expuesto externamente |
+
+> Apache (`apache2`) conflicta con el puerto 80. Debe estar desinstalado: `sudo apt remove apache2`
+
+### Telegram Webhook
+
+- URL: `https://bot.stax.ink/telegram/webhook/<BOT_TOKEN>`
+- Verificar estado: `GET https://api.telegram.org/bot<TOKEN>/getWebhookInfo`
+- Estado correcto: `pending_update_count: 0`, `last_error_message: null`
+- Error 530 = tunnel caído o sin alias `bot`
+- Error 502 = nginx caído o no resuelve `api`
+
+### Diagnóstico rápido
+
+```bash
+# 1. Contenedores
+docker ps --format "table {{.Names}}\t{{.Status}}"
+
+# 2. Conexiones internas
+docker exec chatbot_api python3 -c "from config.database import SessionLocal; import sqlalchemy; db=SessionLocal(); print(db.execute(sqlalchemy.text('SELECT 1')).fetchone())"
+
+# 3. Redis
+docker exec chatbot_api python3 -c "import asyncio,redis.asyncio as r,os; asyncio.run(r.from_url(os.environ['REDIS_URL']).ping()) and print('OK')"
+
+# 4. End-to-end
+curl https://bot.stax.ink/health
+
+# 5. Webhook
+TOKEN=$(grep TELEGRAM_BOT_TOKEN .env | cut -d= -f2)
+curl -s https://api.telegram.org/bot$TOKEN/getWebhookInfo | python3 -m json.tool
+```
 
 ---
 
@@ -247,11 +408,19 @@ GET http://localhost:8001/health
 
 | Variable | Required | Description |
 |---|---|---|
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `OPENROUTER_API_KEY` | Yes | OpenRouter API key for LiteLlm |
-| `MODEL_NAME` | No | LiteLlm model identifier |
-| `MODEL_DISPLAY` | No | Human-readable model name |
-| `APP_ENV` | No | `development` or `production` |
+| `DATABASE_URL` | Yes | PostgreSQL connection string (`postgresql://user:pass@db:5432/chatbot`) |
+| `OPENROUTER_API_KEY` | Yes | OpenRouter API key para LiteLlm |
+| `REDIS_URL` | Yes | Upstash TLS URL (`rediss://default:...@host:6379`) |
+| `SESSION_BACKEND` | Yes | Siempre `redis` en producción |
+| `REDIS_NAMESPACE` | No | Prefijo de claves Redis (default: `chatbot:adk:v1`) |
+| `REDIS_UPSTASH_REST_URL` | No | REST API URL de Upstash (opcional, para admin) |
+| `REDIS_UPSTASH_REST_TOKEN` | No | Token REST de Upstash |
+| `TELEGRAM_BOT_TOKEN` | Yes | Token del bot de Telegram (`123456:ABC...`) |
+| `TELEGRAM_ID` | Yes | Chat ID del admin/owner |
+| `CLOUDFLARE_TUNNEL_TOKEN` | Yes | Token del tunnel de Cloudflare |
+| `MODEL_NAME` | No | Identificador LiteLlm (default: `deepseek-v4-flash`) |
+| `MODEL_DISPLAY` | No | Nombre legible del modelo |
+| `APP_ENV` | No | `development` o `production` |
 | `LOG_LEVEL` | No | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 
 ---
