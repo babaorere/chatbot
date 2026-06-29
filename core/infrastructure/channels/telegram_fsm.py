@@ -103,9 +103,12 @@ class TelegramConversationFSM:
             state: Nuevo estado a establecer.
             context: Datos adicionales del estado (ej: producto consultado).
         """
+        import time as ttime
+        ctx = context or {}
+        ctx["_last_interaction_at"] = ttime.time()
         await self._store.set(
             self._user_id,
-            {"state": state.value, "context": context or {}},
+            {"state": state.value, "context": ctx},
         )
 
     async def reset(self) -> None:

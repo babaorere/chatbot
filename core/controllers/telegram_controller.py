@@ -93,7 +93,7 @@ def _get_human_agent_available() -> bool:
         cfg_svc = BusinessConfigService(db)
         cfg = cfg_svc.get_config()
         val = cfg.human_agent_available if cfg else True
-        _human_agent_cache = {"value": val, "expires_at": now + 60}
+        _human_agent_cache = {"value": val, "expires_at": now + 300}
         return val
     except Exception:
         return True
@@ -112,6 +112,37 @@ async def _process_telegram_update_core(
     process_message_uc: Any,
 ) -> None:
     """Núcleo del procesamiento de actualizaciones de Telegram."""
+    fsm = TelegramConversationFSM(user_id=user_id, state_store=get_fsm_store())
+
+    # Chequeo de expiración por inactividad de 30 minutos (1800 segundos)
+    ctx = await fsm.get_context()
+    last_interaction = ctx.get("_last_interaction_at")
+    if last_interaction is not None:
+        if time.time() - last_interaction >= 1800:
+            logger.info("Session for user %s expired due to inactivity. Resetting FSM & LLM context.", user_id)
+            await fsm.reset()
+            
+            from config.database import SessionLocal
+            from services.user_service import UserService
+            from services.conversation_service import ConversationService
+            db = SessionLocal()
+            try:
+                u_svc = UserService(db)
+                user = u_svc.get_or_create(external_id=user_id, platform="telegram")
+                conv_svc = ConversationService(db)
+                conversations = conv_svc.get_by_user_id(user.id)
+                session_id = conversations[0].session_id if conversations else str(uuid.uuid4())
+            finally:
+                db.close()
+            
+            await process_message_uc.clear_session(user_id=user_id, session_id=session_id)
+            
+            # Forzar el comportamiento de /start automático
+            if callback_query:
+                callback_query["data"] = "menu:back_to_main"
+            elif message_obj:
+                message_obj["text"] = "/start"
+
     if callback_query:
         # Es un click en el menú (InlineKeyboard)
         raw_callback_data = callback_query.get("data")
@@ -119,7 +150,6 @@ async def _process_telegram_update_core(
             return
 
         # Verificar estado del FSM para validar si se permite la acción del menú
-        fsm = TelegramConversationFSM(user_id=user_id, state_store=get_fsm_store())
         current_state = await fsm.get_state()
         active_menu_id = await fsm.get_active_menu_id()
         current_fsm_version = await fsm.get_fsm_version()
@@ -322,8 +352,6 @@ async def _process_telegram_update_core(
     if not message_text:
         return
 
-    # Revisar estado actual del FSM
-    fsm = TelegramConversationFSM(user_id=user_id, state_store=get_fsm_store())
     current_state = await fsm.get_state()
     fsm_context = await fsm.get_context()
 
