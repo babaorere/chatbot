@@ -23,7 +23,11 @@ from infrastructure.channels.telegram_fsm import (
     RedisFSMStateStore,
 )
 from config.settings import settings
-from services.telegram_service import send_telegram_message, build_main_menu, inject_version_to_reply_markup
+from services.telegram_service import (
+    send_telegram_message,
+    build_main_menu,
+    inject_version_to_reply_markup,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,10 +62,25 @@ async def send_menu_message(
     """Wrapper para enviar mensajes. Si contiene reply_markup, inyecta la versión del FSM
 
     e incrementa el contador, guardando el message_id resultante como el menú activo.
+    También persiste las opciones en el FSM context para soporte híbrido numérico.
     """
     if reply_markup and "inline_keyboard" in reply_markup:
         version = await fsm.increment_fsm_version()
         reply_markup = inject_version_to_reply_markup(reply_markup, version)
+
+        # Extraer y guardar callback_data para entrada numérica híbrida
+        options = []
+        for row in reply_markup["inline_keyboard"]:
+            for btn in row:
+                if "callback_data" in btn:
+                    cb = btn["callback_data"]
+                    base = cb.split("#")[0]
+                    options.append(base)
+
+        ctx = await fsm.get_context()
+        ctx["_menu_options"] = options
+        state = await fsm.get_state()
+        await fsm.set_state(state, ctx)
 
     msg_id = await send_telegram_message(
         bot_token=bot_token,
@@ -88,6 +107,7 @@ def _get_human_agent_available() -> bool:
 
     from config.database import SessionLocal
     from services.business_config_service import BusinessConfigService
+
     db = SessionLocal()
     try:
         cfg_svc = BusinessConfigService(db)
@@ -114,29 +134,59 @@ async def _process_telegram_update_core(
     """Núcleo del procesamiento de actualizaciones de Telegram."""
     fsm = TelegramConversationFSM(user_id=user_id, state_store=get_fsm_store())
 
+    # Mapeo de entrada numérica a callback query simulado (soporte híbrido)
+    if message_obj and not callback_query:
+        message_text = message_obj.get("text")
+        if message_text:
+            stripped = message_text.strip()
+            if stripped.isdigit():
+                val = int(stripped)
+                ctx = await fsm.get_context()
+                options = ctx.get("_menu_options", [])
+                if 1 <= val <= len(options):
+                    selected_callback = options[val - 1]
+                    current_fsm_version = await fsm.get_fsm_version()
+                    callback_query = {
+                        "id": f"num_{int(time.time() * 1000)}",
+                        "from": message_obj.get("from"),
+                        "message": message_obj,
+                        "data": f"{selected_callback}#{current_fsm_version}",
+                    }
+                    callback_query_id = callback_query["id"]
+                    msg_obj = message_obj
+                    message_obj = None  # Descartamos procesamiento de mensaje libre
+
     # Chequeo de expiración por inactividad de 30 minutos (1800 segundos)
     ctx = await fsm.get_context()
     last_interaction = ctx.get("_last_interaction_at")
     if last_interaction is not None:
         if time.time() - last_interaction >= 1800:
-            logger.info("Session for user %s expired due to inactivity. Resetting FSM & LLM context.", user_id)
+            logger.info(
+                "Session for user %s expired due to inactivity. Resetting FSM & LLM context.",
+                user_id,
+            )
             await fsm.reset()
-            
+
             from config.database import SessionLocal
             from services.user_service import UserService
             from services.conversation_service import ConversationService
+
             db = SessionLocal()
             try:
                 u_svc = UserService(db)
                 user = u_svc.get_or_create(external_id=user_id, platform="telegram")
                 conv_svc = ConversationService(db)
                 conversations = conv_svc.get_by_user_id(user.id)
-                session_id = conversations[0].session_id if conversations else str(uuid.uuid4())
+                session_id = (
+                    conversations[0].session_id if conversations else str(uuid.uuid4())
+                )
             finally:
                 db.close()
-            
-            await process_message_uc.clear_session(user_id=user_id, session_id=session_id)
-            
+
+            await process_message_uc.clear_session(
+                user_id=user_id, session_id=session_id
+            )
+
             # Forzar el comportamiento de /start automático
             if callback_query:
                 callback_query["data"] = "menu:back_to_main"
@@ -158,9 +208,10 @@ async def _process_telegram_update_core(
         is_valid = False
         btn_version = None
 
-        # Intentar Capa 1: ID de Mensaje
-        if active_menu_id is not None and msg_obj:
-            is_valid = (msg_obj.get("message_id") == active_menu_id)
+        # Intentar Capa 1: ID de Mensaje (solo si no es una selección numérica híbrida)
+        is_numeric_selection = callback_query.get("id", "").startswith("num_")
+        if active_menu_id is not None and msg_obj and not is_numeric_selection:
+            is_valid = msg_obj.get("message_id") == active_menu_id
         else:
             # Capa 2: Contador de Versión/Turnos
             if "#" in raw_callback_data:
@@ -170,10 +221,11 @@ async def _process_telegram_update_core(
                     pass
 
             if btn_version is not None:
-                is_valid = (btn_version == current_fsm_version)
+                is_valid = btn_version == current_fsm_version
             else:
                 # Capa 3: Validación Temporal (menos de 10 minutos) y Estado FSM
                 import time as ttime
+
                 msg_date = msg_obj.get("date", 0) if msg_obj else 0
                 current_time = int(ttime.time())
                 is_valid = (current_time - msg_date < 600) and (
@@ -191,9 +243,11 @@ async def _process_telegram_update_core(
             )
             # Solución 2: Responder callback y limpiar reply markup en paralelo
             import asyncio
+
             tasks = []
             if callback_query_id:
                 from services.telegram_service import answer_telegram_callback_query
+
                 tasks.append(
                     answer_telegram_callback_query(
                         bot_token=token,
@@ -203,6 +257,7 @@ async def _process_telegram_update_core(
                 )
             if msg_obj and msg_obj.get("message_id"):
                 from services.telegram_service import clear_telegram_reply_markup
+
                 tasks.append(
                     clear_telegram_reply_markup(
                         bot_token=token,
@@ -216,14 +271,19 @@ async def _process_telegram_update_core(
 
         # Si el click es válido, respondemos el callback query y removemos el teclado inline (Solución 2 en paralelo)
         import asyncio
+
         tasks = []
         if callback_query_id:
             from services.telegram_service import answer_telegram_callback_query
+
             tasks.append(
-                answer_telegram_callback_query(bot_token=token, callback_query_id=callback_query_id)
+                answer_telegram_callback_query(
+                    bot_token=token, callback_query_id=callback_query_id
+                )
             )
         if msg_obj and msg_obj.get("message_id"):
             from services.telegram_service import clear_telegram_reply_markup
+
             tasks.append(
                 clear_telegram_reply_markup(
                     bot_token=token,
@@ -241,19 +301,32 @@ async def _process_telegram_update_core(
         if callback_data == "menu:categorias":
             from config.database import SessionLocal
             from services.category_service import CategoryService
+
             db = SessionLocal()
             try:
                 cat_svc = CategoryService(db)
                 categories = cat_svc.list_categories()
                 buttons = []
+                idx = 1
                 for i in range(0, len(categories), 2):
                     row = []
-                    for cat in categories[i:i+2]:
+                    for cat in categories[i : i + 2]:
                         row.append(
-                            {"text": f"🏷️ {cat.name}", "callback_data": f"cat_select:{cat.name}"}
+                            {
+                                "text": f"{idx}. 🏷️ {cat.name}",
+                                "callback_data": f"cat_select:{cat.name}",
+                            }
                         )
+                        idx += 1
                     buttons.append(row)
-                buttons.append([{"text": "🔙 Menú Principal", "callback_data": "menu:back_to_main"}])
+                buttons.append(
+                    [
+                        {
+                            "text": f"{idx}. 🔙 Menú Principal",
+                            "callback_data": "menu:back_to_main",
+                        }
+                    ]
+                )
                 await send_menu_message(
                     bot_token=token,
                     chat_id=chat_id,
@@ -269,11 +342,15 @@ async def _process_telegram_update_core(
             category_name = callback_data.split(":", 1)[1]
             from config.database import SessionLocal
             from models.product import Product
+
             db = SessionLocal()
             try:
                 products = (
                     db.query(Product)
-                    .filter(Product.category == category_name, Product.is_available.is_(True))
+                    .filter(
+                        Product.category == category_name,
+                        Product.is_available.is_(True),
+                    )
                     .all()
                 )
                 if not products:
@@ -281,7 +358,9 @@ async def _process_telegram_update_core(
                 else:
                     lines = [f"Productos en '{category_name}':"]
                     for p in products:
-                        lines.append(f"- {p.name}: ${float(p.price):,.0f} ({p.stock} un)")
+                        lines.append(
+                            f"- {p.name}: ${float(p.price):,.0f} ({p.stock} un)"
+                        )
                     response_text = "\n".join(lines)
                 await send_menu_message(
                     bot_token=token,
@@ -291,13 +370,13 @@ async def _process_telegram_update_core(
                         "inline_keyboard": [
                             [
                                 {
-                                    "text": "Volver a Categorías 🏷️",
+                                    "text": "1. Volver a Categorías 🏷️",
                                     "callback_data": "menu:categorias",
                                 }
                             ],
                             [
                                 {
-                                    "text": "Menú Principal 🔙",
+                                    "text": "2. Menú Principal 🔙",
                                     "callback_data": "menu:back_to_main",
                                 }
                             ],
@@ -364,13 +443,16 @@ async def _process_telegram_update_core(
         from config.database import SessionLocal
         from services.user_service import UserService
         from services.conversation_service import ConversationService
+
         db = SessionLocal()
         try:
             u_svc = UserService(db)
             user = u_svc.get_or_create(external_id=user_id, platform="telegram")
             conv_svc = ConversationService(db)
             conversations = conv_svc.get_by_user_id(user.id)
-            session_id = conversations[0].session_id if conversations else str(uuid.uuid4())
+            session_id = (
+                conversations[0].session_id if conversations else str(uuid.uuid4())
+            )
         finally:
             db.close()
 
@@ -475,7 +557,9 @@ async def process_telegram_update_background(
                 try:
                     await redis_client.delete(lock_key)
                 except Exception as e:
-                    logger.error("Failed to release Redis lock in background task: %s", e)
+                    logger.error(
+                        "Failed to release Redis lock in background task: %s", e
+                    )
             else:
                 _local_locks.discard(user_id)
 
@@ -533,11 +617,17 @@ async def telegram_webhook(
         try:
             lock_acquired = await redis_client.set(lock_key, "locked", ex=20, nx=True)
             if not lock_acquired:
-                logger.warning("Concurrency warning: duplicate request from user %s blocked", user_id)
+                logger.warning(
+                    "Concurrency warning: duplicate request from user %s blocked",
+                    user_id,
+                )
                 if callback_query:
                     callback_query_id = callback_query.get("id")
                     if callback_query_id:
-                        from services.telegram_service import answer_telegram_callback_query
+                        from services.telegram_service import (
+                            answer_telegram_callback_query,
+                        )
+
                         await answer_telegram_callback_query(
                             bot_token=token,
                             callback_query_id=callback_query_id,
@@ -548,11 +638,15 @@ async def telegram_webhook(
             logger.error("Redis concurrency lock error: %s", e)
     else:
         if user_id in _local_locks:
-            logger.warning("Local concurrency warning: duplicate request from user %s blocked", user_id)
+            logger.warning(
+                "Local concurrency warning: duplicate request from user %s blocked",
+                user_id,
+            )
             if callback_query:
                 callback_query_id = callback_query.get("id")
                 if callback_query_id:
                     from services.telegram_service import answer_telegram_callback_query
+
                     await answer_telegram_callback_query(
                         bot_token=token,
                         callback_query_id=callback_query_id,

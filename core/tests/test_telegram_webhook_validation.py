@@ -5,8 +5,14 @@ from main import app
 from app.container import get_process_message_uc
 from infrastructure.channels.telegram_fsm import TelegramConversationFSM, FSMStateStore
 
-# Override the use case dependency to prevent dependency resolution errors (LLM provider not initialized, DB etc.)
-app.dependency_overrides[get_process_message_uc] = lambda: MagicMock()
+
+@pytest.fixture(autouse=True)
+def setup_mocks():
+    """Override the use case dependency and clean up after each test to prevent pollution."""
+    app.dependency_overrides[get_process_message_uc] = lambda: MagicMock()
+    yield
+    app.dependency_overrides.pop(get_process_message_uc, None)
+
 
 client = TestClient(app)
 
@@ -20,11 +26,20 @@ async def test_webhook_rejects_expired_callback_via_message_id():
     await fsm.increment_fsm_version()  # Establece la versión a 2
 
     # Parchear dependencias y configuración en services.telegram_service
-    with patch("controllers.telegram_controller.get_fsm_store", return_value=store), \
-         patch("controllers.telegram_controller.settings.telegram_bot_token", "fake_token"), \
-         patch("services.telegram_service.answer_telegram_callback_query", new_callable=AsyncMock) as mock_answer, \
-         patch("services.telegram_service.clear_telegram_reply_markup", new_callable=AsyncMock) as mock_clear:
-
+    with (
+        patch("controllers.telegram_controller.get_fsm_store", return_value=store),
+        patch(
+            "controllers.telegram_controller.settings.telegram_bot_token", "fake_token"
+        ),
+        patch(
+            "services.telegram_service.answer_telegram_callback_query",
+            new_callable=AsyncMock,
+        ) as mock_answer,
+        patch(
+            "services.telegram_service.clear_telegram_reply_markup",
+            new_callable=AsyncMock,
+        ) as mock_clear,
+    ):
         payload = {
             "callback_query": {
                 "id": "query_123",
@@ -32,9 +47,9 @@ async def test_webhook_rejects_expired_callback_via_message_id():
                 "message": {
                     "message_id": 8888,  # ID viejo/diferente
                     "chat": {"id": "user_capa1"},
-                    "date": 1000000000
+                    "date": 1000000000,
                 },
-                "data": "menu:stock#2"
+                "data": "menu:stock#2",
             }
         }
 
@@ -45,13 +60,11 @@ async def test_webhook_rejects_expired_callback_via_message_id():
         mock_answer.assert_called_once_with(
             bot_token="fake_token",
             callback_query_id="query_123",
-            text="Este menú ha expirado o ya no está activo."
+            text="Este menú ha expirado o ya no está activo.",
         )
         # Debe haber limpiado los botones del mensaje obsoleto
         mock_clear.assert_called_once_with(
-            bot_token="fake_token",
-            chat_id="user_capa1",
-            message_id=8888
+            bot_token="fake_token", chat_id="user_capa1", message_id=8888
         )
 
 
@@ -65,11 +78,20 @@ async def test_webhook_rejects_expired_callback_via_version():
     await fsm.increment_fsm_version()
     await fsm.increment_fsm_version()
 
-    with patch("controllers.telegram_controller.get_fsm_store", return_value=store), \
-         patch("controllers.telegram_controller.settings.telegram_bot_token", "fake_token"), \
-         patch("services.telegram_service.answer_telegram_callback_query", new_callable=AsyncMock) as mock_answer, \
-         patch("services.telegram_service.clear_telegram_reply_markup", new_callable=AsyncMock) as mock_clear:
-
+    with (
+        patch("controllers.telegram_controller.get_fsm_store", return_value=store),
+        patch(
+            "controllers.telegram_controller.settings.telegram_bot_token", "fake_token"
+        ),
+        patch(
+            "services.telegram_service.answer_telegram_callback_query",
+            new_callable=AsyncMock,
+        ) as mock_answer,
+        patch(
+            "services.telegram_service.clear_telegram_reply_markup",
+            new_callable=AsyncMock,
+        ) as mock_clear,
+    ):
         payload = {
             "callback_query": {
                 "id": "query_124",
@@ -77,9 +99,9 @@ async def test_webhook_rejects_expired_callback_via_version():
                 "message": {
                     "message_id": 8888,
                     "chat": {"id": "user_capa2"},
-                    "date": 1000000000
+                    "date": 1000000000,
                 },
-                "data": "menu:stock#2"  # Botón versión 2, pero FSM está en versión 3
+                "data": "menu:stock#2",  # Botón versión 2, pero FSM está en versión 3
             }
         }
 
@@ -89,10 +111,8 @@ async def test_webhook_rejects_expired_callback_via_version():
         mock_answer.assert_called_once_with(
             bot_token="fake_token",
             callback_query_id="query_124",
-            text="Este menú ha expirado o ya no está activo."
+            text="Este menú ha expirado o ya no está activo.",
         )
         mock_clear.assert_called_once_with(
-            bot_token="fake_token",
-            chat_id="user_capa2",
-            message_id=8888
+            bot_token="fake_token", chat_id="user_capa2", message_id=8888
         )

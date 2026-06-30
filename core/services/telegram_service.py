@@ -22,6 +22,7 @@ async def send_telegram_message(
 
     try:
         from app.container import get_http_client
+
         url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
         payload = {
             "chat_id": chat_id,
@@ -43,7 +44,9 @@ async def send_telegram_message(
         return None
 
 
-def inject_version_to_reply_markup(reply_markup: dict | None, version: int) -> dict | None:
+def inject_version_to_reply_markup(
+    reply_markup: dict | None, version: int
+) -> dict | None:
     """Sufija la versión del FSM al callback_data de todos los botones inline."""
     if not reply_markup or "inline_keyboard" not in reply_markup:
         return reply_markup
@@ -67,21 +70,21 @@ def build_main_menu(human_agent_available: bool = True) -> dict:
     """Construye el menú principal de Telegram."""
     buttons = [
         [
-            {"text": "🏷️ Ver Categorías", "callback_data": "menu:categorias"},
-            {"text": "📦 Consultar Stock", "callback_data": "menu:stock"},
+            {"text": "1. 🏷️ Ver Categorías", "callback_data": "menu:categorias"},
+            {"text": "2. 📦 Consultar Stock", "callback_data": "menu:stock"},
         ],
         [
-            {"text": "💰 Ver Precios", "callback_data": "menu:precio"},
-            {"text": "🕒 Horarios", "callback_data": "menu:horario"},
-        ]
+            {"text": "3. 💰 Ver Precios", "callback_data": "menu:precio"},
+            {"text": "4. 🕒 Horarios", "callback_data": "menu:horario"},
+        ],
     ]
     if human_agent_available:
-        buttons.append([
-            {"text": "👤 Hablar con Humano", "callback_data": "menu:contacto"},
-        ])
-    return {
-        "inline_keyboard": buttons
-    }
+        buttons.append(
+            [
+                {"text": "5. 👤 Hablar con Humano", "callback_data": "menu:contacto"},
+            ]
+        )
+    return {"inline_keyboard": buttons}
 
 
 async def clear_telegram_reply_markup(
@@ -92,6 +95,7 @@ async def clear_telegram_reply_markup(
         return False
     try:
         from app.container import get_http_client
+
         url = f"https://api.telegram.org/bot{bot_token}/editMessageReplyMarkup"
         payload = {
             "chat_id": chat_id,
@@ -102,7 +106,9 @@ async def clear_telegram_reply_markup(
         resp = await client.post(url, json=payload)
         return resp.status_code == 200 and resp.json().get("ok")
     except Exception as e:
-        logger.error("Failed to clear Telegram reply markup for msg %s: %s", message_id, e)
+        logger.error(
+            "Failed to clear Telegram reply markup for msg %s: %s", message_id, e
+        )
         return False
 
 
@@ -114,6 +120,7 @@ async def answer_telegram_callback_query(
         return False
     try:
         from app.container import get_http_client
+
         url = f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery"
         payload = {
             "callback_query_id": callback_query_id,
