@@ -11,7 +11,8 @@ WORKDIR /app
 RUN apt-get update && \
     apt-get install -y --no-install-recommends libpq5 curl && \
     rm -rf /var/lib/apt/lists/* && \
-    useradd -m -U appuser
+    useradd -m -U appuser && \
+    echo "precedence ::ffff:0:0/96  100" >> /etc/gai.conf
 
 # ── Stage 2: Builder (Dependency Compilation) ──────────────────────
 FROM base AS builder
