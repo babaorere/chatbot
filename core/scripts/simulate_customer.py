@@ -2,9 +2,9 @@ import asyncio
 import time
 import httpx
 
-WEBHOOK_URL = "http://localhost:8000/telegram/webhook/8581822135:AAEZQ6azDAbZOT17DHrKVtVyU-P7uh7HIgM"
-USER_ID = 987654321
-CHAT_ID = 987654321
+WEBHOOK_URL = "http://localhost/telegram/webhook/8581822135:AAEZQ6azDAbZOT17DHrKVtVyU-P7uh7HIgM"
+USER_ID = 5391760292
+CHAT_ID = 5391760292
 
 
 async def send_msg(text: str) -> dict:
