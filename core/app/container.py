@@ -67,7 +67,8 @@ def get_http_client() -> Any:
     global _http_client
     if _http_client is None:
         import httpx
-        _http_client = httpx.AsyncClient(timeout=10.0)
+        transport = httpx.AsyncHTTPTransport(local_address="0.0.0.0")
+        _http_client = httpx.AsyncClient(transport=transport, timeout=10.0)
     return _http_client
 
 
