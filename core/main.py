@@ -1,21 +1,4 @@
-# ruff: noqa: E402
 from __future__ import annotations
-
-import socket
-
-# Monkey-patch global para obligar al proyecto a usar únicamente IPv4
-_original_getaddrinfo = socket.getaddrinfo
-
-
-def _forced_ipv4_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
-    if family == socket.AF_UNSPEC:
-        family = socket.AF_INET
-    elif family == socket.AF_INET6:
-        raise socket.gaierror(socket.EAI_FAMILY, "IPv6 is disabled by application configuration")
-    return _original_getaddrinfo(host, port, family, type, proto, flags)
-
-
-socket.getaddrinfo = _forced_ipv4_getaddrinfo
 
 import logging
 from fastapi import FastAPI
