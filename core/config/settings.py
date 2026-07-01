@@ -13,6 +13,44 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def load_docker_secrets(cls, data: dict) -> dict:
+        """Carga secretos desde Docker Secrets (/run/secrets) si existen."""
+        import os
+
+        def get_secret(name: str) -> str | None:
+            path = f"/run/secrets/{name}"
+            if os.path.exists(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        return f.read().strip()
+                except IOError:
+                    pass
+            return None
+
+        # Reemplazar secretos simples si existen en archivos de secretos
+        secret_keys = ["jwt_secret", "admin_api_key", "telegram_bot_token"]
+        for key in secret_keys:
+            val = get_secret(key)
+            if val:
+                data[key] = val
+
+        # Ajuste de base de datos
+        db_pass = get_secret("db_password")
+        if db_pass:
+            db_url = data.get("database_url") or os.environ.get("DATABASE_URL") or "postgresql://shared:shared_secret@127.0.0.1:5433/chatbot"
+            if db_url and "@" in db_url and "://" in db_url:
+                try:
+                    proto, rest = db_url.split("://", 1)
+                    auth, host_db = rest.split("@", 1)
+                    user = auth.split(":", 1)[0] if ":" in auth else auth
+                    data["database_url"] = f"{proto}://{user}:{db_pass}@{host_db}"
+                except Exception:
+                    pass
+
+        return data
+
     # ── Database ─────────────────────────────────────────────────
     database_url: str = "postgresql://shared:shared_secret@127.0.0.1:5433/chatbot"
     db_echo: bool = False
@@ -43,6 +81,14 @@ class Settings(BaseSettings):
     redis_max_connections: int = 100
     redis_retry_attempts: int = 3
 
+    # ── ARQ Worker / Jobs ────────────────────────────────────────
+    arq_enabled: bool = False
+    arq_queue_name: str = "chatbot:jobs"
+    arq_job_timeout_seconds: int = 300
+    arq_job_max_tries: int = 5
+    arq_job_result_ttl_seconds: int = 3600
+    arq_health_check_key: str = "chatbot:jobs:health"
+
     # ── Business configuration ─────────────────────────────────
     business_name: str = "Mi Negocio"
     business_email: str = "contacto@minegocio.com"
@@ -59,10 +105,12 @@ class Settings(BaseSettings):
     # ── Security & Channels ──────────────────────────────────────
     telegram_bot_token: str = ""
     admin_api_key: str = ""
+    jwt_secret: str = ""
     allowed_origins: str = "http://localhost:8083"
 
     @model_validator(mode="after")
     def validate_production_cors(self) -> "Settings":
+        """Impide configuraciones CORS inseguras cuando la app corre en producción."""
         origins = [
             origin.strip()
             for origin in self.allowed_origins.split(",")
@@ -74,15 +122,18 @@ class Settings(BaseSettings):
 
     @property
     def is_production(self) -> bool:
+        """Indica si la aplicación está ejecutándose en modo producción."""
         return self.app_env == "production"
 
     @property
     def use_redis_sessions(self) -> bool:
+        """Indica si el backend de sesiones efectivo debe usar Redis."""
         return self.session_backend.lower() == "redis"
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
+    """Construye y cachea la configuración global desde variables de entorno."""
     return Settings()
 
 

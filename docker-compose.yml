@@ -1,5 +1,3 @@
-version: '3.8'
-
 x-logging: &default-logging
   driver: "json-file"
   options:
@@ -15,9 +13,11 @@ services:
     container_name: chatbot_db
     restart: unless-stopped
     stop_grace_period: 30s
+    ports:
+      - "127.0.0.1:5433:5432"
     environment:
       POSTGRES_USER: ${DB_USER:-shared}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-shared_secret}
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
       POSTGRES_DB: ${DB_NAME:-chatbot}
     volumes:
       - db_data:/var/lib/postgresql
@@ -29,6 +29,8 @@ services:
       timeout: 5s
       retries: 5
     logging: *default-logging
+    secrets:
+      - db_password
     deploy:
       resources:
         limits:
@@ -62,6 +64,11 @@ services:
       db:
         condition: service_healthy
     logging: *default-logging
+    secrets:
+      - jwt_secret
+      - telegram_bot_token
+      - admin_api_key
+      - db_password
     deploy:
       resources:
         limits:
@@ -69,6 +76,44 @@ services:
           memory: 1024M
         reservations:
           memory: 512M
+
+  arq_worker:
+    build:
+      context: ./core
+      dockerfile: Dockerfile
+      target: development
+    container_name: chatbot_arq_worker
+    restart: unless-stopped
+    stop_grace_period: 30s
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=${REDIS_URL}
+      - DATABASE_URL=postgresql://${DB_USER:-shared}:${DB_PASSWORD:-shared_secret}@db:5432/${DB_NAME:-chatbot}
+      - ARQ_ENABLED=true
+    command: ["arq", "workers.arq_worker.WorkerSettings"]
+    volumes:
+      - ./core:/app
+    networks:
+      - chatbot_net
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_started
+    logging: *default-logging
+    secrets:
+      - jwt_secret
+      - telegram_bot_token
+      - admin_api_key
+      - db_password
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          memory: 256M
 
   nginx:
     image: nginx:1.27-alpine
@@ -144,3 +189,13 @@ volumes:
 networks:
   chatbot_net:
     driver: bridge
+
+secrets:
+  jwt_secret:
+    file: ./secrets/jwt_secret.txt
+  telegram_bot_token:
+    file: ./secrets/telegram_bot_token.txt
+  admin_api_key:
+    file: ./secrets/admin_api_key.txt
+  db_password:
+    file: ./secrets/db_password.txt

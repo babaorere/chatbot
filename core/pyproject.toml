@@ -8,6 +8,7 @@ version = "0.3.0"
 description = "Sistema de control de mensajería multiusuario para negocio"
 requires-python = ">=3.12"
 dependencies = [
+    "arq>=0.26",
     "google-adk[extensions]>=2.0.0",
     "litellm>=1.71.2",
     "google-genai>=1.75.0",
@@ -19,7 +20,7 @@ dependencies = [
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
     "python-dotenv>=1.0",
-    "redis>=7.4.0",
+    "redis==5.3.1",
     "alembic>=1.13",
     "sse-starlette>=2.0",
     "openpyxl>=3.1",
@@ -40,6 +41,10 @@ cache_dir = "/tmp/chatbot_core_pytest_cache"
 markers = [
     "integration: tests that require a running API service or external process",
 ]
+filterwarnings = [
+    "ignore:BaseAgentConfig is deprecated and will be removed in future versions\\.:DeprecationWarning",
+    "ignore:Using `httpx` with `starlette\\.testclient` is deprecated; install `httpx2` instead\\.:DeprecationWarning",
+]
 
 [tool.setuptools]
 py-modules = []
@@ -48,15 +53,19 @@ py-modules = []
 where = ["."]
 include = [
     "agents",
+    "app",
     "config",
     "controllers",
     "dtos",
     "dtos.*",
     "exceptions",
+    "jobs",
+    "jobs.*",
     "middleware",
     "models",
     "repositories",
     "services",
+    "workers",
 ]
 exclude = [
     "alembic",

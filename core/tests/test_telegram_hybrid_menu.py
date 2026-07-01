@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
-from fastapi.testclient import TestClient
+from starlette.testclient import TestClient
 from main import app
 from app.container import get_process_message_uc
 from infrastructure.channels.telegram_fsm import TelegramConversationFSM, FSMStateStore
@@ -45,8 +45,14 @@ async def test_telegram_hybrid_menu_flow(mock_use_case):
             "services.telegram_service.clear_telegram_reply_markup",
             new_callable=AsyncMock,
         ),
+        patch(
+            "controllers.telegram_controller._clear_latest_conversation_session",
+            new_callable=AsyncMock,
+        ),
+        patch("controllers.telegram_controller.asyncio.create_task") as mock_create_task,
     ):
         mock_send.return_value = 1001
+        mock_create_task.side_effect = lambda coro: coro.close()
 
         # Enviar /start para limpiar sesión y presentar el menú principal
         payload_start = {
@@ -60,6 +66,8 @@ async def test_telegram_hybrid_menu_flow(mock_use_case):
         }
         resp = client.post("/telegram/webhook/fake_token", json=payload_start)
         assert resp.status_code == 200
+        mock_use_case.clear_session.assert_not_awaited()
+        mock_create_task.assert_called_once()
 
         # El FSM debe haber guardado las opciones del menú principal en el contexto
         ctx = await fsm.get_context()
@@ -94,22 +102,25 @@ async def test_telegram_hybrid_menu_flow(mock_use_case):
             assert resp2.status_code == 200
 
         # Debe haber enviado el listado de categorías a Telegram (con versión incrementada a 3)
-        mock_send.assert_any_call(
-            bot_token="fake_token",
-            chat_id=int(user_id),
-            text="Selecciona una categoría para ver los productos disponibles:",
-            reply_markup={
-                "inline_keyboard": [
-                    [{"text": "1. 🏷️ General", "callback_data": "cat_select:General#3"}],
-                    [
-                        {
-                            "text": "2. 🔙 Menú Principal",
-                            "callback_data": "menu:back_to_main#3",
-                        }
-                    ],
-                ]
-            },
+        category_call = next(
+            call
+            for call in mock_send.call_args_list
+            if call.kwargs.get("text")
+            == "Selecciona una categoría para ver los productos disponibles:"
         )
+        assert category_call.kwargs["bot_token"] == "fake_token"
+        assert category_call.kwargs["chat_id"] == int(user_id)
+        assert category_call.kwargs["reply_markup"] == {
+            "inline_keyboard": [
+                [{"text": "1. 🏷️ General", "callback_data": "cat_select:General#3"}],
+                [
+                    {
+                        "text": "2. 🔙 Menú Principal",
+                        "callback_data": "menu:back_to_main#3",
+                    }
+                ],
+            ]
+        }
 
         # 3. Enviar la opción "2" para volver al menú principal desde el menú de categorías
         payload_option_2 = {
@@ -125,35 +136,37 @@ async def test_telegram_hybrid_menu_flow(mock_use_case):
         assert resp3.status_code == 200
 
         # Debe haber vuelto a enviar el menú principal (con versión incrementada a 4)
-        mock_send.assert_any_call(
-            bot_token="fake_token",
-            chat_id=int(user_id),
-            text="¿En qué puedo ayudarte hoy?",
-            reply_markup={
-                "inline_keyboard": [
-                    [
-                        {
-                            "text": "1. 🏷️ Ver Categorías",
-                            "callback_data": "menu:categorias#4",
-                        },
-                        {
-                            "text": "2. 📦 Consultar Stock",
-                            "callback_data": "menu:stock#4",
-                        },
-                    ],
-                    [
-                        {"text": "3. 💰 Ver Precios", "callback_data": "menu:precio#4"},
-                        {"text": "4. 🕒 Horarios", "callback_data": "menu:horario#4"},
-                    ],
-                    [
-                        {
-                            "text": "5. 👤 Hablar con Humano",
-                            "callback_data": "menu:contacto#4",
-                        }
-                    ],
-                ]
-            },
+        back_to_main_call = next(
+            call
+            for call in mock_send.call_args_list
+            if call.kwargs.get("text") == "¿En qué puedo ayudarte hoy?"
         )
+        assert back_to_main_call.kwargs["bot_token"] == "fake_token"
+        assert back_to_main_call.kwargs["chat_id"] == int(user_id)
+        assert back_to_main_call.kwargs["reply_markup"] == {
+            "inline_keyboard": [
+                [
+                    {
+                        "text": "1. 🏷️ Ver Categorías",
+                        "callback_data": "menu:categorias#4",
+                    },
+                    {
+                        "text": "2. 📦 Consultar Stock",
+                        "callback_data": "menu:stock#4",
+                    },
+                ],
+                [
+                    {"text": "3. 💰 Ver Precios", "callback_data": "menu:precio#4"},
+                    {"text": "4. 🕒 Horarios", "callback_data": "menu:horario#4"},
+                ],
+                [
+                    {
+                        "text": "5. 👤 Hablar con Humano",
+                        "callback_data": "menu:contacto#4",
+                    }
+                ],
+            ]
+        }
 
 
 @pytest.mark.asyncio

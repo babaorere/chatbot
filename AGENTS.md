@@ -1,458 +1,357 @@
-# ============================================================================
-# CHATBOT CORE — RULES & STANDARDS
-# ============================================================================
+# AGENTS.md — Unified Operating Contract
 
-PYTHON: 3.13 (MANDATORY EXCLUSIVITY)
-PKG   : pip (Docker) / uv (local dev)
-LINT  : ruff
-TEST  : pytest
-DATA  : pydantic v2
-LLM   : google-adk[extensions]>=2.0.0 + litellm>=1.71.2
-API   : OpenRouter (NO Google API key directa)
+## Purpose
 
----
+This file is the single operational contract for AI agents working with these projects.
 
-## RAG POLICY
-
-RAG solo está permitido para información general del negocio:
-- Horarios de atención.
-- Zonas de atención y delivery.
-- Formas de pago.
-- Servicios generales.
-- Información institucional no dinámica.
-
-RAG está prohibido para productos, stock, precios, catálogo, compras o cotizaciones. Esos casos deben resolverse con `consultar_stock`, `consultar_precio` u otras herramientas reales, nunca con contexto RAG.
+It replaces fragmented prompt files and defines one unambiguous source for:
+- context
+- scope
+- decision rules
+- prohibitions
+- execution discipline
 
 ---
 
-## PROJECT STRUCTURE
+## Operational Modes
 
-```
-chatbot/
-├── core/                          # Aplicación principal (FastAPI)
-│   ├── main.py                    # FastAPI app entry point
-│   ├── app/
-│   │   ├── container.py           # Dependency injection container
-│   │   └── lifespan.py            # Startup/shutdown (DB, Redis, ADK)
-│   ├── agents/
-│   │   ├── constants.py           # MODEL, INSTRUCTION, APP_NAME
-│   │   └── root_agent.py          # ADK Agent + Runner + tools
-│   ├── application/               # Capa de aplicación (DDD)
-│   │   ├── ports/                 # Interfaces: channel_port, llm_port, rag_port
-│   │   └── use_cases/
-│   │       ├── commands.py
-│   │       └── process_message.py # Orquesta mensaje → LLM → respuesta
-│   ├── config/
-│   │   ├── database.py            # Sync (psycopg2) + Async (asyncpg) engines
-│   │   ├── redis.py               # Redis client factory (Upstash TLS)
-│   │   └── settings.py            # Pydantic-settings: todas las variables de entorno
-│   ├── controllers/               # FastAPI routers
-│   │   ├── admin_controller.py
-│   │   ├── business_config_controller.py
-│   │   ├── category_controller.py
-│   │   ├── chat_controller.py
-│   │   ├── health_controller.py
-│   │   ├── order_controller.py
-│   │   ├── session_controller.py
-│   │   ├── telegram_controller.py # Webhook Telegram
-│   │   └── user_controller.py
-│   ├── domain/                    # Entidades y lógica de dominio
-│   ├── dtos/
-│   │   ├── request/               # ChatRequest, ConfigRequest, UserRequest
-│   │   └── response/              # ChatResponse, ConfigResponse, etc.
-│   ├── exceptions/
-│   │   ├── global_handler.py      # FastAPI exception handlers
-│   │   └── *_exceptions.py        # Por dominio: user, conversation, config
-│   ├── infrastructure/
-│   │   ├── channels/
-│   │   │   └── telegram_fsm.py    # FSM del flujo Telegram
-│   │   ├── llm/
-│   │   │   └── adk_provider.py    # ADKLLMProvider (implementa llm_port)
-│   │   └── rag/
-│   │       └── kb_rag_provider.py # RAG sobre knowledge base
-│   ├── middleware/
-│   │   └── request_id.py
-│   ├── models/                    # SQLAlchemy ORM
-│   │   ├── business_config.py
-│   │   ├── cart.py
-│   │   ├── category.py
-│   │   ├── conversation.py
-│   │   ├── knowledge_base.py
-│   │   ├── message.py
-│   │   ├── order.py
-│   │   ├── product.py
-│   │   ├── system_setting.py
-│   │   └── user.py
-│   ├── repositories/              # Data access layer
-│   │   ├── conversation_repository.py
-│   │   ├── kb_repository.py
-│   │   ├── message_repository.py
-│   │   ├── product_repository.py
-│   │   ├── system_setting_repository.py
-│   │   └── user_repository.py
-│   ├── services/
-│   │   ├── agent_factory.py
-│   │   ├── cart_service.py
-│   │   ├── category_service.py
-│   │   ├── embedding_service.py
-│   │   ├── kb_service.py
-│   │   ├── order_service.py
-│   │   ├── product_service.py
-│   │   ├── rag_context_builder.py
-│   │   ├── rag_policy.py
-│   │   ├── redis_session_service.py  # RedisSessionService (Upstash)
-│   │   ├── session_service_factory.py
-│   │   ├── telegram_service.py
-│   │   ├── transactional.py
-│   │   └── user_service.py
-│   ├── scripts/
-│   │   └── seed_db.py
-│   ├── tests/                     # pytest — cobertura por módulo
-│   ├── Dockerfile
-│   └── pyproject.toml
-├── docker-compose.yml             # Solo desarrollo local
-├── docker-compose.prod.yml        # Producción (db + api + nginx + tunnel)
-├── docker-compose.monitoring.yml  # Observabilidad (opcional)
-├── nginx.conf                     # Reverse proxy + rate limiting
-├── .env                           # Variables de entorno (no commitear)
-└── .env.example
-```
+There are only two valid modes.
+
+### Mode A — Active Project Mode
+The current shell working directory is the active project.
+
+Use this mode by default.
+
+Rules:
+- Read and modify only the active project.
+- Do not treat external projects as editable unless explicitly requested.
+- Use external systems only as reference context.
+
+### Mode B — SkillOS Reference Mode
+SkillOS is a reference architecture and policy system, not the active target, unless the user explicitly says to work on SkillOS itself.
+
+SkillOS reference paths:
+- Root: `/home/manager/Sync/python_proyects/skillos/SkillOS-work/SkillOS-unified`
+- Master prompt: `/home/manager/Sync/python_proyects/skillos/SKILLOS-MASTER-PROMPT.md`
+- Install guide: `/home/manager/Sync/python_proyects/skillos/FINAL-INSTALL-GUIDE.txt`
+- Merge map: `/home/manager/Sync/python_proyects/skillos/MERGE-MAP.txt`
+- Delivery index: `/home/manager/Sync/python_proyects/skillos/DELIVERY-INDEX-FINAL.json`
+
+When SkillOS is used as reference:
+- Do not change the current working directory.
+- Do not write into SkillOS.
+- Read SkillOS only when its architecture, policies, manifests, or patterns are relevant.
+- Treat SkillOS as external SSOT for architectural reference only.
+
+When the user explicitly says to work on SkillOS itself:
+- Promote SkillOS to Active Project Mode.
+- Then `SkillOS-work/SkillOS-unified/` becomes the editable SSOT.
 
 ---
 
-## ADK TOOL DOCSTRING STANDARD (LAW-09)
+## Global Source-of-Truth Rule
 
-Every tool function exposed to the ADK agent MUST have a docstring that follows this exact format.
-Google ADK parses these docstrings to generate JSON schemas for function calling.
+Exactly one editable SSOT may exist per task.
 
-### Template:
+Priority:
+1. If the user explicitly names the target project, that project is the editable SSOT.
+2. Otherwise, the current working directory is the editable SSOT.
+3. SkillOS is reference-only unless explicitly promoted.
 
-```python
-def tool_name(param: str | None = None) -> str:
-    """[Descripción clara y unívoca de la función].
-
-    [Instrucciones operativas para el modelo. Cuándo invocarla y cuándo NO].
-
-    Args:
-        param (str | None): [Descripción detallada de qué es y formato esperado].
-
-    Returns:
-        str: [Descripción de la respuesta que recibirá el contexto del modelo].
-    """
-```
-
-### Rules:
-
-1. **First line**: Action verb + what the function does. No vague language.
-2. **Second paragraph**: When to invoke + when NOT to invoke. Prevents infinite loops.
-3. **Args section**: Every parameter with type + purpose + format + None behavior.
-4. **Returns section**: Exact format the model receives after ADK executes the tool.
-
-### Example (from `consultar_stock`):
-
-```python
-def consultar_stock(producto: str | None = None) -> str:
-    """Inicia una consulta de disponibilidad de un producto específico en el
-    inventario de la negocio.
-
-    Invoca esta herramienta cuando el usuario pregunte si un producto está
-    disponible, si tienen cierto licor/cerveza/vino en stock, o cuando
-    exprese intención de comprar algo y necesites confirmar existencia
-    (ej: 'tienen pisco sour?', 'hay cerveza artesanal de trigo?').
-    NO la invoques para preguntas sobre precios (usa consultar_precio),
-    horarios (usa get_chatbot_info), o saludos generales.
-
-    Args:
-        producto: Nombre del producto que el usuario busca, en formato
-            texto libre (ej: 'pisco', 'vino tinto', 'cerveza artesanal').
-            Usa None si el usuario no mencionó un producto específico.
-
-    Returns:
-        str: Mensaje de confirmación indicando que se consultará la
-            disponibilidad del producto solicitado. Si producto fue
-            proporcionado, incluye el nombre en la respuesta.
-    """
-```
+Never operate with two editable sources of truth at once.
 
 ---
 
-## ADK AGENT PATTERN (LAW-10, LAW-11, LAW-12)
+## SkillOS-Specific Architectural Rules
 
-### Model Configuration:
+These rules apply only when SkillOS is the active project, or when the user asks to apply SkillOS patterns to another project.
 
-```python
-from google.adk import Agent, Runner
-from google.adk.models.lite_llm import LiteLlm
-from google.adk.sessions import InMemorySessionService
+### SkillOS SSOT
+- `SkillOS-work/SkillOS-unified/` is the only source of truth.
+- Ignore intermediate `.zip` bundles as development targets.
+- Use `.zip` artifacts only for traceability, archival, or reconstruction.
 
-# LiteLlm + OpenRouter (NOT direct Gemini)
-agent = Agent(
-    name="chatbot_assistant",
-    model=LiteLlm(model="openrouter/nvidia/nemotron-3-super-120b-a12b:free", api_key=openrouter_key),
-    instruction="Eres el asistente virtual de la Negocio El Buen Trago...",
-    tools=[get_current_datetime, get_chatbot_info, consultar_stock, consultar_precio, contactar_humano],
-)
+### SkillOS RFC Rule
+Architectural or procedural uncertainty must be resolved by reading:
+- `SkillOS-work/SkillOS-unified/docs/rfc/`
+- `SkillOS-work/SkillOS-unified/docs/final/`
 
-# Session backend: Redis (Upstash TLS) en producción via RedisSessionService
-# InMemorySessionService solo en tests/desarrollo local sin Redis
-runner = Runner(
-    agent=agent,
-    app_name="chatbot_assistant",
-    session_service=InMemorySessionService(),  # reemplazar por RedisSessionService en prod
-    auto_create_session=True,
-)
-```
+### SkillOS Recovery / Provenance Rule
+If provenance is needed, use:
+- `FINAL-INSTALL-GUIDE.txt`
+- `MERGE-MAP.txt`
+- `DELIVERY-INDEX-FINAL.json`
 
-### Session Isolation:
+### SkillOS Runtime Rule
+The operational tree is:
+- `SkillOS-work/SkillOS-unified/runtime/skillos/`
 
-Each `(user_id, session_id)` pair gets its own isolated conversation context.
-Users run in parallel without contention. Same user: sequential within session.
+If an entrypoint exists, prefer the official runtime entrypoint defined inside the unified tree over historical references.
 
 ---
 
-## ENTRYPOINT PATTERN
+## Minimal Code Policy
 
-### FastAPI Sync Wrapper:
+Always prefer this exact order:
 
-```python
-@app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest, db: Session = Depends(get_db), llm: LLMService = Depends(get_llm_service)) -> ChatResponse:
-    user = user_svc.get_or_create(external_id=request.user_id, platform=request.platform)
-    session_id = request.session_id or str(uuid.uuid4())
-    response_text = await llm.run_chat(user_id=request.user_id, session_id=session_id, message=request.message)
-    return ChatResponse(session_id=session_id, user_id=request.user_id, response=response_text)
-```
+1. no change
+2. native platform or framework feature
+3. standard library
+4. reuse existing project code
+5. reuse existing installed dependency
+6. write new code only as last resort
 
-### Streaming SSE:
-
-```python
-@app.post("/chat/stream")
-async def chat_stream(request: ChatRequest, db: Session = Depends(get_db), llm: LLMService = Depends(get_llm_service)) -> EventSourceResponse:
-    async def event_generator() -> AsyncGenerator[dict[str, str], None]:
-        async for chunk in llm.run_chat_stream(...):
-            yield {"event": "chunk", "data": chunk}
-        yield {"event": "done", "data": session_id}
-    return EventSourceResponse(event_generator())
-```
+Implications:
+- Do not create code if configuration solves it.
+- Do not add a dependency if stdlib solves it.
+- Do not write a new abstraction if an existing module already fits.
+- Do not fork logic when extending an existing path is sufficient.
 
 ---
 
-## ERROR MODEL
+## Reuse-First Policy
 
-SUCCESS → VALUE
-FAIL    → raise Exception
+Before writing code, always search for:
+- existing files
+- existing modules
+- existing scripts
+- existing manifests
+- existing services
+- existing tests
+- existing utilities
+- existing framework capabilities
 
-FORBIDDEN:
-- silent except
-- return error dict
-- except: pass
+Preference order:
+1. exact project reuse
+2. partial project reuse
+3. stdlib reuse
+4. existing dependency reuse
+5. new code only if none of the above works
 
----
-
-## TEST CONTRACT
-
-AAA PATTERN ONLY
-
-RULES:
-- 1 TEST = 1 BEHAVIOR
-- FILE MIRROR STRUCTURE
-- NO NETWORK/DB (mock LLM calls)
-
-NAME:
-test_<unit>_<case>_<expected>
+Never duplicate logic without first proving reuse is not viable.
 
 ---
 
-## WINDMILL INTEGRATION
+## Deterministic Engineering Rules
 
-chatbot_core is mounted as read-only volume in Windmill workers:
-- Path: `/opt/chatbot_core`
-- Usage: `sys.path.insert(0, '/opt/chatbot_core')`
-- Windmill scripts call the FastAPI API via HTTP: `http://chatbot_core_api:8000/chat`
+Always prefer:
+- deterministic pipelines
+- explicit contracts
+- typed models
+- testable boundaries
+- simple entrypoints
+- small safe changes
 
----
+Avoid:
+- hidden state
+- magical behavior
+- silent fallback
+- speculative abstraction
+- multi-source ambiguity
+- undocumented side effects
 
-## DEPLOYMENT
+Discipline order:
+- correctness
+- traceability
+- maintainability
+- speed
 
-### Compose file (producción):
+Issue rule:
+- Do not downgrade an issue to a warning, note, or optional follow-up.
+- If something is identified as an issue, it must be resolved.
+- This applies even if the issue is inherited, pre-existing, introduced by another session, or introduced by another model.
+- An unresolved issue remains an issue until fixed, not merely documented.
 
-```bash
-# Levantar stack completo (db → api → nginx → tunnel)
-docker compose -f docker-compose.prod.yml up -d --remove-orphans
-
-# Bajar stack limpio
-docker compose -f docker-compose.prod.yml down --remove-orphans
-
-# Rebuild API tras cambios de código
-docker compose -f docker-compose.prod.yml up -d --build api
-```
-
-> `docker-compose.yml` es solo para desarrollo local. NUNCA usar en prod.
-
-### Startup order y tiempos:
-
-```
-db      → healthy  ~11s
-api     → healthy  ~45-60s  (start_period en healthcheck)
-nginx   → started  inmediato tras api healthy
-tunnel  → started  inmediato tras nginx
-```
-
-### Health Check:
-
-```bash
-# Local
-curl http://localhost/health
-# → {"status":"ok","service":"chatbot-core","model":"deepseek-v4-flash","session_backend":"redis"}
-
-# Via tunnel (end-to-end)
-curl https://bot.stax.ink/health
-```
-
-### Workers:
-
-Uvicorn con WatchFiles en dev / uvloop en prod. Cada worker tiene su propio LLMService + ADK Runner.
+Durable job rules (mandatory for phases 1 to 5 of the ARQ migration):
+- Any task that must survive reloads, worker restarts, or transient failures must use a durable job queue, not in-process fire-and-forget scheduling.
+- ARQ jobs must receive only serializable payloads made of primitives or plain JSON-like structures.
+- Never pass DB sessions, ORM model instances, HTTP clients, service objects, locks, request objects, or framework-scoped dependencies into a job payload.
+- Every durable job must construct its own DB session and infrastructure dependencies inside the worker process.
+- Every durable job must be idempotent or explicitly guarded against duplicate execution.
+- Durable jobs must use explicit retry semantics; retries must not rely on reissuing the original web request.
+- Producer and worker dependencies must stay on a mutually compatible version range; no phase is valid if the queue stack does not resolve in the real runtime image.
+- User-facing responses must not be moved to a durable queue when the user is waiting for the immediate answer.
+- Tasks required to compute the immediate user response must stay synchronous in the request path unless the product contract changes.
+- Best-effort cosmetic cleanup may stay in-process only if losing it does not break correctness or contractual UX.
+- If a task affects correctness, reset semantics, alert delivery, reconciliation, or auditability, best-effort scheduling is forbidden.
+- Worker jobs must log traceable identifiers such as job type, user_id, session_id, trace_id, and retry count when applicable.
+- A job interface is part of the architecture contract; changing payload shape requires updating producers, workers, and tests together.
+- Every migration phase that touches background execution must pass both local tests and container/runtime validation before continuing to the next phase.
 
 ---
 
-## INFRASTRUCTURE
+## Python / Backend Standards
 
-### Redis — Upstash (externo TLS)
+Unless the user explicitly overrides them for the active project:
 
-- **Backend exclusivo de sesiones**: Upstash Redis Cloud (TLS, `rediss://`)
-- **NO hay Redis interno** en el stack de producción
-- URL configurada en `.env` como `REDIS_URL=rediss://...@master-grackle-154605.upstash.io:6379`
-- El `docker-compose.prod.yml` **no tiene** servicio `redis` — todo va a Upstash
-- Verificar conexión: `redis.ping()` → `True`
+- Python: 3.13 preferred
+- Lint: `ruff`
+- Test: `pytest`
+- Data validation: `pydantic v2`
+- Strict typed code preferred
+- Clear separation between domain, application, infrastructure, and entrypoints
+- Avoid broad exception swallowing
+- Prefer explicit failure over silent success
 
-### Cloudflare Tunnel
+Error model:
+- success returns value
+- failure raises explicit exception
 
-- Servicio: `cloudflare_tunnel` en `docker-compose.prod.yml`
-- Rutea `bot.stax.ink` → `http://bot:7080` (configurado en dashboard Cloudflare)
-- El hostname `bot` es un **alias de red Docker** del contenedor `chatbot_nginx`
-- **CRÍTICO**: sin el alias `bot` en la red de nginx, el tunnel da `no such host` y el webhook falla con 530/502
-
-### Nginx — alias `bot` (OBLIGATORIO)
-
-El servicio nginx en `docker-compose.prod.yml` DEBE tener:
-
-```yaml
-networks:
-  chatbot_net:
-    aliases:
-      - bot
-```
-
-Sin este alias el tunnel de Cloudflare no puede resolver el origen y todos los requests fallan.
-
-### Nginx — resolver Docker DNS (OBLIGATORIO)
-
-El `nginx.conf` DEBE tener el resolver de Docker para evitar fallo al arrancar si `api` no está aún en DNS:
-
-```nginx
-resolver 127.0.0.11 valid=10s ipv6=off;
-
-server {
-    set $api_backend http://api:8000;
-    # ...
-    location / {
-        proxy_pass $api_backend;  # variable, NO upstream estático
-    }
-}
-```
-
-Sin esto, nginx crashea al inicio con `host not found in upstream "api:8000"`.
-
-### Puertos del host
-
-| Puerto | Servicio | Notas |
-|---|---|---|
-| `80` | nginx → API | Apache del sistema debe estar desinstalado |
-| `443` | nginx → API (SSL) | Certificados via Let's Encrypt |
-| `7080` | nginx interno | Usado por el tunnel (`bot:7080`) |
-| `5433` | PostgreSQL | Solo localhost, no expuesto externamente |
-
-> Apache (`apache2`) conflicta con el puerto 80. Debe estar desinstalado: `sudo apt remove apache2`
-
-### Telegram Webhook
-
-- URL: `https://bot.stax.ink/telegram/webhook/<BOT_TOKEN>`
-- Verificar estado: `GET https://api.telegram.org/bot<TOKEN>/getWebhookInfo`
-- Estado correcto: `pending_update_count: 0`, `last_error_message: null`
-- Error 530 = tunnel caído o sin alias `bot`
-- Error 502 = nginx caído o no resuelve `api`
-
-### Diagnóstico rápido
-
-```bash
-# 1. Contenedores
-docker ps --format "table {{.Names}}\t{{.Status}}"
-
-# 2. Conexiones internas
-docker exec chatbot_api python3 -c "from config.database import SessionLocal; import sqlalchemy; db=SessionLocal(); print(db.execute(sqlalchemy.text('SELECT 1')).fetchone())"
-
-# 3. Redis
-docker exec chatbot_api python3 -c "import asyncio,redis.asyncio as r,os; asyncio.run(r.from_url(os.environ['REDIS_URL']).ping()) and print('OK')"
-
-# 4. End-to-end
-curl https://bot.stax.ink/health
-
-# 5. Webhook
-TOKEN=$(grep TELEGRAM_BOT_TOKEN .env | cut -d= -f2)
-curl -s https://api.telegram.org/bot$TOKEN/getWebhookInfo | python3 -m json.tool
-```
+Forbidden:
+- `except: pass`
+- silent `except`
+- returning disguised error dictionaries instead of failing clearly
 
 ---
 
-## ENVIRONMENT VARIABLES
+## RAG Policy
 
-| Variable | Required | Description |
-|---|---|---|
-| `DATABASE_URL` | Yes | PostgreSQL connection string (`postgresql://user:pass@db:5432/chatbot`) |
-| `OPENROUTER_API_KEY` | Yes | OpenRouter API key para LiteLlm |
-| `REDIS_URL` | Yes | Upstash TLS URL (`rediss://default:...@host:6379`) |
-| `SESSION_BACKEND` | Yes | Siempre `redis` en producción |
-| `REDIS_NAMESPACE` | No | Prefijo de claves Redis (default: `chatbot:adk:v1`) |
-| `REDIS_UPSTASH_REST_URL` | No | REST API URL de Upstash (opcional, para admin) |
-| `REDIS_UPSTASH_REST_TOKEN` | No | Token REST de Upstash |
-| `TELEGRAM_BOT_TOKEN` | Yes | Token del bot de Telegram (`123456:ABC...`) |
-| `TELEGRAM_ID` | Yes | Chat ID del admin/owner |
-| `CLOUDFLARE_TUNNEL_TOKEN` | Yes | Token del tunnel de Cloudflare |
-| `MODEL_NAME` | No | Identificador LiteLlm (default: `deepseek-v4-flash`) |
-| `MODEL_DISPLAY` | No | Nombre legible del modelo |
-| `APP_ENV` | No | `development` o `production` |
-| `LOG_LEVEL` | No | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+Use RAG only for stable, general, non-transactional knowledge.
 
----
+Allowed examples:
+- schedules
+- institutional information
+- delivery zones
+- payment methods
+- general business facts
 
-## DELIVERY GATES
+Forbidden for RAG:
+- live stock
+- prices
+- orders
+- carts
+- transactional state
+- dynamic catalog truth
 
-ruff check .
-ruff format .
-pytest -q
-
-ALL MUST PASS
+If the answer depends on live operational state, use real tools, real repositories, or real APIs instead of RAG.
 
 ---
 
-## EXECUTION ORDER
+## Testing Contract
 
-1 SPEC
-2 MODEL
-3 LOGIC
-4 ENTRY
-5 TEST
-6 GATES
-7 COMMIT
+Use AAA pattern:
+- Arrange
+- Act
+- Assert
 
-STOP IF FAIL
+Rules:
+- 1 test = 1 behavior
+- keep tests mirrored to implementation structure
+- mock external services when appropriate
+- no hidden network calls in unit tests
+- test names must describe unit, case, expected result
+
+Preferred naming:
+- `test_<unit>_<case>_<expected>`
 
 ---
 
-## FINAL DIRECTIVE
+## Execution Order
 
-DISCIPLINE > SPEED
-STRICTNESS > FLEXIBILITY
-DETERMINISM > MAGIC
+When implementing a change:
 
-EXECUTE. NO DEVIATION.
+1. clarify target project and SSOT
+2. inspect existing code
+3. identify reuse path
+4. define smallest valid change
+5. implement
+6. test
+7. run gates
+8. summarize what changed and why
+
+Stop if blocked by missing information.
+
+---
+
+## Mandatory Block Conditions
+
+Do not continue blindly when any of the following is true:
+- the target project is ambiguous
+- there are two possible editable SSOTs
+- required files are missing
+- entrypoint is unclear and no authoritative source exists
+- a change would break architectural contracts
+- live data is required but no real source is available
+
+When blocked:
+- state exactly what is missing
+- ask for the minimum missing information
+- do not invent hidden assumptions
+
+---
+
+## Prohibitions
+
+Never:
+- change cwd implicitly as part of reasoning policy
+- treat reference context as editable target without explicit instruction
+- overwrite global commands in a way that contaminates unrelated projects
+- duplicate rules across multiple prompt files when one contract can govern them
+- edit zipped artifacts as if they were the live codebase
+- create parallel architectures without necessity
+- add dependencies before checking stdlib and project reuse
+- invent APIs, files, manifests, or entrypoints
+- ignore tests when behavior changes
+- claim a file is authoritative if a stronger SSOT exists
+
+---
+
+## Shell / CLI Integration Policy
+
+If wrappers are used for Codex, Claude, Antigravity, or similar CLIs:
+
+- wrappers must preserve the current working directory
+- wrappers must inject reference context explicitly
+- wrappers must not globally contaminate unrelated projects unless the user explicitly wants that
+- wrappers should distinguish between:
+  - active project
+  - reference project
+- SkillOS should normally be injected as reference context, not forced as cwd
+
+Preferred model:
+- current cwd = active project
+- SkillOS paths = reference context by absolute path
+
+---
+
+## Startup Context for Agent CLIs
+
+When starting an agent in a non-SkillOS project, the agent should assume:
+
+- Active Project Mode is in effect
+- current cwd is editable
+- SkillOS is reference-only
+- reuse-first policy is active
+- minimal-code policy is active
+
+When starting an agent inside SkillOS with explicit instruction to work on SkillOS:
+
+- SkillOS becomes editable SSOT
+- RFCs and final docs govern architecture
+- unified tree is authoritative
+
+---
+
+## Response Style
+
+When acting on code:
+- be explicit
+- be brief
+- be concrete
+- explain only what is load-bearing
+- do not add filler
+- do not hide uncertainty
+
+When uncertain:
+- say what is known
+- say what is missing
+- say what decision cannot yet be made
+
+---
+
+## Final Directive
+
+Correctness over speed.
+Determinism over magic.
+Reuse over proliferation.
+One SSOT at a time.
