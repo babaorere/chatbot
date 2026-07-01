@@ -49,10 +49,12 @@ async def test_telegram_hybrid_menu_flow(mock_use_case):
             "controllers.telegram_controller._clear_latest_conversation_session",
             new_callable=AsyncMock,
         ) as mock_clear_latest_session,
-        patch("controllers.telegram_controller.asyncio.create_task") as mock_create_task,
+        patch(
+            "controllers.telegram_controller._defer_clear_reply_markup",
+            new_callable=AsyncMock,
+        ) as mock_defer_clear_reply_markup,
     ):
         mock_send.return_value = 1001
-        mock_create_task.side_effect = lambda coro: coro.close()
 
         # Enviar /start para limpiar sesión y presentar el menú principal
         payload_start = {
@@ -68,7 +70,7 @@ async def test_telegram_hybrid_menu_flow(mock_use_case):
         assert resp.status_code == 200
         mock_use_case.clear_session.assert_not_awaited()
         mock_clear_latest_session.assert_awaited_once()
-        mock_create_task.assert_not_called()
+        mock_defer_clear_reply_markup.assert_not_called()
 
         # El FSM debe haber guardado las opciones del menú principal en el contexto
         ctx = await fsm.get_context()

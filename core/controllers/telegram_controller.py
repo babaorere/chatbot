@@ -261,6 +261,55 @@ async def _clear_reply_markup_async(
         )
 
 
+async def _defer_clear_reply_markup(
+    *,
+    token: str,
+    chat_id: Any,
+    message_id: int,
+    trace_id: str | None = None,
+    user_id: str | None = None,
+) -> None:
+    """Programa la limpieza del teclado inline con job durable o fallback local."""
+    from services.job_dispatcher import JobDispatcher
+
+    started_at = time.perf_counter()
+    event_id = str(uuid.uuid4())
+    try:
+        await JobDispatcher().enqueue_job(
+            "job_clear_reply_markup",
+            token=token,
+            chat_id=chat_id,
+            message_id=message_id,
+            trace_id=trace_id,
+            user_id=user_id,
+            event_id=event_id,
+            _job_id=f"telegram:clear-reply-markup:{event_id}",
+        )
+        if trace_id:
+            _log_timing(
+                trace_id=trace_id,
+                stage="reply_markup_clear_enqueued",
+                started_at=started_at,
+                user_id=user_id,
+                extra=f"message_id={message_id}",
+            )
+    except RuntimeError:
+        await _clear_reply_markup_async(
+            token=token,
+            chat_id=chat_id,
+            message_id=message_id,
+            trace_id=trace_id,
+            user_id=user_id,
+        )
+    except Exception as exc:
+        logger.error(
+            "Failed to defer reply markup cleanup [user=%s message_id=%s]: %s",
+            user_id,
+            message_id,
+            exc,
+        )
+
+
 async def _process_telegram_update_core(
     token: str,
     chat_id: Any,
@@ -399,14 +448,12 @@ async def _process_telegram_update_core(
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
             if msg_obj and msg_obj.get("message_id"):
-                asyncio.create_task(
-                    _clear_reply_markup_async(
-                        token=token,
-                        chat_id=chat_id,
-                        message_id=msg_obj["message_id"],
-                        trace_id=trace_id,
-                        user_id=user_id,
-                    )
+                await _defer_clear_reply_markup(
+                    token=token,
+                    chat_id=chat_id,
+                    message_id=msg_obj["message_id"],
+                    trace_id=trace_id,
+                    user_id=user_id,
                 )
             return
 
@@ -423,14 +470,12 @@ async def _process_telegram_update_core(
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         if msg_obj and msg_obj.get("message_id"):
-            asyncio.create_task(
-                _clear_reply_markup_async(
-                    token=token,
-                    chat_id=chat_id,
-                    message_id=msg_obj["message_id"],
-                    trace_id=trace_id,
-                    user_id=user_id,
-                )
+            await _defer_clear_reply_markup(
+                token=token,
+                chat_id=chat_id,
+                message_id=msg_obj["message_id"],
+                trace_id=trace_id,
+                user_id=user_id,
             )
 
         # Limpiar callback_data de la versión para el procesamiento de intents

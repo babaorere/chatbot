@@ -9,6 +9,7 @@ from config.settings import settings
 from jobs.alerts import job_check_llm_latency, job_notify_critical_issue
 from jobs.maintenance import job_healthcheck
 from jobs.sessions import job_clear_latest_conversation_session
+from jobs.telegram import job_clear_reply_markup
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ class WorkerSettings:
         job_notify_critical_issue,
         job_check_llm_latency,
         job_clear_latest_conversation_session,
+        job_clear_reply_markup,
     ]
     on_startup = startup
     on_shutdown = shutdown
