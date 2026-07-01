@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import os
+
 import pytest
 
-from jobs.maintenance import job_healthcheck
-from services.job_dispatcher import JobDispatcher
 from config.settings import settings
+from jobs.maintenance import build_worker_health_payload, job_healthcheck
+from services.job_dispatcher import JobDispatcher
 
 
 @pytest.mark.asyncio
@@ -26,3 +28,11 @@ async def test_job_healthcheck_returns_worker_metadata():
     assert result["worker"] == "arq"
     assert result["queue_name"] == "chatbot:jobs"
     assert isinstance(result["timestamp"], int)
+
+
+def test_build_worker_health_payload_includes_pid():
+    result = build_worker_health_payload("chatbot:jobs")
+    assert result["status"] == "ok"
+    assert result["worker"] == "arq"
+    assert result["queue_name"] == "chatbot:jobs"
+    assert result["pid"] == os.getpid()

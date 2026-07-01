@@ -173,6 +173,7 @@ Durable job rules (mandatory for phases 1 to 5 of the ARQ migration):
 - Operational alerts triggered by failures, latency breaches, or system health regressions must use durable jobs once the queue path exists; in-request direct execution is only an acceptable fallback while the queue is unavailable.
 - Conversation reset, session clear, and inactivity-expiration cleanup are correctness paths once exposed to the user; they must use durable jobs when available and may only fall back to inline execution if the queue is unavailable.
 - Telegram callback acknowledgement must remain immediate; any post-click UI cleanup such as reply-markup removal must stay off the critical path and, if migrated, must never delay `answerCallbackQuery`.
+- Every worker introduced by the migration must publish an observable heartbeat and expose a verifiable runtime health signal; container health cannot rely solely on process existence.
 - User-facing responses must not be moved to a durable queue when the user is waiting for the immediate answer.
 - Tasks required to compute the immediate user response must stay synchronous in the request path unless the product contract changes.
 - Best-effort cosmetic cleanup may stay in-process only if losing it does not break correctness or contractual UX.

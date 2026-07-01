@@ -108,6 +108,12 @@ services:
       - telegram_bot_token
       - admin_api_key
       - db_password
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,redis; r=redis.from_url(os.environ['REDIS_URL']); assert r.get('chatbot:jobs:health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     deploy:
       resources:
         limits:
