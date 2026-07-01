@@ -67,6 +67,7 @@ def get_http_client() -> Any:
     global _http_client
     if _http_client is None:
         import httpx
+
         _http_client = httpx.AsyncClient(timeout=10.0)
     return _http_client
 
@@ -126,11 +127,13 @@ def get_process_message_uc(
         ProcessMessageUseCase listo para ejecutar.
     """
     from application.use_cases.process_message import ProcessMessageUseCase  # noqa: PLC0415
+    from services.job_dispatcher import JobDispatcher  # noqa: PLC0415
 
     return ProcessMessageUseCase(
         db=db,
         llm_provider=llm_provider,  # type: ignore[arg-type]
         rag_provider=rag_provider,  # type: ignore[arg-type]
+        job_dispatcher=JobDispatcher(),
     )
 
 

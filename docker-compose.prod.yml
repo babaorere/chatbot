@@ -22,7 +22,7 @@ services:
     stop_grace_period: 30s
     environment:
       POSTGRES_USER: ${DB_USER:-shared}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-shared_secret}
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
       POSTGRES_DB: ${DB_NAME:-chatbot}
     ports:
       - "127.0.0.1:5433:5432"
@@ -36,6 +36,8 @@ services:
       timeout: 5s
       retries: 5
     logging: *default-logging
+    secrets:
+      - db_password
     deploy:
       resources:
         limits:
@@ -96,6 +98,7 @@ services:
     environment:
       - REDIS_URL=${REDIS_URL}
       - DATABASE_URL=postgresql://${DB_USER:-shared}:${DB_PASSWORD:-shared_secret}@db:5432/${DB_NAME:-chatbot}
+      - ARQ_ENABLED=true
       - ADK_DISABLE_JSON_SCHEMA_FOR_FUNC_DECL=true
     networks:
       - chatbot_net
@@ -109,6 +112,11 @@ services:
       retries: 3
       start_period: 45s
     logging: *default-logging
+    secrets:
+      - jwt_secret
+      - telegram_bot_token
+      - admin_api_key
+      - db_password
     deploy:
       resources:
         limits:
@@ -116,6 +124,42 @@ services:
           memory: 2048M
         reservations:
           memory: 1024M
+
+  arq_worker:
+    build:
+      context: ./core
+      dockerfile: Dockerfile
+      target: production
+    container_name: chatbot_arq_worker
+    restart: unless-stopped
+    stop_grace_period: 30s
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=${REDIS_URL}
+      - DATABASE_URL=postgresql://${DB_USER:-shared}:${DB_PASSWORD:-shared_secret}@db:5432/${DB_NAME:-chatbot}
+      - ARQ_ENABLED=true
+    command: ["arq", "workers.arq_worker.WorkerSettings"]
+    networks:
+      - chatbot_net
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_started
+    logging: *default-logging
+    secrets:
+      - jwt_secret
+      - telegram_bot_token
+      - admin_api_key
+      - db_password
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          memory: 256M
 
   tunnel:
     image: cloudflare/cloudflared:latest
@@ -142,3 +186,13 @@ volumes:
 networks:
   chatbot_net:
     driver: bridge
+
+secrets:
+  jwt_secret:
+    file: ./secrets/jwt_secret.txt
+  telegram_bot_token:
+    file: ./secrets/telegram_bot_token.txt
+  admin_api_key:
+    file: ./secrets/admin_api_key.txt
+  db_password:
+    file: ./secrets/db_password.txt

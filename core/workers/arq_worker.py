@@ -6,6 +6,7 @@ from typing import Any
 from arq.connections import RedisSettings
 
 from config.settings import settings
+from jobs.alerts import job_check_llm_latency, job_notify_critical_issue
 from jobs.maintenance import job_healthcheck
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,11 @@ async def shutdown(ctx: dict[str, Any]) -> None:
 
 
 class WorkerSettings:
-    functions = [job_healthcheck]
+    functions = [
+        job_healthcheck,
+        job_notify_critical_issue,
+        job_check_llm_latency,
+    ]
     on_startup = startup
     on_shutdown = shutdown
     queue_name = settings.arq_queue_name

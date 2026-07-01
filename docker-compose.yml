@@ -54,6 +54,7 @@ services:
     environment:
       - REDIS_URL=${REDIS_URL}
       - DATABASE_URL=postgresql://${DB_USER:-shared}:${DB_PASSWORD:-shared_secret}@db:5432/${DB_NAME:-chatbot}
+      - ARQ_ENABLED=true
       - ADK_DISABLE_JSON_SCHEMA_FOR_FUNC_DECL=true
     volumes:
       - ./core:/app
