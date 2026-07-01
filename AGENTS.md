@@ -171,6 +171,7 @@ Durable job rules (mandatory for phases 1 to 5 of the ARQ migration):
 - Durable jobs must use explicit retry semantics; retries must not rely on reissuing the original web request.
 - Producer and worker dependencies must stay on a mutually compatible version range; no phase is valid if the queue stack does not resolve in the real runtime image.
 - Operational alerts triggered by failures, latency breaches, or system health regressions must use durable jobs once the queue path exists; in-request direct execution is only an acceptable fallback while the queue is unavailable.
+- Conversation reset, session clear, and inactivity-expiration cleanup are correctness paths once exposed to the user; they must use durable jobs when available and may only fall back to inline execution if the queue is unavailable.
 - User-facing responses must not be moved to a durable queue when the user is waiting for the immediate answer.
 - Tasks required to compute the immediate user response must stay synchronous in the request path unless the product contract changes.
 - Best-effort cosmetic cleanup may stay in-process only if losing it does not break correctness or contractual UX.

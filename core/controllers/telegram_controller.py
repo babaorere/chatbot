@@ -7,10 +7,11 @@ y delega la inferencia y reglas de negocio a ProcessMessageUseCase.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
-from typing import Any
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
 
@@ -39,6 +40,29 @@ _memory_fsm_store = FSMStateStore()
 _local_locks: set[str] = set()
 
 
+def _elapsed_ms(start: float) -> float:
+    return round((time.perf_counter() - start) * 1000, 2)
+
+
+def _log_timing(
+    *,
+    trace_id: str,
+    stage: str,
+    started_at: float,
+    user_id: str | None = None,
+    extra: str = "",
+) -> None:
+    suffix = f" {extra}" if extra else ""
+    logger.info(
+        "[telegram_timing] trace=%s stage=%s elapsed_ms=%.2f user=%s%s",
+        trace_id,
+        stage,
+        _elapsed_ms(started_at),
+        user_id or "-",
+        suffix,
+    )
+
+
 def get_fsm_store() -> FSMStateStore:
     """Returns the Redis-backed FSM state store if configured, otherwise falls back to in-memory."""
     if settings.use_redis_sessions:
@@ -58,39 +82,73 @@ async def send_menu_message(
     text: str,
     reply_markup: dict | None,
     fsm: TelegramConversationFSM,
+    trace_id: str | None = None,
+    user_id: str | None = None,
 ) -> int | None:
     """Wrapper para enviar mensajes. Si contiene reply_markup, inyecta la versión del FSM
 
     e incrementa el contador, guardando el message_id resultante como el menú activo.
     También persiste las opciones en el FSM context para soporte híbrido numérico.
     """
+    started_at = time.perf_counter()
+    menu_version: int | None = None
+    menu_options: list[str] = []
     if reply_markup and "inline_keyboard" in reply_markup:
-        version = await fsm.increment_fsm_version()
-        reply_markup = inject_version_to_reply_markup(reply_markup, version)
+        _, context = await fsm.get_state_and_context()
+        menu_version = context.get("_fsm_version", 1) + 1
+        reply_markup = inject_version_to_reply_markup(reply_markup, menu_version)
 
         # Extraer y guardar callback_data para entrada numérica híbrida
-        options = []
         for row in reply_markup["inline_keyboard"]:
             for btn in row:
                 if "callback_data" in btn:
                     cb = btn["callback_data"]
                     base = cb.split("#")[0]
-                    options.append(base)
-
-        ctx = await fsm.get_context()
-        ctx["_menu_options"] = options
-        state = await fsm.get_state()
-        await fsm.set_state(state, ctx)
+                    menu_options.append(base)
+        if trace_id:
+            _log_timing(
+                trace_id=trace_id,
+                stage="menu_prepare",
+                started_at=started_at,
+                user_id=user_id,
+                extra=f"version={menu_version} options={len(menu_options)}",
+            )
 
     msg_id = await send_telegram_message(
         bot_token=bot_token,
         chat_id=chat_id,
         text=text,
         reply_markup=reply_markup,
+        trace_id=trace_id,
     )
 
-    if msg_id and reply_markup and "inline_keyboard" in reply_markup:
-        await fsm.set_active_menu_id(msg_id)
+    if (
+        msg_id
+        and reply_markup
+        and "inline_keyboard" in reply_markup
+        and menu_version is not None
+    ):
+        await fsm.persist_menu_metadata(
+            version=menu_version,
+            options=menu_options,
+            active_menu_id=msg_id,
+        )
+        if trace_id:
+            _log_timing(
+                trace_id=trace_id,
+                stage="menu_metadata_persisted",
+                started_at=started_at,
+                user_id=user_id,
+                extra=f"message_id={msg_id}",
+            )
+    elif trace_id:
+        _log_timing(
+            trace_id=trace_id,
+            stage="menu_send_completed",
+            started_at=started_at,
+            user_id=user_id,
+            extra=f"message_id={msg_id}",
+        )
 
     return msg_id
 
@@ -121,6 +179,88 @@ def _get_human_agent_available() -> bool:
         db.close()
 
 
+async def _clear_latest_conversation_session(
+    user_id: str,
+    trace_id: str | None = None,
+    reason: str = "manual_reset",
+) -> None:
+    """Programa o ejecuta el clear de la sesión conversacional más reciente."""
+    started_at = time.perf_counter()
+    from services.conversation_reset_service import clear_latest_conversation_session
+    from services.job_dispatcher import JobDispatcher
+
+    event_id = str(uuid.uuid4())
+
+    try:
+        await JobDispatcher().enqueue_job(
+            "job_clear_latest_conversation_session",
+            user_id=user_id,
+            trace_id=trace_id,
+            reason=reason,
+            event_id=event_id,
+            _job_id=f"session-clear:{event_id}",
+        )
+        if trace_id:
+            _log_timing(
+                trace_id=trace_id,
+                stage="session_clear_enqueued",
+                started_at=started_at,
+                user_id=user_id,
+                extra=f"reason={reason} event_id={event_id}",
+            )
+    except RuntimeError:
+        session_id = await clear_latest_conversation_session(user_id)
+        if trace_id:
+            _log_timing(
+                trace_id=trace_id,
+                stage="session_clear_fallback_done",
+                started_at=started_at,
+                user_id=user_id,
+                extra=f"reason={reason} session_id={session_id or '-'}",
+            )
+    except Exception as exc:
+        logger.error(
+            "Failed to clear latest conversation session [user=%s]: %s",
+            user_id,
+            exc,
+        )
+
+
+async def _clear_reply_markup_async(
+    *,
+    token: str,
+    chat_id: Any,
+    message_id: int,
+    trace_id: str | None = None,
+    user_id: str | None = None,
+) -> None:
+    """Limpia el teclado inline fuera del camino crítico del callback."""
+    from services.telegram_service import clear_telegram_reply_markup
+
+    started_at = time.perf_counter()
+    try:
+        await clear_telegram_reply_markup(
+            bot_token=token,
+            chat_id=chat_id,
+            message_id=message_id,
+        )
+        if trace_id:
+            _log_timing(
+                trace_id=trace_id,
+                stage="reply_markup_cleared_async",
+                started_at=started_at,
+                user_id=user_id,
+                extra=f"message_id={message_id}",
+            )
+    except Exception as exc:
+        logger.error(
+            "Failed to clear reply markup asynchronously [user=%s, message_id=%s]: %s",
+            user_id,
+            message_id,
+            exc,
+        )
+
+
 async def _process_telegram_update_core(
     token: str,
     chat_id: Any,
@@ -130,8 +270,17 @@ async def _process_telegram_update_core(
     callback_query_id: Any,
     msg_obj: Any,
     process_message_uc: Any,
+    trace_id: str,
 ) -> None:
     """Núcleo del procesamiento de actualizaciones de Telegram."""
+    core_started_at = time.perf_counter()
+    _log_timing(
+        trace_id=trace_id,
+        stage="background_core_start",
+        started_at=core_started_at,
+        user_id=user_id,
+        extra=f"has_callback={bool(callback_query)} has_message={bool(message_obj)}",
+    )
     fsm = TelegramConversationFSM(user_id=user_id, state_store=get_fsm_store())
 
     # Mapeo de entrada numérica a callback query simulado (soporte híbrido)
@@ -165,26 +314,20 @@ async def _process_telegram_update_core(
                 "Session for user %s expired due to inactivity. Resetting FSM & LLM context.",
                 user_id,
             )
+            expiry_started_at = time.perf_counter()
             await fsm.reset()
 
-            from config.database import SessionLocal
-            from services.user_service import UserService
-            from services.conversation_service import ConversationService
-
-            db = SessionLocal()
-            try:
-                u_svc = UserService(db)
-                user = u_svc.get_or_create(external_id=user_id, platform="telegram")
-                conv_svc = ConversationService(db)
-                conversations = conv_svc.get_by_user_id(user.id)
-                session_id = (
-                    conversations[0].session_id if conversations else str(uuid.uuid4())
-                )
-            finally:
-                db.close()
-
-            await process_message_uc.clear_session(
-                user_id=user_id, session_id=session_id
+            await _clear_latest_conversation_session(
+                user_id=user_id,
+                trace_id=trace_id,
+                reason="expired_inactivity",
+            )
+            _log_timing(
+                trace_id=trace_id,
+                stage="expired_session_reset",
+                started_at=expiry_started_at,
+                user_id=user_id,
+                extra="reason=expired_inactivity",
             )
 
             # Forzar el comportamiento de /start automático
@@ -242,8 +385,6 @@ async def _process_telegram_update_core(
                 current_fsm_version,
             )
             # Solución 2: Responder callback y limpiar reply markup en paralelo
-            import asyncio
-
             tasks = []
             if callback_query_id:
                 from services.telegram_service import answer_telegram_callback_query
@@ -255,23 +396,21 @@ async def _process_telegram_update_core(
                         text="Este menú ha expirado o ya no está activo.",
                     )
                 )
-            if msg_obj and msg_obj.get("message_id"):
-                from services.telegram_service import clear_telegram_reply_markup
-
-                tasks.append(
-                    clear_telegram_reply_markup(
-                        bot_token=token,
-                        chat_id=chat_id,
-                        message_id=msg_obj["message_id"],
-                    )
-                )
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
+            if msg_obj and msg_obj.get("message_id"):
+                asyncio.create_task(
+                    _clear_reply_markup_async(
+                        token=token,
+                        chat_id=chat_id,
+                        message_id=msg_obj["message_id"],
+                        trace_id=trace_id,
+                        user_id=user_id,
+                    )
+                )
             return
 
-        # Si el click es válido, respondemos el callback query y removemos el teclado inline (Solución 2 en paralelo)
-        import asyncio
-
+        # Si el click es válido, respondemos primero el callback para liberar la UI.
         tasks = []
         if callback_query_id:
             from services.telegram_service import answer_telegram_callback_query
@@ -281,18 +420,18 @@ async def _process_telegram_update_core(
                     bot_token=token, callback_query_id=callback_query_id
                 )
             )
-        if msg_obj and msg_obj.get("message_id"):
-            from services.telegram_service import clear_telegram_reply_markup
-
-            tasks.append(
-                clear_telegram_reply_markup(
-                    bot_token=token,
-                    chat_id=chat_id,
-                    message_id=msg_obj["message_id"],
-                )
-            )
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+        if msg_obj and msg_obj.get("message_id"):
+            asyncio.create_task(
+                _clear_reply_markup_async(
+                    token=token,
+                    chat_id=chat_id,
+                    message_id=msg_obj["message_id"],
+                    trace_id=trace_id,
+                    user_id=user_id,
+                )
+            )
 
         # Limpiar callback_data de la versión para el procesamiento de intents
         callback_data = raw_callback_data.split("#")[0]
@@ -333,6 +472,8 @@ async def _process_telegram_update_core(
                     text="Selecciona una categoría para ver los productos disponibles:",
                     reply_markup={"inline_keyboard": buttons},
                     fsm=fsm,
+                    trace_id=trace_id,
+                    user_id=user_id,
                 )
             finally:
                 db.close()
@@ -383,6 +524,8 @@ async def _process_telegram_update_core(
                         ]
                     },
                     fsm=fsm,
+                    trace_id=trace_id,
+                    user_id=user_id,
                 )
             finally:
                 db.close()
@@ -395,6 +538,8 @@ async def _process_telegram_update_core(
                 text="¿En qué puedo ayudarte hoy?",
                 reply_markup=build_main_menu(_get_human_agent_available()),
                 fsm=fsm,
+                trace_id=trace_id,
+                user_id=user_id,
             )
             return
 
@@ -423,6 +568,15 @@ async def _process_telegram_update_core(
             if new_state == FSMState.IDLE
             else None,
             fsm=fsm,
+            trace_id=trace_id,
+            user_id=user_id,
+        )
+        _log_timing(
+            trace_id=trace_id,
+            stage="callback_flow_done",
+            started_at=core_started_at,
+            user_id=user_id,
+            extra=f"intent={intent}",
         )
         return
 
@@ -439,26 +593,8 @@ async def _process_telegram_update_core(
     if cmd_text in {"/start", "/cancel", "/exit", "/salir", "/clear", "/reset"}:
         await fsm.reset()
 
-        # Obtener el session_id más reciente de la base de datos
-        from config.database import SessionLocal
-        from services.user_service import UserService
-        from services.conversation_service import ConversationService
-
-        db = SessionLocal()
-        try:
-            u_svc = UserService(db)
-            user = u_svc.get_or_create(external_id=user_id, platform="telegram")
-            conv_svc = ConversationService(db)
-            conversations = conv_svc.get_by_user_id(user.id)
-            session_id = (
-                conversations[0].session_id if conversations else str(uuid.uuid4())
-            )
-        finally:
-            db.close()
-
-        await process_message_uc.clear_session(user_id=user_id, session_id=session_id)
-
         if cmd_text == "/start":
+            start_command_at = time.perf_counter()
             welcome_text = (
                 "¡Bienvenido! 🙂\n\n"
                 "Negocio El Buen Trago.\n"
@@ -473,14 +609,42 @@ async def _process_telegram_update_core(
                 text=welcome_text,
                 reply_markup=build_main_menu(_get_human_agent_available()),
                 fsm=fsm,
+                trace_id=trace_id,
+                user_id=user_id,
+            )
+            await _clear_latest_conversation_session(
+                user_id=user_id,
+                trace_id=trace_id,
+                reason="start_command",
+            )
+            _log_timing(
+                trace_id=trace_id,
+                stage="start_command_responded",
+                started_at=start_command_at,
+                user_id=user_id,
             )
         else:
+            reset_command_at = time.perf_counter()
             await send_menu_message(
                 bot_token=token,
                 chat_id=chat_id,
                 text="Sesión conversacional reiniciada y limpia. Tu carro de compra sigue conservado intacto. ¿En qué puedo ayudarte hoy?",
                 reply_markup=build_main_menu(_get_human_agent_available()),
                 fsm=fsm,
+                trace_id=trace_id,
+                user_id=user_id,
+            )
+            await _clear_latest_conversation_session(
+                user_id=user_id,
+                trace_id=trace_id,
+                reason=f"reset_command:{cmd_text}",
+            )
+            _log_timing(
+                trace_id=trace_id,
+                stage="reset_command_responded",
+                started_at=reset_command_at,
+                user_id=user_id,
+                extra=f"command={cmd_text}",
             )
         return
 
@@ -501,8 +665,16 @@ async def _process_telegram_update_core(
     )
 
     try:
+        use_case_started_at = time.perf_counter()
         result = await process_message_uc.execute(cmd)
         response_text = result.response
+        _log_timing(
+            trace_id=trace_id,
+            stage="process_message_uc_done",
+            started_at=use_case_started_at,
+            user_id=user_id,
+            extra=f"response_empty={not bool(response_text)}",
+        )
     except Exception as e:
         logger.error("Error processing telegram message: %s", e)
         response_text = "Ocurrió un error al procesar tu solicitud. Intenta nuevamente."
@@ -521,6 +693,14 @@ async def _process_telegram_update_core(
         if current_state == FSMState.IDLE
         else None,
         fsm=fsm,
+        trace_id=trace_id,
+        user_id=user_id,
+    )
+    _log_timing(
+        trace_id=trace_id,
+        stage="text_message_done",
+        started_at=core_started_at,
+        user_id=user_id,
     )
 
 
@@ -536,8 +716,10 @@ async def process_telegram_update_background(
     lock_key: str,
     lock_acquired: bool,
     redis_client: Any,
+    trace_id: str,
 ) -> None:
     """Manejador en segundo plano para procesar la actualización y liberar el lock."""
+    background_started_at = time.perf_counter()
     try:
         await _process_telegram_update_core(
             token=token,
@@ -548,6 +730,7 @@ async def process_telegram_update_background(
             callback_query_id=callback_query_id,
             msg_obj=msg_obj,
             process_message_uc=process_message_uc,
+            trace_id=trace_id,
         )
     except Exception as e:
         logger.error("Error in background telegram processing: %s", e)
@@ -562,6 +745,12 @@ async def process_telegram_update_background(
                     )
             else:
                 _local_locks.discard(user_id)
+        _log_timing(
+            trace_id=trace_id,
+            stage="background_task_finished",
+            started_at=background_started_at,
+            user_id=user_id,
+        )
 
 
 @router.post("/webhook/{token}")
@@ -571,6 +760,8 @@ async def telegram_webhook(
     process_message_uc: ProcessMessageUCDep,
     background_tasks: BackgroundTasks,
 ) -> dict[str, Any]:
+    """Recibe updates de Telegram, valida el webhook y agenda su procesamiento asíncrono."""
+    webhook_started_at = time.perf_counter()
     if token != settings.telegram_bot_token:
         logger.warning("Unauthorized webhook request with token: %s", token)
         raise HTTPException(403, "Forbidden: Invalid Telegram bot token")
@@ -608,6 +799,21 @@ async def telegram_webhook(
     if not user_id or not chat_id:
         return {"status": "ok", "detail": "invalid user_id or chat_id"}
 
+    update_kind = "callback" if callback_query else "message"
+    raw_update_id = payload.get("update_id")
+    trace_id = (
+        f"tg:{user_id}:{raw_update_id}"
+        if raw_update_id is not None
+        else f"tg:{user_id}:{int(time.time() * 1000)}"
+    )
+    _log_timing(
+        trace_id=trace_id,
+        stage="webhook_parsed",
+        started_at=webhook_started_at,
+        user_id=user_id,
+        extra=f"kind={update_kind}",
+    )
+
     # 1. Concurrency Lock: block concurrent requests from the same user_id (adquirido síncronamente)
     lock_key = f"lock:telegram:user:{user_id}"
     redis_client = get_redis_client()
@@ -628,10 +834,17 @@ async def telegram_webhook(
                             answer_telegram_callback_query,
                         )
 
-                        await answer_telegram_callback_query(
+                        background_tasks.add_task(
+                            answer_telegram_callback_query,
                             bot_token=token,
                             callback_query_id=callback_query_id,
                             text="Procesando tu solicitud anterior, por favor espera...",
+                        )
+                        _log_timing(
+                            trace_id=trace_id,
+                            stage="duplicate_callback_deferred",
+                            started_at=webhook_started_at,
+                            user_id=user_id,
                         )
                 return {"status": "ok", "detail": "duplicate request blocked"}
         except Exception as e:
@@ -647,10 +860,17 @@ async def telegram_webhook(
                 if callback_query_id:
                     from services.telegram_service import answer_telegram_callback_query
 
-                    await answer_telegram_callback_query(
+                    background_tasks.add_task(
+                        answer_telegram_callback_query,
                         bot_token=token,
                         callback_query_id=callback_query_id,
                         text="Procesando tu solicitud anterior, por favor espera...",
+                    )
+                    _log_timing(
+                        trace_id=trace_id,
+                        stage="duplicate_callback_deferred",
+                        started_at=webhook_started_at,
+                        user_id=user_id,
                     )
             return {"status": "ok", "detail": "duplicate request blocked"}
         _local_locks.add(user_id)
@@ -670,6 +890,15 @@ async def telegram_webhook(
         lock_key=lock_key,
         lock_acquired=lock_acquired,
         redis_client=redis_client,
+        trace_id=trace_id,
+    )
+
+    _log_timing(
+        trace_id=trace_id,
+        stage="webhook_scheduled",
+        started_at=webhook_started_at,
+        user_id=user_id,
+        extra=f"lock_acquired={lock_acquired} kind={update_kind}",
     )
 
     return {"status": "ok", "detail": "scheduled"}

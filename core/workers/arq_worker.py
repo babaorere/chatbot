@@ -8,6 +8,7 @@ from arq.connections import RedisSettings
 from config.settings import settings
 from jobs.alerts import job_check_llm_latency, job_notify_critical_issue
 from jobs.maintenance import job_healthcheck
+from jobs.sessions import job_clear_latest_conversation_session
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ class WorkerSettings:
         job_healthcheck,
         job_notify_critical_issue,
         job_check_llm_latency,
+        job_clear_latest_conversation_session,
     ]
     on_startup = startup
     on_shutdown = shutdown

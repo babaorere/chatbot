@@ -48,7 +48,7 @@ async def test_telegram_hybrid_menu_flow(mock_use_case):
         patch(
             "controllers.telegram_controller._clear_latest_conversation_session",
             new_callable=AsyncMock,
-        ),
+        ) as mock_clear_latest_session,
         patch("controllers.telegram_controller.asyncio.create_task") as mock_create_task,
     ):
         mock_send.return_value = 1001
@@ -67,7 +67,8 @@ async def test_telegram_hybrid_menu_flow(mock_use_case):
         resp = client.post("/telegram/webhook/fake_token", json=payload_start)
         assert resp.status_code == 200
         mock_use_case.clear_session.assert_not_awaited()
-        mock_create_task.assert_called_once()
+        mock_clear_latest_session.assert_awaited_once()
+        mock_create_task.assert_not_called()
 
         # El FSM debe haber guardado las opciones del menú principal en el contexto
         ctx = await fsm.get_context()
