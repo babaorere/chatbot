@@ -26,6 +26,7 @@ def create_user(
     db: Session = Depends(get_db),
     fastapi_request: Request = None,
 ) -> UserResponse:
+    """Crea o recupera un usuario lógico a partir de su identificador externo de canal."""
     try:
         user_svc = UserService(db)
         user = user_svc.get_or_create(
@@ -50,6 +51,7 @@ def get_user(
     db: Session = Depends(get_db),
     fastapi_request: Request = None,
 ) -> UserResponse:
+    """Recupera un usuario persistido por su identificador interno."""
     try:
         user_svc = UserService(db)
         user = user_svc.get_by_id(user_id)
@@ -78,6 +80,7 @@ def list_users(
     db: Session = Depends(get_db),
     fastapi_request: Request = None,
 ) -> list[UserResponse]:
+    """Lista usuarios paginados para tareas administrativas o de soporte."""
     try:
         user_svc = UserService(db)
         users = user_svc.list_users(skip=skip, limit=limit)

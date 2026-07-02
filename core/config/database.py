@@ -12,6 +12,7 @@ _raw_url = settings.database_url
 
 
 def _to_sync_url(url: str) -> str:
+    """Normaliza una URL de base de datos al driver síncrono usado por SQLAlchemy."""
     if url.startswith("postgresql+asyncpg://"):
         return url.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
     if url.startswith("postgresql://"):
@@ -20,6 +21,7 @@ def _to_sync_url(url: str) -> str:
 
 
 def _to_async_url(url: str) -> str:
+    """Normaliza una URL de base de datos al driver asíncrono usado por SQLAlchemy."""
     if url.startswith("postgresql+psycopg2://"):
         return url.replace("postgresql+psycopg2://", "postgresql+asyncpg://", 1)
     if url.startswith("postgresql://"):
@@ -86,6 +88,7 @@ class safe_transaction:
 
 
 def get_db() -> Session:
+    """Entrega una sesión SQLAlchemy síncrona con cierre garantizado al final del request."""
     db = SessionLocal()
     try:
         yield db
@@ -94,5 +97,6 @@ def get_db() -> Session:
 
 
 async def get_async_db() -> AsyncSession:
+    """Entrega una sesión SQLAlchemy asíncrona con cierre garantizado al final del request."""
     async with AsyncSessionLocal() as session:
         yield session

@@ -144,7 +144,10 @@ class KBRepository(JpaRepository[KnowledgeBase]):
                     "category": row["category"],
                     "title": row["title"],
                     "content": row["content"],
-                    "rank": float((0.7 * float(row["vector_similarity"])) + (0.3 * float(row["fts_rank"]))),
+                    "rank": float(
+                        (0.7 * float(row["vector_similarity"]))
+                        + (0.3 * float(row["fts_rank"]))
+                    ),
                 }
                 for row in rows
             ]
@@ -162,7 +165,9 @@ class KBRepository(JpaRepository[KnowledgeBase]):
         top_k: int = 5,
         category: str | None = None,
     ) -> list[dict[str, Any]]:
-        return self.search_hybrid(query=query, query_vector=None, top_k=top_k, category=category)
+        return self.search_hybrid(
+            query=query, query_vector=None, top_k=top_k, category=category
+        )
 
     def count_all(
         self,

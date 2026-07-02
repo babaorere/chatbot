@@ -52,8 +52,9 @@ async def clear_providers() -> None:
     if _http_client is not None:
         try:
             await _http_client.aclose()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.exception("Failed to close global HTTP client")
+            raise RuntimeError("Failed to close global HTTP client") from exc
         _http_client = None
 
 

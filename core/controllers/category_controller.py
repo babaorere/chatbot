@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
+from app.security import get_admin_api_key
 from config.database import get_db, safe_transaction
 from services.category_service import CategoryService
 
@@ -15,15 +16,20 @@ router = APIRouter(prefix="/categories", tags=["categories"])
 
 
 class CategoryCreateRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100, description="Nombre de la categoría")
+    name: str = Field(
+        ..., min_length=1, max_length=100, description="Nombre de la categoría"
+    )
 
 
 class CategoryUpdateRequest(BaseModel):
-    new_name: str = Field(..., min_length=1, max_length=100, description="Nuevo nombre de la categoría")
+    new_name: str = Field(
+        ..., min_length=1, max_length=100, description="Nuevo nombre de la categoría"
+    )
 
 
 @router.get("")
 def list_categories(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    """Lista todas las categorías disponibles para clasificación de productos."""
     try:
         svc = CategoryService(db)
         categories = svc.list_categories()
@@ -37,7 +43,9 @@ def list_categories(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
 def create_category(
     data: CategoryCreateRequest,
     db: Session = Depends(get_db),
+    _admin_key: str = Depends(get_admin_api_key),
 ) -> dict[str, Any]:
+    """Crea una nueva categoría de productos protegida por la API key administrativa."""
     try:
         svc = CategoryService(db)
         with safe_transaction(db):
@@ -55,7 +63,9 @@ def update_category(
     name: str,
     data: CategoryUpdateRequest,
     db: Session = Depends(get_db),
+    _admin_key: str = Depends(get_admin_api_key),
 ) -> dict[str, Any]:
+    """Renombra una categoría existente dentro de una transacción segura."""
     try:
         svc = CategoryService(db)
         with safe_transaction(db):
@@ -72,12 +82,17 @@ def update_category(
 def delete_category(
     name: str,
     db: Session = Depends(get_db),
+    _admin_key: str = Depends(get_admin_api_key),
 ) -> dict[str, Any]:
+    """Elimina una categoría existente protegida por la API key administrativa."""
     try:
         svc = CategoryService(db)
         with safe_transaction(db):
             svc.delete_category(name)
-        return {"status": "success", "message": f"Categoría '{name}' eliminada correctamente."}
+        return {
+            "status": "success",
+            "message": f"Categoría '{name}' eliminada correctamente.",
+        }
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:

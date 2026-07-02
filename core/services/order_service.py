@@ -136,7 +136,7 @@ class OrderService:
             order = self.get_order(order_id)
             if not order:
                 raise ValueError("Order not found")
-            
+
             # If transitioning to cancelled from pending/confirmed, restore stock
             if status == "cancelled" and order.status in ("pending", "confirmed"):
                 for item in order.items:

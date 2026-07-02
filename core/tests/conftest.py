@@ -1,10 +1,21 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
+
 import pytest
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
-from config.settings import settings
+from dotenv import dotenv_values
+from sqlalchemy import text
+
+_REPO_ENV = dotenv_values(Path(__file__).resolve().parents[2] / ".env")
+_TEST_DATABASE_URL = (
+    os.getenv("TEST_DATABASE_URL")
+    or _REPO_ENV.get("DATABASE_URL")
+    or os.getenv("DATABASE_URL")
+)
+if _TEST_DATABASE_URL:
+    os.environ["DATABASE_URL"] = _TEST_DATABASE_URL
+os.environ.setdefault("OPENROUTER_API_KEY", "dummy_key")
 
 
 def pytest_collection_modifyitems(
@@ -22,58 +33,63 @@ def pytest_collection_modifyitems(
             item.add_marker(skip_integration)
 
 
-@pytest.fixture
-def db_session():
-    # Use Postgres from configuration instead of sqlite
-    url = settings.database_url
-    if url.startswith("postgresql+asyncpg://"):
-        url = url.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
-    elif url.startswith("postgresql://"):
-        url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+@pytest.fixture(scope="session", autouse=True)
+def initialize_test_database() -> None:
+    from app.lifespan import _run_migrations, _seed_business_config
+    from config.database import Base, SessionLocal, _sync_engine
+    from config.settings import settings
 
-    engine = create_engine(url)
-    # Register models in metadata
-    from config.database import Base
+    # Register all models in Base metadata before create_all.
+    from models import (  # noqa: F401
+        BusinessConfig,
+        Cart,
+        CartItem,
+        Conversation,
+        KnowledgeBase,
+        Message,
+        Order,
+        OrderItem,
+        Product,
+        SystemSetting,
+        User,
+    )
     from models.category import Category  # noqa: F401
-    from models.product import Product  # noqa: F401
-    from models.user import User  # noqa: F401
-    from models.order import Order  # noqa: F401
-    from models.conversation import Conversation  # noqa: F401
-    Base.metadata.create_all(bind=engine)
 
-    SessionLocal = sessionmaker(bind=engine)
+    settings.openrouter_api_key = "dummy_key"
+
+    Base.metadata.create_all(bind=_sync_engine)
+
+    with _sync_engine.begin() as conn:
+        _run_migrations(conn)
+
+    with SessionLocal() as db:
+        _seed_business_config(db)
+        db.commit()
+
+
+@pytest.fixture
+def db_session(initialize_test_database: None):
+    from config.database import SessionLocal
+
     db = SessionLocal()
 
-    # Ensure pg_trgm extension is enabled on the database used for testing
-    try:
-        db.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
-        # Seed default 'General' category first
-        db.execute(text("INSERT INTO categories (name, slug, is_system) VALUES ('General', 'general', true) ON CONFLICT (name) DO NOTHING;"))
-        # Ensure default value of products.category is 'General'
-        db.execute(text("ALTER TABLE products ALTER COLUMN category SET DEFAULT 'General';"))
-        # Add foreign key constraint if not exists
-        check_fk = db.execute(text("SELECT 1 FROM pg_constraint WHERE conname = 'fk_products_category';")).first()
-        if not check_fk:
-            db.execute(text("UPDATE products SET category = 'General' WHERE category IS NULL;"))
-            db.execute(text("""
-                ALTER TABLE products 
-                ADD CONSTRAINT fk_products_category 
-                FOREIGN KEY (category) REFERENCES categories(name) 
-                ON DELETE SET DEFAULT ON UPDATE CASCADE;
-            """))
-        db.commit()
-    except Exception:
-        db.rollback()
-
     # Clean up tables before run to avoid conflicts (include categories, preserving General)
-    db.execute(text("TRUNCATE TABLE order_items, orders, cart_items, carts, messages, conversations, products, users CASCADE;"))
+    db.execute(
+        text(
+            "TRUNCATE TABLE order_items, orders, cart_items, carts, messages, conversations, products, users CASCADE;"
+        )
+    )
     db.execute(text("DELETE FROM categories WHERE is_system = false;"))
     db.commit()
     try:
         yield db
     finally:
         # Clean up tables after run
-        db.execute(text("TRUNCATE TABLE order_items, orders, cart_items, carts, messages, conversations, products, users CASCADE;"))
+        db.execute(
+            text(
+                "TRUNCATE TABLE order_items, orders, cart_items, carts, messages, conversations, products, users CASCADE;"
+            )
+        )
         db.execute(text("DELETE FROM categories WHERE is_system = false;"))
         db.commit()
         db.close()

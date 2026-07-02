@@ -1,8 +1,17 @@
+# Environments and credentials
 .env
-.env.local
-*.env.local
-core/.env.local
+.env*
+!.env.example
+!.env.production.example
+**/secrets/
+secrets/
+
+# Python Virtual Environments
 .venv/
+venv/
+core/.venv/
+
+# Caching & compiled code
 .pytest_cache/
 .ruff_cache/
 __pycache__/
@@ -11,6 +20,8 @@ __pycache__/
 *.pyd
 *.so
 *.egg-info/
+
+# System and project data
 .DS_Store
 data/
 

@@ -28,7 +28,9 @@ class RAGContextBuilder:
         category: str | None = None,
     ) -> str:
         try:
-            entries = await self.kb_service.search(query, top_k=top_k, category=category)
+            entries = await self.kb_service.search(
+                query, top_k=top_k, category=category
+            )
             if not entries:
                 return ""
 

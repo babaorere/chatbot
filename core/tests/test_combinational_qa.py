@@ -53,6 +53,7 @@ def test_fsm_combinational_transitions(
 async def test_rag_combinational_empty_and_filled() -> None:
     # 1. Test builder with empty search results
     from unittest.mock import AsyncMock
+
     kb_svc_mock = MagicMock()
     kb_svc_mock.search = AsyncMock(return_value=[])
 

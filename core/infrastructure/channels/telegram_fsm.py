@@ -87,10 +87,28 @@ class TelegramConversationFSM:
         raw = await self._store.get(self._user_id)
         if raw is None:
             return FSMState.IDLE
+        state_value = raw.get("state", FSMState.IDLE)
         try:
-            return FSMState(raw.get("state", FSMState.IDLE))
-        except ValueError:
-            return FSMState.IDLE
+            return FSMState(state_value)
+        except ValueError as exc:
+            raise ValueError(
+                f"Invalid FSM state stored for user {self._user_id}: {state_value!r}"
+            ) from exc
+
+    async def get_state_and_context(self) -> tuple[FSMState, dict[str, Any]]:
+        """Recupera estado y contexto con una sola lectura del store."""
+        raw = await self._store.get(self._user_id)
+        if raw is None:
+            return FSMState.IDLE, {}
+        state_value = raw.get("state", FSMState.IDLE)
+        try:
+            state = FSMState(state_value)
+        except ValueError as exc:
+            raise ValueError(
+                f"Invalid FSM state stored for user {self._user_id}: {state_value!r}"
+            ) from exc
+        context = raw.get("context", {}) or {}
+        return state, context
 
     async def set_state(
         self,
@@ -104,6 +122,7 @@ class TelegramConversationFSM:
             context: Datos adicionales del estado (ej: producto consultado).
         """
         import time as ttime
+
         ctx = context or {}
         ctx["_last_interaction_at"] = ttime.time()
         await self._store.set(
@@ -153,6 +172,20 @@ class TelegramConversationFSM:
         await self.set_state(state, ctx)
         return next_ver
 
+    async def persist_menu_metadata(
+        self,
+        *,
+        version: int,
+        options: list[str],
+        active_menu_id: int,
+    ) -> None:
+        """Guarda de una sola vez la metadata del menú activo en el FSM."""
+        state, context = await self.get_state_and_context()
+        context["_fsm_version"] = version
+        context["_menu_options"] = options
+        context["_active_menu_id"] = active_menu_id
+        await self.set_state(state, context)
+
     @staticmethod
     def resolve_callback_intent(callback_data: str) -> str | None:
         """Resuelve el intent semántico de un callback_data de Telegram.
@@ -163,7 +196,9 @@ class TelegramConversationFSM:
         Returns:
             str | None: Intent semántico o None si no está registrado.
         """
-        base_data = callback_data.split("#")[0] if "#" in callback_data else callback_data
+        base_data = (
+            callback_data.split("#")[0] if "#" in callback_data else callback_data
+        )
         return _CALLBACK_INTENTS.get(base_data)
 
     async def transition(
@@ -178,7 +213,9 @@ class TelegramConversationFSM:
         Returns:
             tuple[FSMState, dict]: Nuevo estado y contexto resultante.
         """
-        base_data = callback_data.split("#")[0] if "#" in callback_data else callback_data
+        base_data = (
+            callback_data.split("#")[0] if "#" in callback_data else callback_data
+        )
         intent = self.resolve_callback_intent(base_data)
 
         transitions: dict[str, FSMState] = {
@@ -192,11 +229,11 @@ class TelegramConversationFSM:
         }
 
         next_state = transitions.get(intent or "", FSMState.IDLE)
-        
+
         # Recuperar y actualizar el contexto existente para no perder variables ni _active_menu_id
         context = await self.get_context()
         context.update({"intent": intent, "callback": base_data})
-        
+
         # Incrementar versión en transición
         current_version = context.get("_fsm_version", 1)
         context["_fsm_version"] = current_version + 1
@@ -282,8 +319,10 @@ class RedisFSMStateStore(FSMStateStore):
             return None
         try:
             return json.loads(raw)
-        except (json.JSONDecodeError, TypeError):
-            return None
+        except (json.JSONDecodeError, TypeError) as exc:
+            raise ValueError(
+                f"Invalid FSM payload stored in Redis for user {user_id}"
+            ) from exc
 
     async def set(self, user_id: str, data: dict[str, Any]) -> None:
         await self._redis.set(

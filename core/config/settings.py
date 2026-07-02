@@ -25,8 +25,8 @@ class Settings(BaseSettings):
                 try:
                     with open(path, "r", encoding="utf-8") as f:
                         return f.read().strip()
-                except IOError:
-                    pass
+                except OSError as exc:
+                    raise ValueError(f"No se pudo leer el secreto Docker '{name}'.") from exc
             return None
 
         # Reemplazar secretos simples si existen en archivos de secretos
@@ -46,8 +46,10 @@ class Settings(BaseSettings):
                     auth, host_db = rest.split("@", 1)
                     user = auth.split(":", 1)[0] if ":" in auth else auth
                     data["database_url"] = f"{proto}://{user}:{db_pass}@{host_db}"
-                except Exception:
-                    pass
+                except ValueError as exc:
+                    raise ValueError(
+                        "No se pudo reconstruir DATABASE_URL con el secreto db_password."
+                    ) from exc
 
         return data
 
@@ -82,7 +84,7 @@ class Settings(BaseSettings):
     redis_retry_attempts: int = 3
 
     # ── ARQ Worker / Jobs ────────────────────────────────────────
-    arq_enabled: bool = False
+    arq_enabled: bool = True
     arq_queue_name: str = "chatbot:jobs"
     arq_job_timeout_seconds: int = 300
     arq_job_max_tries: int = 5

@@ -3,131 +3,240 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Portal Tenant - Negocio</title>
+    <title>Panel del negocio</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
     <div class="app-container">
-        <!-- Sidebar -->
         <aside class="sidebar">
             <div class="sidebar-header">
-                <h1>🍺 Negocio</h1>
-                <p class="tenant-name" id="tenantName">Cargando...</p>
+                <p class="sidebar-eyebrow">Panel del negocio</p>
+                <h1>Gestión diaria</h1>
+                <p class="tenant-name" id="tenantName">Cargando negocio...</p>
             </div>
             <nav class="sidebar-nav">
-                <a href="#dashboard" class="nav-link active" data-section="dashboard">📊 Dashboard</a>
-                <a href="#profile" class="nav-link" data-section="profile">🏪 Perfil</a>
-                <a href="#products" class="nav-link" data-section="products">📦 Productos</a>
-                <a href="#categories" class="nav-link" data-section="categories">🏷️ Categorías</a>
-                <a href="#knowledge" class="nav-link" data-section="knowledge">🧠 Knowledge Base</a>
-                <a href="#channels" class="nav-link" data-section="channels">📱 Canales</a>
+                <a href="#dashboard" class="nav-link active" data-section="dashboard" data-title="Resumen del día" data-description="Revise el estado general del negocio y entre rápido a sus tareas principales.">
+                    <span class="nav-kicker">Inicio</span>
+                    <span class="nav-label">Resumen del día</span>
+                </a>
+                <a href="#profile" class="nav-link" data-section="profile" data-title="Datos del negocio" data-description="Actualice la información que sus clientes ven y la forma en que usted atiende.">
+                    <span class="nav-kicker">Datos</span>
+                    <span class="nav-label">Datos del negocio</span>
+                </a>
+                <a href="#products" class="nav-link" data-section="products" data-title="Productos" data-description="Mantenga su catálogo al día para evitar errores al vender o responder consultas.">
+                    <span class="nav-kicker">Venta</span>
+                    <span class="nav-label">Productos</span>
+                </a>
+                <a href="#categories" class="nav-link" data-section="categories" data-title="Grupos de productos" data-description="Ordene el catálogo con grupos simples para encontrar y cargar productos más rápido.">
+                    <span class="nav-kicker">Orden</span>
+                    <span class="nav-label">Grupos de productos</span>
+                </a>
+                <a href="#knowledge" class="nav-link" data-section="knowledge" data-title="Información útil" data-description="Guarde respuestas generales del negocio, como horarios, zonas de entrega y medios de pago.">
+                    <span class="nav-kicker">Ayuda</span>
+                    <span class="nav-label">Información útil</span>
+                </a>
+                <a href="#channels" class="nav-link" data-section="channels" data-title="Canales de atención" data-description="Revise los medios conectados por donde llegan los mensajes de sus clientes.">
+                    <span class="nav-kicker">Contacto</span>
+                    <span class="nav-label">Canales de atención</span>
+                </a>
             </nav>
         </aside>
 
-        <!-- Main Content -->
         <main class="main-content">
             <header class="top-bar">
-                <h2 id="pageTitle">Dashboard</h2>
+                <div>
+                    <p class="page-kicker" id="pageKicker">Inicio</p>
+                    <h2 id="pageTitle">Resumen del día</h2>
+                    <p class="page-description" id="pageDescription">Revise el estado general del negocio y entre rápido a sus tareas principales.</p>
+                </div>
                 <div class="top-bar-actions">
-                    <span class="status-badge" id="statusBadge">Activo</span>
+                    <span class="status-badge" id="statusBadge">Negocio activo</span>
                 </div>
             </header>
 
             <div class="content-area">
-                <!-- Dashboard Section -->
                 <section id="dashboard" class="section active">
+                    <div class="hero-panel">
+                        <div>
+                            <p class="hero-eyebrow">Operación diaria</p>
+                            <h3 id="dashboardGreeting">Todo listo para comenzar</h3>
+                            <p id="dashboardLead">Use este resumen para confirmar que su negocio está visible, ordenado y listo para responder consultas.</p>
+                        </div>
+                        <div class="hero-actions">
+                            <button type="button" class="btn btn-primary" data-go-section="products">Revisar productos</button>
+                            <button type="button" class="btn btn-secondary" data-go-section="profile">Actualizar datos</button>
+                            <button type="button" class="btn btn-secondary" data-go-section="knowledge">Agregar información útil</button>
+                        </div>
+                    </div>
+
                     <div class="stats-grid">
                         <div class="stat-card">
-                            <div class="stat-icon">👥</div>
+                            <div class="stat-icon">Clientes</div>
                             <div class="stat-info">
                                 <span class="stat-value" id="userCount">0</span>
-                                <span class="stat-label">Usuarios</span>
+                                <span class="stat-label">Personas registradas</span>
                             </div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-icon">💬</div>
+                            <div class="stat-icon">Mensajes</div>
                             <div class="stat-info">
                                 <span class="stat-value" id="convCount">0</span>
-                                <span class="stat-label">Conversaciones</span>
+                                <span class="stat-label">Conversaciones atendidas</span>
                             </div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-icon">📦</div>
+                            <div class="stat-icon">Catálogo</div>
                             <div class="stat-info">
                                 <span class="stat-value" id="productCount">0</span>
-                                <span class="stat-label">Productos</span>
+                                <span class="stat-label">Productos cargados</span>
                             </div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-icon">🧠</div>
+                            <div class="stat-icon">Respuestas</div>
                             <div class="stat-info">
                                 <span class="stat-value" id="kbCount">0</span>
-                                <span class="stat-label">KB Entradas</span>
+                                <span class="stat-label">Respuestas guardadas</span>
                             </div>
                         </div>
                     </div>
+
+                    <div class="dashboard-grid">
+                        <article class="insight-card insight-card--summary">
+                            <div class="card-heading">
+                                <div>
+                                    <p class="card-kicker">Lectura rápida</p>
+                                    <h4>Estado del negocio</h4>
+                                </div>
+                            </div>
+                            <p class="insight-copy" id="dashboardSummary">Estamos preparando el resumen del negocio.</p>
+                        </article>
+
+                        <article class="insight-card insight-card--next">
+                            <div class="card-heading">
+                                <div>
+                                    <p class="card-kicker">Siguiente paso</p>
+                                    <h4>Tarea recomendada</h4>
+                                </div>
+                            </div>
+                            <p class="insight-copy" id="dashboardRecommendation">Cargando recomendación...</p>
+                        </article>
+
+                        <article class="insight-card insight-card--wide">
+                            <div class="card-heading">
+                                <div>
+                                    <p class="card-kicker">Control diario</p>
+                                    <h4>Lo pendiente hoy</h4>
+                                </div>
+                            </div>
+                            <ul class="checklist" id="dashboardChecklist">
+                                <li>Estamos revisando el estado del negocio.</li>
+                            </ul>
+                        </article>
+                    </div>
                 </section>
 
-                <!-- Profile Section -->
                 <section id="profile" class="section">
+                    <div class="section-intro">
+                        <h3>Datos del negocio</h3>
+                        <p>Complete solo lo necesario para que su negocio se vea claro y confiable para sus clientes.</p>
+                    </div>
                     <form id="profileForm" class="form-card">
                         <div class="form-group">
-                            <label for="profileName">Nombre del Negocio</label>
+                            <label for="profileName" class="label-with-help">Nombre del Negocio
+                                <button type="button" class="help-tip" data-tooltip="Es el nombre que verán sus clientes cuando consulten o reciban información de su negocio." aria-label="Ayuda sobre nombre del negocio">?</button>
+                            </label>
                             <input type="text" id="profileName" name="name" required>
                         </div>
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="profileEmail">Email</label>
+                                <label for="profileEmail" class="label-with-help">Email
+                                    <button type="button" class="help-tip" data-tooltip="Correo de contacto del negocio. Úselo si desea que sus clientes o su equipo tengan una vía formal de contacto." aria-label="Ayuda sobre email">?</button>
+                                </label>
                                 <input type="email" id="profileEmail" name="email">
                             </div>
                             <div class="form-group">
-                                <label for="profilePhone">Teléfono</label>
+                                <label for="profilePhone" class="label-with-help">Teléfono
+                                    <button type="button" class="help-tip" data-tooltip="Número de contacto principal del negocio. Conviene usar uno vigente y fácil de responder." aria-label="Ayuda sobre teléfono">?</button>
+                                </label>
                                 <input type="text" id="profilePhone" name="phone">
                             </div>
                         </div>
                         <div class="form-group">
-                            <label for="profileAddress">Dirección</label>
+                            <label for="profileAddress" class="label-with-help">Dirección
+                                <button type="button" class="help-tip" data-tooltip="Dirección del local o punto de entrega. Si no atiende presencialmente, puede dejarla vacía." aria-label="Ayuda sobre dirección">?</button>
+                            </label>
                             <input type="text" id="profileAddress" name="address">
                         </div>
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="profileCity">Ciudad</label>
+                                <label for="profileCity" class="label-with-help">Ciudad
+                                    <button type="button" class="help-tip" data-tooltip="Ciudad principal donde opera el negocio. Esto ayuda a ubicar mejor su atención y cobertura." aria-label="Ayuda sobre ciudad">?</button>
+                                </label>
                                 <input type="text" id="profileCity" name="city">
                             </div>
                             <div class="form-group">
-                                <label for="profileWebsite">Website</label>
+                                <label for="profileWebsite" class="label-with-help">Sitio web
+                                    <button type="button" class="help-tip" data-tooltip="Ingrese la dirección completa de su sitio, por ejemplo https://minegocio.cl. Este campo es opcional." aria-label="Ayuda sobre sitio web">?</button>
+                                </label>
                                 <input type="url" id="profileWebsite" name="website">
                             </div>
                         </div>
                         <div class="form-group">
-                            <label for="profileLogo">URL del Logo</label>
+                            <label for="profileLogo" class="label-with-help">Dirección del logo
+                                <button type="button" class="help-tip" data-tooltip="Pegue aquí el enlace directo de la imagen de su logo. Si todavía no lo tiene publicado, puede dejar este campo vacío." aria-label="Ayuda sobre logo">?</button>
+                            </label>
                             <input type="url" id="profileLogo" name="logo_url">
                         </div>
                         <div class="form-group">
-                            <label for="profileHours">Horarios (JSON)</label>
-                            <textarea id="profileHours" name="business_hours" rows="4" placeholder='{"lunes": {"open": "10:00", "close": "22:00"}}'></textarea>
+                            <div class="hours-editor-header">
+                                <label class="label-with-help">Horarios de atención
+                                    <button type="button" class="help-tip" data-tooltip="Defina aquí a qué hora atiende cada día. Si un día no abre, márquelo como cerrado." aria-label="Ayuda sobre horarios">?</button>
+                                </label>
+                                <p class="field-hint">Puede usar los botones rápidos y luego ajustar solo lo que cambie en su rutina real.</p>
+                                <div class="hours-presets" role="group" aria-label="Presets de horarios">
+                                    <button type="button" class="hours-preset-btn" data-hours-preset="weekdays">Lun-Vie</button>
+                                    <button type="button" class="hours-preset-btn" data-hours-preset="weekdays_plus_sat">Lun-Sáb</button>
+                                    <button type="button" class="hours-preset-btn" data-hours-preset="daily">Todos los días</button>
+                                    <button type="button" class="hours-preset-btn" data-hours-preset="closed">Cerrado</button>
+                                </div>
+                            </div>
+                            <div id="profileHoursEditor" class="hours-editor" aria-live="polite"></div>
+                            <div id="profileHoursSummary" class="hours-summary"></div>
                         </div>
                         <div class="form-group" style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">
                             <input type="checkbox" id="profileHumanAvailable" name="human_agent_available" style="width:auto; margin:0;">
-                            <label for="profileHumanAvailable" style="margin:0; font-weight:normal;">Habilitar botón "Hablar con Humano" en el menú de Telegram</label>
+                            <label for="profileHumanAvailable" style="margin:0; font-weight:normal;" class="label-with-help">Permitir que el cliente pida atención de una persona
+                                <button type="button" class="help-tip" data-tooltip="Actívelo solo si realmente hay alguien disponible para continuar la atención cuando el cliente lo solicite." aria-label="Ayuda sobre atención humana">?</button>
+                            </label>
                         </div>
-                        <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+                        <div class="form-actions">
+                            <p class="save-state" id="profileSaveState">Sin cambios pendientes.</p>
+                            <button type="submit" class="btn btn-primary" id="profileSaveBtn">Guardar cambios</button>
+                        </div>
                     </form>
                 </section>
 
-                <!-- Products Section -->
                 <section id="products" class="section">
-                    <div class="section-header">
+                    <div class="section-intro">
                         <h3>Productos</h3>
+                        <p>Mantenga el catálogo al día. Un catálogo claro reduce dudas, errores y tiempo de atención.</p>
+                    </div>
+                    <div class="section-header">
+                        <h3 class="section-title-with-help">Catálogo visible
+                            <button type="button" class="help-tip" data-tooltip="Aquí administra los productos que su negocio ofrece, con su precio, formato y disponibilidad." aria-label="Ayuda sobre productos">?</button>
+                        </h3>
                         <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
-                            <button class="btn btn-secondary" id="exportProductsBtn" title="Exportar todos los productos a Excel">⬇ Exportar Excel</button>
-                            <button class="btn btn-secondary" id="exportTemplateBtn" title="Descargar plantilla vacía para importar">📋 Plantilla</button>
-                            <label class="btn btn-secondary" id="importProductsLabel" style="cursor:pointer;margin:0;" title="Importar productos desde Excel">
-                                ⬆ Importar Excel
+                            <button class="btn btn-secondary" id="exportProductsBtn" title="Descargar todos los productos en un archivo de Excel">Descargar Excel</button>
+                            <button class="btn btn-secondary" id="exportTemplateBtn" title="Descargar un archivo guía para cargar productos">Descargar plantilla</button>
+                            <label class="btn btn-secondary" id="importProductsLabel" style="cursor:pointer;margin:0;" title="Cargar productos desde un archivo de Excel">
+                                Cargar Excel
                                 <input type="file" id="importProductsInput" accept=".xlsx" style="display:none;">
                             </label>
-                            <button class="btn btn-primary" id="addProductBtn">+ Nuevo Producto</button>
+                            <button class="btn btn-primary" id="addProductBtn">Agregar producto</button>
                         </div>
+                    </div>
+                    <div class="context-note">
+                        <strong>Consejo práctico:</strong> si tiene muchos productos, descargue la plantilla, complétela una sola vez y luego use "Cargar Excel" para ahorrar tiempo.
                     </div>
                     <div class="table-container">
                         <table class="data-table" id="productsTable">
@@ -147,18 +256,23 @@
                     </div>
                 </section>
 
-                <!-- Categories Section -->
                 <section id="categories" class="section">
+                    <div class="section-intro">
+                        <h3>Grupos de productos</h3>
+                        <p>Agrupe productos parecidos para encontrarlos más rápido y mantener el catálogo ordenado.</p>
+                    </div>
                     <div class="section-header">
-                        <h3>Categorías</h3>
-                        <button class="btn btn-primary" id="addCategoryBtn">+ Nueva Categoría</button>
+                        <h3 class="section-title-with-help">Grupos del catálogo
+                            <button type="button" class="help-tip" data-tooltip="Use grupos para ordenar sus productos. Por ejemplo: Vinos, Cervezas, Piscos o Promociones." aria-label="Ayuda sobre categorías">?</button>
+                        </h3>
+                        <button class="btn btn-primary" id="addCategoryBtn">Agregar grupo</button>
                     </div>
                     <div class="table-container">
                         <table class="data-table" id="categoriesTable">
                             <thead>
                                 <tr>
                                     <th>Nombre</th>
-                                    <th>Slug</th>
+                                    <th>Referencia interna</th>
                                     <th>Acciones</th>
                                 </tr>
                             </thead>
@@ -167,16 +281,22 @@
                     </div>
                 </section>
 
-                <!-- Knowledge Base Section -->
                 <section id="knowledge" class="section">
+                    <div class="section-intro">
+                        <h3>Información útil</h3>
+                        <p>Guarde respuestas generales que conviene repetir con frecuencia, sin mezclar stock ni precios del momento.</p>
+                    </div>
                     <div class="section-header">
-                        <h3>Knowledge Base</h3>
-                        <button class="btn btn-primary" id="addKbBtn">+ Nueva Entrada</button>
+                        <h3 class="section-title-with-help">Respuestas del negocio
+                            <button type="button" class="help-tip" data-tooltip="Aquí puede guardar información general del negocio, como horarios, zonas de entrega, medios de pago o políticas de atención." aria-label="Ayuda sobre información útil">?</button>
+                        </h3>
+                        <button class="btn btn-primary" id="addKbBtn">Agregar respuesta</button>
                     </div>
                     <div class="kb-search">
-                        <input type="text" id="kbSearchInput" placeholder="Buscar en la base de conocimiento...">
+                        <input type="text" id="kbSearchInput" placeholder="Buscar una respuesta guardada...">
                         <button class="btn btn-secondary" id="kbSearchBtn">Buscar</button>
                     </div>
+                    <p class="search-feedback" id="kbSearchFeedback">Puede buscar por tema, título o parte del texto guardado.</p>
                     <div class="table-container">
                         <table class="data-table" id="kbTable">
                             <thead>
@@ -193,10 +313,15 @@
                     </div>
                 </section>
 
-                <!-- Channels Section -->
                 <section id="channels" class="section">
+                    <div class="section-intro">
+                        <h3>Canales de atención</h3>
+                        <p>Revise desde qué medios llegan mensajes y confirme que cada canal activo siga disponible.</p>
+                    </div>
                     <div class="section-header">
-                        <h3>Canales de Mensajería</h3>
+                        <h3 class="section-title-with-help">Canales conectados
+                            <button type="button" class="help-tip" data-tooltip="Muestra los medios conectados a su negocio, como Telegram u otras plataformas activas." aria-label="Ayuda sobre canales">?</button>
+                        </h3>
                     </div>
                     <div class="channels-grid" id="channelsList"></div>
                 </section>

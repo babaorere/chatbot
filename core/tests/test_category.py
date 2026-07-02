@@ -39,11 +39,7 @@ def test_category_crud_and_collision_prevention(db_session):
     # 7. Test delete cascades (set default 'General')
     # Create product in category 'Pisco'
     product = prod_svc.create_product(
-        sku="PIS-001",
-        name="Pisco Mistral",
-        price=8990.00,
-        stock=5,
-        category="Pisco"
+        sku="PIS-001", name="Pisco Mistral", price=8990.00, stock=5, category="Pisco"
     )
     assert product.category == "Pisco"
 

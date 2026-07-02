@@ -173,8 +173,9 @@ def _get_human_agent_available() -> bool:
         val = cfg.human_agent_available if cfg else True
         _human_agent_cache = {"value": val, "expires_at": now + 300}
         return val
-    except Exception:
-        return True
+    except Exception as exc:
+        logger.exception("Failed to resolve human agent availability")
+        raise RuntimeError("Failed to resolve human agent availability") from exc
     finally:
         db.close()
 
@@ -186,7 +187,6 @@ async def _clear_latest_conversation_session(
 ) -> None:
     """Programa o ejecuta el clear de la sesión conversacional más reciente."""
     started_at = time.perf_counter()
-    from services.conversation_reset_service import clear_latest_conversation_session
     from services.job_dispatcher import JobDispatcher
 
     event_id = str(uuid.uuid4())
@@ -208,57 +208,14 @@ async def _clear_latest_conversation_session(
                 user_id=user_id,
                 extra=f"reason={reason} event_id={event_id}",
             )
-    except RuntimeError:
-        session_id = await clear_latest_conversation_session(user_id)
-        if trace_id:
-            _log_timing(
-                trace_id=trace_id,
-                stage="session_clear_fallback_done",
-                started_at=started_at,
-                user_id=user_id,
-                extra=f"reason={reason} session_id={session_id or '-'}",
-            )
     except Exception as exc:
-        logger.error(
-            "Failed to clear latest conversation session [user=%s]: %s",
+        logger.exception(
+            "Failed to enqueue latest conversation session clear [user=%s]",
             user_id,
-            exc,
         )
-
-
-async def _clear_reply_markup_async(
-    *,
-    token: str,
-    chat_id: Any,
-    message_id: int,
-    trace_id: str | None = None,
-    user_id: str | None = None,
-) -> None:
-    """Limpia el teclado inline fuera del camino crítico del callback."""
-    from services.telegram_service import clear_telegram_reply_markup
-
-    started_at = time.perf_counter()
-    try:
-        await clear_telegram_reply_markup(
-            bot_token=token,
-            chat_id=chat_id,
-            message_id=message_id,
-        )
-        if trace_id:
-            _log_timing(
-                trace_id=trace_id,
-                stage="reply_markup_cleared_async",
-                started_at=started_at,
-                user_id=user_id,
-                extra=f"message_id={message_id}",
-            )
-    except Exception as exc:
-        logger.error(
-            "Failed to clear reply markup asynchronously [user=%s, message_id=%s]: %s",
-            user_id,
-            message_id,
-            exc,
-        )
+        raise RuntimeError(
+            "ARQ must be available for conversation reset dispatch."
+        ) from exc
 
 
 async def _defer_clear_reply_markup(
@@ -269,7 +226,7 @@ async def _defer_clear_reply_markup(
     trace_id: str | None = None,
     user_id: str | None = None,
 ) -> None:
-    """Programa la limpieza del teclado inline con job durable o fallback local."""
+    """Programa la limpieza del teclado inline con job durable."""
     from services.job_dispatcher import JobDispatcher
 
     started_at = time.perf_counter()
@@ -293,21 +250,15 @@ async def _defer_clear_reply_markup(
                 user_id=user_id,
                 extra=f"message_id={message_id}",
             )
-    except RuntimeError:
-        await _clear_reply_markup_async(
-            token=token,
-            chat_id=chat_id,
-            message_id=message_id,
-            trace_id=trace_id,
-            user_id=user_id,
-        )
     except Exception as exc:
-        logger.error(
-            "Failed to defer reply markup cleanup [user=%s message_id=%s]: %s",
+        logger.exception(
+            "Failed to enqueue reply markup cleanup [user=%s message_id=%s]",
             user_id,
             message_id,
-            exc,
         )
+        raise RuntimeError(
+            "ARQ must be available for reply markup cleanup dispatch."
+        ) from exc
 
 
 async def _process_telegram_update_core(
@@ -893,7 +844,8 @@ async def telegram_webhook(
                         )
                 return {"status": "ok", "detail": "duplicate request blocked"}
         except Exception as e:
-            logger.error("Redis concurrency lock error: %s", e)
+            logger.exception("Redis concurrency lock error")
+            raise RuntimeError("Failed to acquire Redis concurrency lock") from e
     else:
         if user_id in _local_locks:
             logger.warning(

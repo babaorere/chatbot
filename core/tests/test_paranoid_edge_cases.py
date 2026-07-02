@@ -13,6 +13,7 @@ from controllers.telegram_controller import _local_locks
 # 1. PARANOID TESTS: Category Slugification Edge Cases
 # ============================================================================
 
+
 def test_slugify_extreme_inputs():
     """Prueba slugify con valores vacíos, nulos, emojis, caracteres especiales e inyecciones."""
     # Nombre vacío o caracteres no permitidos
@@ -28,12 +29,17 @@ def test_slugify_extreme_inputs():
     assert slugify(long_name) == "a" * 10000
 
     # Inyección de código HTML o scripts
-    assert slugify("<script>alert('xss')</script>") == "scriptalerthttps-style-alert-xssscript" or True  # Asegura paso
+    assert (
+        slugify("<script>alert('xss')</script>")
+        == "scriptalerthttps-style-alert-xssscript"
+        or True
+    )  # Asegura paso
 
 
 # ============================================================================
 # 2. PARANOID TESTS: Product Import Row Ingestion & Data Formats
 # ============================================================================
+
 
 def test_product_service_helper_value_conversions():
     """Prueba que los parsers de conversión de fila de Excel resistan tipos de datos corruptos y extremos."""
@@ -90,6 +96,7 @@ def test_import_rows_invalid_product_validation():
 # 3. PARANOID TESTS: RAG Policy Classifier Resiliency
 # ============================================================================
 
+
 def test_rag_policy_robustness():
     """Evalúa que el RAG classifier resista strings gigantescos, XSS y consultas extrañas sin crashear."""
     policy = RAGPolicyService()
@@ -97,7 +104,11 @@ def test_rag_policy_robustness():
     # Consulta extremadamente larga
     huge_query = "hola " * 5000
     res = policy.classify(huge_query)
-    assert res.intent in {RAGIntent.GENERAL_SERVICE, RAGIntent.PRODUCT_SALES, RAGIntent.UNKNOWN}
+    assert res.intent in {
+        RAGIntent.GENERAL_SERVICE,
+        RAGIntent.PRODUCT_SALES,
+        RAGIntent.UNKNOWN,
+    }
 
     # Intentos de inyección SQL
     sql_injection = "' OR 1=1; DROP TABLE products; --"
@@ -112,6 +123,7 @@ def test_rag_policy_robustness():
 # ============================================================================
 # 4. PARANOID TESTS: Local Concurrency Locks Leak Checks
 # ============================================================================
+
 
 def test_local_locks_leak_safety():
     """Verifica que el set de locks locales no acumule elementos huérfanos y libere recursos adecuadamente."""

@@ -42,8 +42,6 @@ markers = [
     "integration: tests that require a running API service or external process",
 ]
 filterwarnings = [
-    "ignore:BaseAgentConfig is deprecated and will be removed in future versions\\.:DeprecationWarning",
-    "ignore:Using `httpx` with `starlette\\.testclient` is deprecated; install `httpx2` instead\\.:DeprecationWarning",
 ]
 
 [tool.setuptools]

@@ -19,19 +19,19 @@ logger = logging.getLogger(__name__)
 # ── Columnas del Excel (orden canónico) ───────────────────────────────────────
 
 EXCEL_COLUMNS: list[tuple[str, str]] = [
-    ("sku",             "SKU"),
-    ("name",            "Nombre *"),
-    ("description",     "Descripción"),
-    ("price",           "Precio"),
-    ("cost",            "Costo"),
-    ("stock",           "Stock"),
-    ("format",          "Formato (ej: 500cc, caja x12, unidad)"),
+    ("sku", "SKU"),
+    ("name", "Nombre *"),
+    ("description", "Descripción"),
+    ("price", "Precio"),
+    ("cost", "Costo"),
+    ("stock", "Stock"),
+    ("format", "Formato (ej: 500cc, caja x12, unidad)"),
     ("unit_of_measure", "Unidad de medida (ej: un, kg, lt)"),
-    ("category",        "Categoría"),
-    ("provider",        "Proveedor"),
-    ("taxes",           "IVA (0.0 – 1.0, ej: 0.19)"),
-    ("is_available",    "Disponible (TRUE/FALSE)"),
-    ("margin",          "Margen (%)"),
+    ("category", "Categoría"),
+    ("provider", "Proveedor"),
+    ("taxes", "IVA (0.0 – 1.0, ej: 0.19)"),
+    ("is_available", "Disponible (TRUE/FALSE)"),
+    ("margin", "Margen (%)"),
 ]
 
 FIELD_NAMES = [col[0] for col in EXCEL_COLUMNS]
@@ -293,7 +293,9 @@ class ProductService:
             existing.cost = self._row_to_float(row.get("cost"))
             existing.stock = self._row_to_int(row.get("stock"))
             existing.format = self._row_to_str(row.get("format"))
-            existing.unit_of_measure = self._row_to_str(row.get("unit_of_measure")) or "un"
+            existing.unit_of_measure = (
+                self._row_to_str(row.get("unit_of_measure")) or "un"
+            )
             existing.category = category
             existing.provider = self._row_to_str(row.get("provider"))
             existing.taxes = self._row_to_float(row.get("taxes"))
@@ -320,9 +322,7 @@ class ProductService:
         )
         return self.repo.save(product), True
 
-    def import_from_rows(
-        self, rows: list[dict[str, object]]
-    ) -> dict[str, int]:
+    def import_from_rows(self, rows: list[dict[str, object]]) -> dict[str, int]:
         """
         Importa una lista de filas (dicts con claves = FIELD_NAMES).
         Estrategia de colisión: UPSERT por SKU.
@@ -364,10 +364,26 @@ class ProductService:
 
         products = self.repo.find_all(skip=0, limit=10000)
         for row_index, product in enumerate(products, start=2):
-            price = float(product.price) if isinstance(product.price, Decimal) else product.price
-            cost = float(product.cost) if isinstance(product.cost, Decimal) else product.cost
-            margin = float(product.margin) if isinstance(product.margin, Decimal) else product.margin
-            taxes = float(product.taxes) if isinstance(product.taxes, Decimal) else product.taxes
+            price = (
+                float(product.price)
+                if isinstance(product.price, Decimal)
+                else product.price
+            )
+            cost = (
+                float(product.cost)
+                if isinstance(product.cost, Decimal)
+                else product.cost
+            )
+            margin = (
+                float(product.margin)
+                if isinstance(product.margin, Decimal)
+                else product.margin
+            )
+            taxes = (
+                float(product.taxes)
+                if isinstance(product.taxes, Decimal)
+                else product.taxes
+            )
 
             row_values = [
                 product.sku,
@@ -388,7 +404,9 @@ class ProductService:
                 ws.cell(row=row_index, column=col_index, value=value)
 
         for col_index in range(1, len(HEADER_LABELS) + 1):
-            ws.column_dimensions[ws.cell(row=1, column=col_index).column_letter].width = 22
+            ws.column_dimensions[
+                ws.cell(row=1, column=col_index).column_letter
+            ].width = 22
 
         buf = io.BytesIO()
         wb.save(buf)
@@ -436,7 +454,9 @@ class ProductService:
             cell.alignment = center_align
 
         for col_index in range(1, len(HEADER_LABELS) + 1):
-            ws.column_dimensions[ws.cell(row=1, column=col_index).column_letter].width = 26
+            ws.column_dimensions[
+                ws.cell(row=1, column=col_index).column_letter
+            ].width = 26
 
         buf = io.BytesIO()
         wb.save(buf)

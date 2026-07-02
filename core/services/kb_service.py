@@ -54,6 +54,7 @@ class KBService:
     ) -> KnowledgeBase:
         try:
             from services.embedding_service import EmbeddingService
+
             emb_svc = EmbeddingService()
             combined_text = f"{title}\n{content}"
             embedding = await emb_svc.get_embedding(combined_text)
@@ -97,6 +98,7 @@ class KBService:
             # Si se actualizó el título o el contenido, recalculamos embedding
             if title is not None or content is not None:
                 from services.embedding_service import EmbeddingService
+
                 emb_svc = EmbeddingService()
                 combined_text = f"{entry.title}\n{entry.content}"
                 entry.embedding = await emb_svc.get_embedding(combined_text)
@@ -128,6 +130,7 @@ class KBService:
     ) -> list[dict[str, Any]]:
         try:
             from services.embedding_service import EmbeddingService
+
             emb_svc = EmbeddingService()
             query_vector = await emb_svc.get_embedding(query)
             return self.repo.search_hybrid(

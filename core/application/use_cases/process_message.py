@@ -179,8 +179,6 @@ class ProcessMessageUseCase:
         user_id: str,
         session_id: str,
     ) -> None:
-        from services.alert_service import AlertService  # noqa: PLC0415
-
         title = "Fallo en la inferencia del LLM"
         details = (
             f"Ocurrió un error al llamar al LLM.\n\n"
@@ -200,13 +198,15 @@ class ProcessMessageUseCase:
                 event_id=event_id,
                 _job_id=f"alert:error:{event_id}",
             )
-        except RuntimeError:
-            await AlertService.notify_critical_issue(
-                db=self._db,
-                title=title,
-                details=details,
-                alert_type="error",
+        except RuntimeError as exc:
+            logger.exception(
+                "Failed to enqueue critical issue alert job [user_id=%s, session_id=%s]",
+                user_id,
+                session_id,
             )
+            raise RuntimeError(
+                "ARQ must be available for critical issue alert dispatch."
+            ) from exc
 
     async def _dispatch_llm_latency_alert(
         self,
@@ -215,8 +215,6 @@ class ProcessMessageUseCase:
         user_id: str,
         session_id: str,
     ) -> None:
-        from services.alert_service import AlertService  # noqa: PLC0415
-
         event_id = str(uuid.uuid4())
         try:
             await self._job_dispatcher.enqueue_job(
@@ -227,13 +225,15 @@ class ProcessMessageUseCase:
                 event_id=event_id,
                 _job_id=f"alert:latency:{event_id}",
             )
-        except RuntimeError:
-            await AlertService.check_llm_latency(
-                db=self._db,
-                duration=duration,
-                user_id=user_id,
-                session_id=session_id,
+        except RuntimeError as exc:
+            logger.exception(
+                "Failed to enqueue latency alert job [user_id=%s, session_id=%s]",
+                user_id,
+                session_id,
             )
+            raise RuntimeError(
+                "ARQ must be available for latency alert dispatch."
+            ) from exc
 
     async def clear_session(self, user_id: str, session_id: str) -> None:
         """Limpia la sesión de conversación del LLM."""
@@ -244,8 +244,13 @@ class ProcessMessageUseCase:
                 user_id,
                 session_id,
             )
-        except Exception as e:
-            logger.error("Failed to clear session in UseCase: %s", e)
+        except Exception:
+            logger.exception(
+                "Failed to clear session in UseCase [user_id=%s, session_id=%s]",
+                user_id,
+                session_id,
+            )
+            raise
 
     def _get_or_create_user(
         self,

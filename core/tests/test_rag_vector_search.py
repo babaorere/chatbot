@@ -32,19 +32,19 @@ async def test_kb_service_hybrid_search_integration():
     """Prueba de integración de creación y búsqueda híbrida en la base de datos."""
     db: Session = SessionLocal()
     kb_svc = KBService(db)
-    
+
     try:
         # 1. Crear entradas en la base de conocimientos
         entry1 = await kb_svc.create_entry(
             category="horarios",
             title="Horario de Atención General",
-            content="Atendemos de lunes a sábado desde las 10:00 hasta las 22:00 horas. Domingos de 12:00 a 20:00 horas."
+            content="Atendemos de lunes a sábado desde las 10:00 hasta las 22:00 horas. Domingos de 12:00 a 20:00 horas.",
         )
-        
+
         await kb_svc.create_entry(
             category="delivery",
             title="Cobertura y Despacho a Domicilio",
-            content="Realizamos envíos a toda la comuna de Santiago de lunes a viernes entre las 11:00 y las 19:00 horas."
+            content="Realizamos envíos a toda la comuna de Santiago de lunes a viernes entre las 11:00 y las 19:00 horas.",
         )
 
         assert entry1.id is not None
@@ -63,13 +63,17 @@ async def test_kb_service_hybrid_search_integration():
         assert results_delivery[0]["title"] == "Cobertura y Despacho a Domicilio"
 
         # 4. Búsqueda filtrada por categoría
-        results_filtered = await kb_svc.search(query="delivery", top_k=5, category="horarios")
+        results_filtered = await kb_svc.search(
+            query="delivery", top_k=5, category="horarios"
+        )
         for r in results_filtered:
             assert r["category"] == "horarios"
 
     finally:
         # Limpiar registros creados
-        db.query(KnowledgeBase).filter(KnowledgeBase.category.in_(["horarios", "delivery"])).delete()
+        db.query(KnowledgeBase).filter(
+            KnowledgeBase.category.in_(["horarios", "delivery"])
+        ).delete()
         db.commit()
         db.close()
 

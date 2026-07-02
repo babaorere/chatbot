@@ -1,26 +1,30 @@
 from __future__ import annotations
 
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
 
 async def send_telegram_message(
-    bot_token: str, chat_id: str | int, text: str, reply_markup: dict | None = None
-) -> int | None:
+    bot_token: str,
+    chat_id: str | int,
+    text: str,
+    reply_markup: dict | None = None,
+    trace_id: str | None = None,
+) -> int:
     """Envía un mensaje de texto a un chat de Telegram usando httpx de forma asíncrona.
 
-    Retorna el message_id si tiene éxito, o None si falla.
+    Retorna el message_id si tiene éxito. Si falla, lanza una excepción explícita.
     """
     if not bot_token or not chat_id:
-        logger.warning(
-            "Telegram credentials missing. Cannot send message. Token: %s, ChatId: %s",
-            "OK" if bot_token else "MISSING",
-            "OK" if chat_id else "MISSING",
+        raise ValueError(
+            "Telegram credentials missing. Cannot send message "
+            f"[token={'OK' if bot_token else 'MISSING'}, chat_id={'OK' if chat_id else 'MISSING'}]."
         )
-        return None
 
     try:
+        started_at = time.perf_counter()
         from app.container import get_http_client
 
         url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
@@ -34,14 +38,18 @@ async def send_telegram_message(
         client = get_http_client()
         resp = await client.post(url, json=payload)
         if resp.status_code == 200 and resp.json().get("ok"):
-            logger.info("Message successfully sent to Telegram chat: %s", chat_id)
+            elapsed_ms = round((time.perf_counter() - started_at) * 1000, 2)
+            logger.info(
+                "Message successfully sent to Telegram chat: %s%s elapsed_ms=%.2f",
+                chat_id,
+                f" trace={trace_id}" if trace_id else "",
+                elapsed_ms,
+            )
             return resp.json().get("result", {}).get("message_id")
-        else:
-            logger.error("Telegram API returned failure: %s", resp.text)
-            return None
+        raise RuntimeError(f"Telegram API returned failure: {resp.text}")
     except Exception as e:
-        logger.error("Failed to send Telegram message to chat %s: %s", chat_id, e)
-        return None
+        logger.exception("Failed to send Telegram message to chat %s", chat_id)
+        raise RuntimeError(f"Failed to send Telegram message to chat {chat_id}") from e
 
 
 def inject_version_to_reply_markup(
@@ -92,7 +100,10 @@ async def clear_telegram_reply_markup(
 ) -> bool:
     """Elimina los botones inline (reply_markup) de un mensaje específico para inhabilitarlo."""
     if not bot_token or not chat_id or not message_id:
-        return False
+        raise ValueError(
+            "Telegram credentials missing. Cannot clear reply markup "
+            f"[token={'OK' if bot_token else 'MISSING'}, chat_id={'OK' if chat_id else 'MISSING'}, message_id={'OK' if message_id else 'MISSING'}]."
+        )
     try:
         from app.container import get_http_client
 
@@ -104,12 +115,16 @@ async def clear_telegram_reply_markup(
         }
         client = get_http_client()
         resp = await client.post(url, json=payload)
-        return resp.status_code == 200 and resp.json().get("ok")
+        if resp.status_code == 200 and resp.json().get("ok"):
+            return True
+        raise RuntimeError(f"Telegram API returned failure: {resp.text}")
     except Exception as e:
-        logger.error(
-            "Failed to clear Telegram reply markup for msg %s: %s", message_id, e
+        logger.exception(
+            "Failed to clear Telegram reply markup for msg %s", message_id
         )
-        return False
+        raise RuntimeError(
+            f"Failed to clear Telegram reply markup for msg {message_id}"
+        ) from e
 
 
 async def answer_telegram_callback_query(
@@ -117,7 +132,10 @@ async def answer_telegram_callback_query(
 ) -> bool:
     """Confirma un callback query para evitar que quede cargando en el cliente de Telegram."""
     if not bot_token or not callback_query_id:
-        return False
+        raise ValueError(
+            "Telegram credentials missing. Cannot answer callback query "
+            f"[token={'OK' if bot_token else 'MISSING'}, callback_query_id={'OK' if callback_query_id else 'MISSING'}]."
+        )
     try:
         from app.container import get_http_client
 
@@ -129,7 +147,11 @@ async def answer_telegram_callback_query(
             payload["text"] = text
         client = get_http_client()
         resp = await client.post(url, json=payload)
-        return resp.status_code == 200 and resp.json().get("ok")
+        if resp.status_code == 200 and resp.json().get("ok"):
+            return True
+        raise RuntimeError(f"Telegram API returned failure: {resp.text}")
     except Exception as e:
-        logger.error("Failed to answer callback query %s: %s", callback_query_id, e)
-        return False
+        logger.exception("Failed to answer callback query %s", callback_query_id)
+        raise RuntimeError(
+            f"Failed to answer callback query {callback_query_id}"
+        ) from e

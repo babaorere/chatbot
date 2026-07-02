@@ -156,11 +156,28 @@ Discipline order:
 - maintainability
 - speed
 
+Design law:
+- Prefer dependency injection in application and infrastructure code.
+- Build dependencies at the composition root, not inside business logic, unless the object is a trivial local value.
+- Pass collaborators explicitly through parameters, factories, or provider functions.
+- Do not hide dependencies behind globals, singletons, or implicit module state when explicit injection is practical.
+- Apply DRY, SOLID, and KISS as hard constraints, not as slogans.
+- DRY means one authoritative implementation for one rule.
+- SOLID means small responsibilities, explicit interfaces, and replaceable components.
+- KISS means the smallest design that satisfies the contract and tests.
+- Propagate errors explicitly.
+- If an exception is caught, it must be handled with a real recovery or re-raised immediately.
+- Logging an error without failing the operation is forbidden unless the operation is intentionally best-effort and the caller contract allows that fallback.
+- Silent fallback, silent recovery, and silent data loss are forbidden.
+
 Issue rule:
 - Do not downgrade an issue to a warning, note, or optional follow-up.
 - If something is identified as an issue, it must be resolved.
 - This applies even if the issue is inherited, pre-existing, introduced by another session, or introduced by another model.
 - An unresolved issue remains an issue until fixed, not merely documented.
+- Every warning and every error must be repaired and addressed.
+- This applies whether the warning or error is inherited, pre-existing, introduced by another session, or introduced by another model.
+- No warning or error may be ignored, deferred, or normalized into accepted technical debt unless the user explicitly changes the contract.
 
 Durable job rules (mandatory for phases 1 to 5 of the ARQ migration):
 - Any task that must survive reloads, worker restarts, or transient failures must use a durable job queue, not in-process fire-and-forget scheduling.

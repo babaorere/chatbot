@@ -359,11 +359,22 @@ class TestProductsCRUD:
         # search_by_name usa db.execute() + mappings().all()
         mock_row = MagicMock()
         mock_row.__getitem__ = lambda self, key: {
-            "id": None, "sku": None, "name": "Pisco Control 35° 1L",
-            "description": None, "price": None, "stock": 0, "category": None,
-            "is_available": True, "cost": None, "margin": None, "provider": None,
-            "taxes": None, "unit_of_measure": "un", "format": None,
-            "created_at": None, "updated_at": None,
+            "id": None,
+            "sku": None,
+            "name": "Pisco Control 35° 1L",
+            "description": None,
+            "price": None,
+            "stock": 0,
+            "category": None,
+            "is_available": True,
+            "cost": None,
+            "margin": None,
+            "provider": None,
+            "taxes": None,
+            "unit_of_measure": "un",
+            "format": None,
+            "created_at": None,
+            "updated_at": None,
         }[key]
         mock_db.execute.return_value.mappings.return_value.all.return_value = [mock_row]
 
@@ -396,9 +407,7 @@ class TestProductsCRUD:
 
         product_svc = ProductService(mock_db)
         # Una fila sin nombre causará ValueError en upsert_by_sku, la cual debe propagarse
-        invalid_rows = [
-            {"sku": "SKU-ERROR", "name": "", "category": "General"}
-        ]
+        invalid_rows = [{"sku": "SKU-ERROR", "name": "", "category": "General"}]
         with pytest.raises(ValueError, match="El campo 'Nombre' es obligatorio"):
             product_svc.import_from_rows(invalid_rows)
 
@@ -441,7 +450,12 @@ class TestRateLimiting:
     def _load_nginx_conf(self) -> str:
         nginx_conf_path = os.path.join(WORKSPACE_DIR, "nginx.conf")
         if not os.path.exists(nginx_conf_path):
-            possible_paths = ["/nginx.conf", "/app/nginx.conf", "../nginx.conf", "../../nginx.conf"]
+            possible_paths = [
+                "/nginx.conf",
+                "/app/nginx.conf",
+                "../nginx.conf",
+                "../../nginx.conf",
+            ]
             for path in possible_paths:
                 if os.path.exists(path):
                     nginx_conf_path = path

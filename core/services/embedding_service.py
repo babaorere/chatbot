@@ -23,7 +23,9 @@ class EmbeddingService:
             return [0.0] * 1536
 
         if not self.api_key or self.api_key == "dummy_key":
-            logger.warning("No OpenRouter API key found. Using mock deterministic embedding vector.")
+            logger.warning(
+                "No OpenRouter API key found. Using mock deterministic embedding vector."
+            )
             return self._mock_embedding(text)
 
         try:
@@ -37,12 +39,16 @@ class EmbeddingService:
             vector = response["data"][0]["embedding"]
             return [float(x) for x in vector]
         except Exception as e:
-            logger.error("Failed to generate real embedding via LiteLLM: %s. Falling back to mock.", e)
+            logger.error(
+                "Failed to generate real embedding via LiteLLM: %s. Falling back to mock.",
+                e,
+            )
             return self._mock_embedding(text)
 
     def _mock_embedding(self, text: str) -> list[float]:
         """Genera un vector determinista de 1536 floats basado en el string."""
         import hashlib
+
         h = hashlib.sha256(text.encode("utf-8")).digest()
         vector = []
         for i in range(1536):

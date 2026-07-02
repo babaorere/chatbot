@@ -10,7 +10,9 @@ async def benchmark_endpoint(name: str, payload: dict):
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(url, json=payload)
             elapsed = time.perf_counter() - start_time
-            print(f"[{name}] HTTP Status: {resp.status_code} | Latencia: {elapsed:.3f} s")
+            print(
+                f"[{name}] HTTP Status: {resp.status_code} | Latencia: {elapsed:.3f} s"
+            )
             return elapsed
     except Exception as e:
         elapsed = time.perf_counter() - start_time
@@ -28,7 +30,7 @@ async def main():
             "from": {"id": 5391760292},
             "chat": {"id": 5391760292},
             "date": int(time.time()),
-            "text": "/start"
+            "text": "/start",
         }
     }
     await benchmark_endpoint("/start", start_payload)
@@ -44,9 +46,9 @@ async def main():
             "message": {
                 "message_id": 101,
                 "chat": {"id": 5391760292},
-                "date": int(time.time())
+                "date": int(time.time()),
             },
-            "data": "menu:categorias"
+            "data": "menu:categorias",
         }
     }
     await benchmark_endpoint("Callback: Categorías", cat_payload)
@@ -61,9 +63,9 @@ async def main():
             "message": {
                 "message_id": 102,
                 "chat": {"id": 5391760292},
-                "date": int(time.time())
+                "date": int(time.time()),
             },
-            "data": "cat_select:General"
+            "data": "cat_select:General",
         }
     }
     await benchmark_endpoint("Callback: Seleccionar Categoría General", select_payload)
@@ -78,9 +80,9 @@ async def main():
             "message": {
                 "message_id": 103,
                 "chat": {"id": 5391760292},
-                "date": int(time.time())
+                "date": int(time.time()),
             },
-            "data": "menu:stock"
+            "data": "menu:stock",
         }
     }
     await benchmark_endpoint("Callback: Consultar Stock (FSM)", stock_payload)
@@ -94,7 +96,7 @@ async def main():
             "from": {"id": 5391760292},
             "chat": {"id": 5391760292},
             "date": int(time.time()),
-            "text": "hola"
+            "text": "hola",
         }
     }
     await benchmark_endpoint("Mensaje de Texto: 'hola' (LLM)", text_payload)

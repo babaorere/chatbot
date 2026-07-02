@@ -13,8 +13,10 @@ async def test_order_lifecycle_e2e_conversational_flow(db_session):
     """Prueba E2E del ciclo de vida de un pedido: interactúa con el carrito, realiza checkout, confirma y cancela, verificando el stock en BD."""
     # 1. Registrar usuario y poblar productos
     user_svc = UserService(db_session)
-    user = user_svc.get_or_create(external_id="telegram_e2e_user_1", platform="telegram", display_name="Test E2E")
-    
+    user = user_svc.get_or_create(
+        external_id="telegram_e2e_user_1", platform="telegram", display_name="Test E2E"
+    )
+
     product_svc = ProductService(db_session)
     pisco = product_svc.create_product(
         sku="PISCO-ALTO-CARMEN",
@@ -58,7 +60,7 @@ async def test_order_lifecycle_e2e_conversational_flow(db_session):
     # 5. El operador confirma el pedido
     order_svc.update_order_status(order.id, "confirmed")
     assert order.status == "confirmed"
-    
+
     # El stock sigue reservado/disminuido
     db_session.refresh(pisco)
     assert pisco.stock == 7

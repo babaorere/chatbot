@@ -2,17 +2,17 @@ from __future__ import annotations
 
 import contextvars
 import datetime
+import logging
 import os
 import time
 from typing import Any, cast
 from zoneinfo import ZoneInfo
 
-from google.adk import Agent, Runner
-from google.adk.models.lite_llm import LiteLlm
-
 from services.session_service_factory import create_session_service
 from config.settings import settings
 from .constants import GADK_APP_NAME, GADK_INSTRUCTION, GADK_MODEL
+
+logger = logging.getLogger(__name__)
 
 current_session_id_var = contextvars.ContextVar("current_session_id", default=None)
 
@@ -23,24 +23,21 @@ current_session_id_var = contextvars.ContextVar("current_session_id", default=No
 
 
 def get_current_datetime(query: str | None = None) -> str:
-    """Obtiene la fecha y hora actual en Chile (zona horaria America/Santiago).
+    """Obtiene la fecha y hora actual de Chile en la zona horaria America/Santiago.
 
-    Invoca esta herramienta cuando el usuario pregunte explícitamente por la
-    fecha, hora, día de la semana, o cuando necesites contextualizar una
-    respuesta con información temporal (ej: 'están abiertos ahora?', 'qué día
-    es hoy?', 'es de noche?'). NO la invoques si el mensaje del usuario no
-    tiene ninguna referencia temporal ni la respuesta la requiere.
+    Invoca esta herramienta cuando el usuario pregunte por la hora, la fecha,
+    el día actual, o cuando necesites contexto temporal real para responder
+    correctamente. NO la invoques en consultas sin dependencia temporal ni para
+    inventar horarios del negocio; para eso usa la información del negocio.
 
     Args:
-        query: Texto opcional con la consulta del usuario relacionada con
-            tiempo (ej: 'qué hora es', 'es viernes?'). Puede ser None si
-            el contexto ya indica que se necesita la hora actual sin una
-            pregunta explícita.
+        query (str | None): Consulta opcional del usuario relacionada con tiempo
+            o fecha en texto libre. Usa None cuando el contexto ya exige la hora
+            actual aunque el usuario no la haya formulado literalmente.
 
     Returns:
-        str: Cadena con el día de la semana, fecha completa (DD/MM/YYYY),
-            hora actual (HH:MM) y zona horaria. Formato ejemplo:
-            'Fecha/hora actual: Viernes 21/05/2026 14:30 (hora Chile)'.
+        str: Texto en una sola línea con día de la semana, fecha, hora y la
+            etiqueta de hora Chile, listo para incorporarse al contexto del modelo.
     """
     tz = ZoneInfo("America/Santiago")
     now = datetime.datetime.now(tz)
@@ -49,27 +46,22 @@ def get_current_datetime(query: str | None = None) -> str:
 
 
 def get_chatbot_info(query: str | None = None) -> str:
-    """Retorna información estática de la Negocio El Buen Trago: horarios
-    de atención, servicios ofrecidos y ubicación física.
+    """Entrega información general y estática del negocio para responder consultas institucionales.
 
-    Invoca esta herramienta cuando el usuario pregunte por horarios de
-    atención, ubicación, dirección, servicios disponibles, o cualquier
-    dato general sobre la negocio (ej: 'a qué hora abren?', 'dónde
-    están ubicados?', 'hacen delivery?', 'qué venden?'). NO la invoques
-    para consultas sobre stock, precios de productos específicos, o temas
-    que requieran datos dinámicos del inventario.
+    Invoca esta herramienta cuando el usuario pregunte por horarios, ubicación,
+    cobertura general, servicios disponibles o datos institucionales no
+    dinámicos. NO la invoques para precios, stock, catálogo, compras o
+    cotizaciones; esos casos deben resolverse con herramientas reales.
 
     Args:
-        query: Texto opcional con la consulta del usuario sobre la
-            negocio (ej: 'horario', 'ubicación', 'delivery'). Puede
-            ser None si el contexto ya indica que se necesita información
-            general sin una pregunta explícita.
+        query (str | None): Consulta opcional del usuario sobre horarios,
+            ubicación, servicios o información general del negocio. Usa None
+            cuando el contexto ya requiere esa información.
 
     Returns:
-        str: Cadena multilínea con el nombre de la negocio, horarios
-            diferenciados por día (Lunes-Sábado vs Domingo), lista de
-            servicios (licores, cervezas artesanales, vinos, pedidos a
-            domicilio) y ubicación (Santiago, Chile).
+        str: Texto multilínea con nombre del negocio, horario de atención,
+            servicios generales y ubicación, listo para que el modelo lo use
+            como respuesta o contexto.
     """
     return (
         "Negocio El Buen Trago.\n"
@@ -80,26 +72,22 @@ def get_chatbot_info(query: str | None = None) -> str:
 
 
 def consultar_stock(producto: str | None = None) -> str:
-    """Inicia una consulta de disponibilidad de un producto específico en el
-    inventario de la negocio.
+    """Consulta la disponibilidad real de un producto específico en el catálogo operativo.
 
-    Invoca esta herramienta cuando el usuario pregunte si un producto está
-    disponible, si tienen cierto licor/cerveza/vino en stock, o cuando
-    exprese intención de comprar algo y necesites confirmar existencia
-    (ej: 'tienen pisco sour?', 'hay cerveza artesanal de trigo?', 'tienen
-    vino casillero del diablo?'). NO la invoques para preguntas sobre
-    precios (usa consultar_precio), horarios (usa get_chatbot_info),
-    o saludos generales. Si el usuario no especifica un producto, invoca
-    la herramienta con producto=None para pedirle que especifique.
+    Invoca esta herramienta cuando el usuario pregunte si un producto existe,
+    si está disponible o cuando necesites confirmar inventario antes de avanzar
+    una intención de compra. NO la invoques para precios, horarios o preguntas
+    generales; si no hay producto explícito, úsala con None para pedir precisión.
 
     Args:
-        producto: Nombre del producto que el usuario busca, en formato
-            texto libre (ej: 'pisco', 'vino tinto', 'cerveza artesanal',
-            'whisky johnnie walker'). Usa None si el usuario no mencionó
-            un producto específico y necesitas pedírselo.
+        producto (str | None): Nombre del producto buscado en texto libre.
+            Usa None cuando el usuario no haya especificado el producto exacto
+            y sea necesario solicitarlo antes de consultar.
 
     Returns:
-        str: Mensaje de confirmación indicando disponibilidad o alternativas.
+        str: Texto con una solicitud de precisión si falta el producto, o con
+            una lista de coincidencias y su disponibilidad actual, o con un
+            mensaje de falla controlada si la consulta no pudo completarse.
     """
     if not producto:
         return (
@@ -128,25 +116,22 @@ def consultar_stock(producto: str | None = None) -> str:
 
 
 def consultar_precio(producto: str | None = None) -> str:
-    """Inicia una consulta de precio para un producto específico de la
-    negocio.
+    """Consulta el precio vigente de un producto específico en el catálogo operativo.
 
     Invoca esta herramienta cuando el usuario pregunte cuánto cuesta un
-    producto, el valor de un licor/cerveza/vino, o solicite una cotización
-    (ej: 'cuánto vale el pisco control?', 'precio del vino santa carolina',
-    'cuánto cuesta la cerveza Kunstmann?'). NO la invoques para consultas
-    de stock/disponibilidad (usa consultar_stock), horarios, o preguntas
-    generales. Si el usuario no especifica un producto, invoca con
-    producto=None para solicitar que lo indique.
+    producto, pida una cotización simple o necesites responder con precios
+    reales del catálogo. NO la invoques para validar stock, horarios o
+    información general; si falta el producto, úsala con None para pedirlo.
 
     Args:
-        producto: Nombre del producto cuyo precio se consulta, en formato
-            texto libre (ej: 'pisco control 35°', 'vino reserva cabernet',
-            'cerveza aura'). Usa None si el usuario no mencionó un
-            producto específico y necesitas pedírselo.
+        producto (str | None): Nombre del producto cuyo precio se debe buscar
+            en texto libre. Usa None cuando el usuario aún no haya indicado un
+            producto concreto.
 
     Returns:
-        str: Información de precios de los productos encontrados.
+        str: Texto con una solicitud de precisión si falta el producto, o con
+            una lista de coincidencias y sus precios vigentes, o con un mensaje
+            de falla controlada si la consulta no pudo completarse.
     """
     if not producto:
         return "¿De qué producto quieres saber el precio?"
@@ -174,36 +159,27 @@ def consultar_precio(producto: str | None = None) -> str:
 
 
 def contactar_humano(motivo: str | None = None) -> str:
-    """Solicita la transferencia de la conversación actual a un agente humano
-    del equipo de la negocio.
+    """Solicita la derivación de la conversación actual a un agente humano.
 
-    Invoca esta herramienta cuando el usuario solicite explícitamente hablar
-    con una persona, cuando la consulta esté fuera del scope de tus
-    capacidades (reclamos formales, consultas complejas de facturación,
-    pedidos especiales que no puedes procesar), o cuando detectes que el
-    usuario está frustrado o insatisfecho con la atención automatizada
-    (ej: 'quiero hablar con alguien', 'necesito un humano', 'esto es un
-    reclamo', 'me pueden contactar?'). NO la invoques para consultas
-    rutinarias de stock, precios u horarios que puedes resolver con otras
-    herramientas. Esta es tu última opción de escalación.
+    Invoca esta herramienta cuando el usuario pida hablar con una persona, la
+    consulta quede fuera de capacidad operativa del asistente, exista un
+    reclamo, o detectes frustración persistente. NO la invoques para preguntas
+    rutinarias que puedas resolver con stock, precios u otra información real.
 
     Args:
-        motivo: Razón o categoría de la transferencia, en formato texto
-            libre (ej: 'consulta compleja', 'reclamo', 'pedido especial',
-            'frustración del usuario'). Usa None si no hay un motivo
-            explícito y la transferencia es por solicitud general del
-            usuario.
+        motivo (str | None): Motivo libre de la derivación, como reclamo,
+            consulta compleja, pedido especial o solicitud explícita de humano.
+            Usa None cuando no exista un motivo textual claro.
 
     Returns:
-        str: Confirmación de que la transferencia a un agente humano fue
-            solicitada exitosamente. Incluye el motivo de la transferencia
-            si fue proporcionado, o 'consulta general' como valor por
-            defecto si motivo es None.
+        str: Confirmación textual de la derivación a humano, incluyendo el
+            motivo recibido o el valor por defecto 'consulta general'.
     """
     session_id = current_session_id_var.get()
     if session_id:
         from config.database import SessionLocal
         from services.conversation_service import ConversationService
+
         db = SessionLocal()
         try:
             conv_svc = ConversationService(db)
@@ -211,8 +187,14 @@ def contactar_humano(motivo: str | None = None) -> str:
             if conv:
                 conv.is_bot_paused = True
                 db.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.exception(
+                "Failed to pause conversation for human handoff [session_id=%s]",
+                session_id,
+            )
+            raise RuntimeError(
+                f"Failed to pause conversation for human handoff [session_id={session_id}]"
+            ) from e
         finally:
             db.close()
     return f"Transferencia a humano solicitada. Motivo: {motivo or 'consulta general'}."
@@ -235,14 +217,17 @@ _CHATBOT_TOOLS = [
 # - Agent/Runner cacheados (singleton por proceso)
 # ============================================================================
 
-_agent_cache: Agent | None = None
-_runner_cache: Runner | None = None
+_agent_cache: Any | None = None
+_runner_cache: Any | None = None
 
 
-def _get_agent() -> Agent:
+def _get_agent() -> Any:
     """Crea o retorna el agente ADK cacheado (singleton por proceso)."""
     global _agent_cache
     if _agent_cache is None:
+        from google.adk.models.lite_llm import LiteLlm
+        from google.adk import Agent
+
         model_name = settings.model_name or GADK_MODEL
         if "deepseek" in model_name.lower():
             api_key = settings.deepseek_api_key or os.getenv("DEEPSEEK_API_KEY", "")
@@ -287,10 +272,12 @@ def _get_agent() -> Agent:
     return _agent_cache
 
 
-def _get_runner() -> Runner:
+def _get_runner() -> Any:
     """Crea o retorna el Runner ADK cacheado (singleton por proceso)."""
     global _runner_cache
     if _runner_cache is None:
+        from google.adk import Runner
+
         _runner_cache = Runner(
             agent=_get_agent(),
             app_name=GADK_APP_NAME,
@@ -300,11 +287,11 @@ def _get_runner() -> Runner:
     return _runner_cache
 
 
-def get_agent() -> Agent:
+def get_agent() -> Any:
     """API pública: retorna el agente ADK."""
     return _get_agent()
 
 
-def get_runner() -> Runner:
+def get_runner() -> Any:
     """API pública: retorna el Runner ADK."""
     return _get_runner()

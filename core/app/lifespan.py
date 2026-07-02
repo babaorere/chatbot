@@ -26,7 +26,7 @@ from config.database import Base, SessionLocal, _sync_engine
 from config.redis import create_redis_client
 from config.settings import settings
 from infrastructure.llm.adk_provider import ADKLLMProvider
-from models import category as _category_module  # noqa: F401 – registers Category in Base
+from models import category as _category_module, SystemAdmin  # noqa: F401 – registers models in Base
 from repositories.business_config_repository import BusinessConfigRepository
 from services.session_service_factory import create_session_service
 
@@ -43,117 +43,184 @@ def _seed_business_config(db: Session) -> None:
 def _run_migrations(conn: object) -> None:
     """Aplica migraciones DDL en caliente sobre la base de datos."""
     # Seed default 'General' category first
-    conn.execute(text("INSERT INTO categories (name, slug, is_system) VALUES ('General', 'general', true) ON CONFLICT (name) DO NOTHING;"))
+    conn.execute(
+        text(
+            "INSERT INTO categories (name, slug, is_system) VALUES ('General', 'general', true) ON CONFLICT (name) DO NOTHING;"
+        )
+    )
 
     # Migrate existing string categories from products table into categories table
-    conn.execute(text("""
+    conn.execute(
+        text("""
         INSERT INTO categories (name, slug, is_system)
         SELECT DISTINCT category, LOWER(category), false
         FROM products
         WHERE category IS NOT NULL AND category NOT IN (SELECT name FROM categories)
         ON CONFLICT (name) DO NOTHING;
-    """))
+    """)
+    )
 
     # Ensure default value of products.category is 'General'
-    conn.execute(text("ALTER TABLE products ALTER COLUMN category SET DEFAULT 'General';"))
+    conn.execute(
+        text("ALTER TABLE products ALTER COLUMN category SET DEFAULT 'General';")
+    )
 
     # Add format column if missing
-    check_format = conn.execute(text("""
+    check_format = conn.execute(
+        text("""
         SELECT 1 FROM information_schema.columns
         WHERE table_name='products' AND column_name='format';
-    """)).first()
+    """)
+    ).first()
     if not check_format:
         conn.execute(text("ALTER TABLE products ADD COLUMN format VARCHAR(100);"))
         logger.info("Added 'format' column to products table")
 
     # Add human_agent_available column if missing
-    check_human = conn.execute(text("""
+    check_human = conn.execute(
+        text("""
         SELECT 1 FROM information_schema.columns
         WHERE table_name='business_config' AND column_name='human_agent_available';
-    """)).first()
+    """)
+    ).first()
     if not check_human:
-        conn.execute(text("ALTER TABLE business_config ADD COLUMN human_agent_available BOOLEAN NOT NULL DEFAULT TRUE;"))
+        conn.execute(
+            text(
+                "ALTER TABLE business_config ADD COLUMN human_agent_available BOOLEAN NOT NULL DEFAULT TRUE;"
+            )
+        )
         logger.info("Added 'human_agent_available' column to business_config table")
 
     # Add is_bot_paused column if missing
-    check_paused = conn.execute(text("""
+    check_paused = conn.execute(
+        text("""
         SELECT 1 FROM information_schema.columns
         WHERE table_name='conversations' AND column_name='is_bot_paused';
-    """)).first()
+    """)
+    ).first()
     if not check_paused:
-        conn.execute(text("ALTER TABLE conversations ADD COLUMN is_bot_paused BOOLEAN NOT NULL DEFAULT FALSE;"))
+        conn.execute(
+            text(
+                "ALTER TABLE conversations ADD COLUMN is_bot_paused BOOLEAN NOT NULL DEFAULT FALSE;"
+            )
+        )
         logger.info("Added 'is_bot_paused' column to conversations table")
 
     # Add foreign key constraint if not exists
-    check_fk = conn.execute(text("""
+    check_fk = conn.execute(
+        text("""
         SELECT 1 FROM pg_constraint WHERE conname = 'fk_products_category';
-    """)).first()
+    """)
+    ).first()
     if not check_fk:
-        conn.execute(text("UPDATE products SET category = 'General' WHERE category IS NULL;"))
-        conn.execute(text("""
+        conn.execute(
+            text("UPDATE products SET category = 'General' WHERE category IS NULL;")
+        )
+        conn.execute(
+            text("""
             ALTER TABLE products
             ADD CONSTRAINT fk_products_category
             FOREIGN KEY (category) REFERENCES categories(name)
             ON DELETE SET DEFAULT ON UPDATE CASCADE;
-        """))
-        logger.info("Added foreign key constraint and default value for products category")
+        """)
+        )
+        logger.info(
+            "Added foreign key constraint and default value for products category"
+        )
 
     # FTS and fuzzy search extensions
     conn.execute(text("CREATE EXTENSION IF NOT EXISTS unaccent;"))
-    conn.execute(text("""
+    conn.execute(
+        text("""
         CREATE OR REPLACE FUNCTION immutable_unaccent(text)
         RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT
         AS $$ SELECT public.unaccent('public.unaccent', $1) $$;
-    """))
+    """)
+    )
     conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
     conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
 
     # Check and add embedding column on knowledge_base
-    check_emb = conn.execute(text("""
+    check_emb = conn.execute(
+        text("""
         SELECT 1 FROM information_schema.columns
         WHERE table_name='knowledge_base' AND column_name='embedding';
-    """)).first()
+    """)
+    ).first()
     if not check_emb:
-        conn.execute(text("ALTER TABLE knowledge_base ADD COLUMN embedding vector(1536);"))
+        conn.execute(
+            text("ALTER TABLE knowledge_base ADD COLUMN embedding vector(1536);")
+        )
         # Add index for cosine search operator
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_kb_embedding ON knowledge_base USING ivfflat(embedding vector_cosine_ops) WITH(lists = 100);"))
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_kb_embedding ON knowledge_base USING ivfflat(embedding vector_cosine_ops) WITH(lists = 100);"
+            )
+        )
         logger.info("Added 'embedding' vector column to knowledge_base table")
 
     # search_vector column on knowledge_base
-    check_col = conn.execute(text("""
+    check_col = conn.execute(
+        text("""
         SELECT 1 FROM information_schema.columns
         WHERE table_name='knowledge_base' AND column_name='search_vector';
-    """)).first()
+    """)
+    ).first()
     if not check_col:
-        conn.execute(text("""
+        conn.execute(
+            text("""
             ALTER TABLE knowledge_base
             ADD COLUMN search_vector tsvector GENERATED ALWAYS AS (
                 setweight(to_tsvector('spanish', coalesce(immutable_unaccent(title), '')), 'A') ||
                 setweight(to_tsvector('spanish', coalesce(immutable_unaccent(content), '')), 'B') ||
                 setweight(to_tsvector('spanish', coalesce(immutable_unaccent(category), '')), 'C')
             ) STORED;
-        """))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_kb_search_vector ON knowledge_base USING GIN(search_vector);"))
+        """)
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_kb_search_vector ON knowledge_base USING GIN(search_vector);"
+            )
+        )
         logger.info("Created unaccent function and search_vector on knowledge_base")
 
     # Row Level Security on multi-user tables
     for table in ["conversations", "orders"]:
         conn.execute(text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;"))
+        conn.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY;"))
         conn.execute(text(f"DROP POLICY IF EXISTS user_isolation ON {table};"))
-        conn.execute(text(f"CREATE POLICY user_isolation ON {table} USING (user_id = current_setting('app.current_user_id')::integer);"))
+        conn.execute(
+            text(
+                f"CREATE POLICY user_isolation ON {table} USING (user_id = current_setting('app.current_user_id')::integer);"
+            )
+        )
 
     conn.execute(text("ALTER TABLE messages ENABLE ROW LEVEL SECURITY;"))
+    conn.execute(text("ALTER TABLE messages FORCE ROW LEVEL SECURITY;"))
     conn.execute(text("DROP POLICY IF EXISTS user_isolation ON messages;"))
-    conn.execute(text("""
+    conn.execute(
+        text("""
         CREATE POLICY user_isolation ON messages USING (
             conversation_id IN (
                 SELECT id FROM conversations
                 WHERE user_id = current_setting('app.current_user_id')::integer
             )
         );
-    """))
+    """)
+    )
 
-    logger.info("Fuzzy search and user RLS policies successfully initialized in database")
+    # Seed admin_chat_ids setting if not exists
+    conn.execute(
+        text(
+            "INSERT INTO system_settings (key, value, description) "
+            "VALUES ('admin_chat_ids', '[]', 'List of Telegram chat IDs for system administrators to receive critical notifications') "
+            "ON CONFLICT (key) DO NOTHING;"
+        )
+    )
+
+    logger.info(
+        "Fuzzy search and user RLS policies successfully initialized in database"
+    )
 
 
 @asynccontextmanager
@@ -180,6 +247,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             _run_migrations(conn)
     except Exception as e:
         logger.error("Failed to run database migrations: %s", e)
+        raise
 
     # 2. Seed
     with SessionLocal() as seed_db:
@@ -205,6 +273,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # 5. Cliente HTTP Global (Inicialización Eager / Zero Lazy)
     from app.container import get_http_client
+
     get_http_client()
 
     logger.info(

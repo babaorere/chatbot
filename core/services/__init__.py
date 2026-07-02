@@ -56,6 +56,7 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
 
 
 def __getattr__(name: str) -> Any:
+    """Resuelve imports perezosos del paquete `services` para evitar cargas circulares y costo inicial."""
     try:
         module_name, attr_name = _LAZY_IMPORTS[name]
     except KeyError as exc:

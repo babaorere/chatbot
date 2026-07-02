@@ -3,18 +3,60 @@ const API_BASE = 'http://localhost:8001';
 class TenantApp {
     constructor() {
         this.tenantId = localStorage.getItem('tenant_id');
+        this.sectionMeta = {
+            dashboard: {
+                kicker: 'Inicio',
+                title: 'Resumen del día',
+                description: 'Revise el estado general del negocio y entre rápido a sus tareas principales.',
+            },
+            profile: {
+                kicker: 'Datos',
+                title: 'Datos del negocio',
+                description: 'Actualice la información que sus clientes ven y la forma en que usted atiende.',
+            },
+            products: {
+                kicker: 'Venta',
+                title: 'Productos',
+                description: 'Mantenga su catálogo al día para evitar errores al vender o responder consultas.',
+            },
+            categories: {
+                kicker: 'Orden',
+                title: 'Grupos de productos',
+                description: 'Ordene el catálogo con grupos simples para encontrar y cargar productos más rápido.',
+            },
+            knowledge: {
+                kicker: 'Ayuda',
+                title: 'Información útil',
+                description: 'Guarde respuestas generales del negocio, como horarios, zonas de entrega y medios de pago.',
+            },
+            channels: {
+                kicker: 'Contacto',
+                title: 'Canales de atención',
+                description: 'Revise los medios conectados por donde llegan los mensajes de sus clientes.',
+            },
+        };
+        this.weekDays = [
+            { id: 'lunes', label: 'Lunes', storageKey: 'Lunes' },
+            { id: 'martes', label: 'Martes', storageKey: 'Martes' },
+            { id: 'miercoles', label: 'Miércoles', storageKey: 'Miércoles' },
+            { id: 'jueves', label: 'Jueves', storageKey: 'Jueves' },
+            { id: 'viernes', label: 'Viernes', storageKey: 'Viernes' },
+            { id: 'sabado', label: 'Sábado', storageKey: 'Sábado' },
+            { id: 'domingo', label: 'Domingo', storageKey: 'Domingo' },
+        ];
         this.init();
     }
 
     async init() {
         if (!this.tenantId) {
-            this.tenantId = prompt('Ingresa tu Tenant ID:');
+            this.tenantId = prompt('Ingrese el identificador de su negocio:');
             if (this.tenantId) localStorage.setItem('tenant_id', this.tenantId);
         }
 
         this.categories = [];
         await this.loadCategories();
         this.setupNavigation();
+        this.setupQuickActions();
         this.setupForms();
         this.setupModals();
         await this.loadDashboard();
@@ -39,31 +81,73 @@ class TenantApp {
         });
         if (!res.ok) {
             const error = await res.json().catch(() => ({ error: 'Error desconocido' }));
-            throw new Error(error.error || `HTTP ${res.status}`);
+            throw new Error(this.getFriendlyErrorMessage(res.status, error));
         }
         return res.json();
+    }
+
+    getFriendlyErrorMessage(status, payload = {}) {
+        const rawMessage = payload?.error || payload?.detail || payload?.message || '';
+        if (rawMessage) return rawMessage;
+        if (status === 400) return 'Revise los datos ingresados antes de continuar.';
+        if (status === 401 || status === 403) return 'No fue posible validar el acceso a este negocio.';
+        if (status === 404) return 'No encontramos la información solicitada.';
+        if (status >= 500) return 'Hubo un problema del sistema. Intente nuevamente en unos minutos.';
+        return 'No fue posible completar la acción solicitada.';
     }
 
     setupNavigation() {
         document.querySelectorAll('.nav-link').forEach(link => {
             link.addEventListener('click', (e) => {
                 e.preventDefault();
-                document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
-                link.classList.add('active');
+                this.goToSection(link.dataset.section);
+            });
+        });
+        this.updatePageHeader('dashboard');
+    }
 
-                document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-                const section = document.getElementById(link.dataset.section);
-                if (section) section.classList.add('active');
-
-                document.getElementById('pageTitle').textContent = link.textContent.trim();
+    setupQuickActions() {
+        document.querySelectorAll('[data-go-section]').forEach((button) => {
+            button.addEventListener('click', () => {
+                this.goToSection(button.dataset.goSection);
             });
         });
     }
 
+    goToSection(sectionName) {
+        document.querySelectorAll('.nav-link').forEach((link) => {
+            link.classList.toggle('active', link.dataset.section === sectionName);
+        });
+
+        document.querySelectorAll('.section').forEach((section) => {
+            section.classList.toggle('active', section.id === sectionName);
+        });
+
+        this.updatePageHeader(sectionName);
+    }
+
+    updatePageHeader(sectionName) {
+        const meta = this.sectionMeta[sectionName] || this.sectionMeta.dashboard;
+        document.getElementById('pageKicker').textContent = meta.kicker;
+        document.getElementById('pageTitle').textContent = meta.title;
+        document.getElementById('pageDescription').textContent = meta.description;
+    }
+
     setupForms() {
+        this.renderBusinessHoursEditor();
+        this.setupProfileDraftState();
+        document.querySelectorAll('[data-hours-preset]').forEach((button) => {
+            button.addEventListener('click', () => {
+                this.applyBusinessHoursPreset(button.dataset.hoursPreset);
+                this.markProfileDirty();
+            });
+        });
         document.getElementById('profileForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            const saveButton = document.getElementById('profileSaveBtn');
             try {
+                this.setProfileSaveState('saving');
+                this.setButtonBusy(saveButton, true, 'Guardando...');
                 const data = {
                     name: document.getElementById('profileName').value,
                     email: document.getElementById('profileEmail').value || null,
@@ -72,16 +156,59 @@ class TenantApp {
                     city: document.getElementById('profileCity').value || null,
                     website: document.getElementById('profileWebsite').value || null,
                     logo_url: document.getElementById('profileLogo').value || null,
-                    business_hours: this.parseJSON(document.getElementById('profileHours').value),
+                    business_hours: this.readBusinessHoursEditor(),
                     human_agent_available: document.getElementById('profileHumanAvailable').checked,
                 };
                 await this.fetch('/tenants/me/profile', { method: 'PUT', body: JSON.stringify(data) });
-                this.showToast('Perfil actualizado', 'success');
+                this.showToast('Datos del negocio actualizados', 'success');
                 await this.loadProfile();
+                this.setProfileSaveState('saved');
             } catch (err) {
                 this.showToast(err.message, 'error');
+                this.setProfileSaveState('pending', 'Revise los datos y vuelva a intentar.');
+            } finally {
+                this.setButtonBusy(saveButton, false, 'Guardar cambios');
             }
         });
+    }
+
+    setupProfileDraftState() {
+        const form = document.getElementById('profileForm');
+        if (!form) return;
+        form.querySelectorAll('input, textarea, select').forEach((field) => {
+            field.addEventListener('input', () => this.markProfileDirty());
+            field.addEventListener('change', () => this.markProfileDirty());
+        });
+        this.setProfileSaveState('idle');
+    }
+
+    markProfileDirty() {
+        this.setProfileSaveState('pending');
+    }
+
+    setProfileSaveState(state, customText = '') {
+        const element = document.getElementById('profileSaveState');
+        if (!element) return;
+        element.classList.remove('pending', 'saving', 'saved');
+        const copy = {
+            idle: 'Sin cambios pendientes.',
+            pending: 'Tiene cambios sin guardar.',
+            saving: 'Guardando cambios...',
+            saved: 'Cambios guardados correctamente.',
+        };
+        element.textContent = customText || copy[state] || copy.idle;
+        if (state !== 'idle') {
+            element.classList.add(state);
+        }
+    }
+
+    setButtonBusy(button, isBusy, busyLabel) {
+        if (!button) return;
+        if (!button.dataset.defaultLabel) {
+            button.dataset.defaultLabel = button.textContent;
+        }
+        button.disabled = isBusy;
+        button.textContent = isBusy ? busyLabel : button.dataset.defaultLabel;
     }
 
     setupModals() {
@@ -131,6 +258,7 @@ class TenantApp {
             ]);
             document.getElementById('userCount').textContent = users.count;
             document.getElementById('convCount').textContent = convs.count;
+            this.renderOperationalSummary();
         } catch (err) {
             console.error('Dashboard load failed:', err);
         }
@@ -147,9 +275,12 @@ class TenantApp {
             document.getElementById('profileCity').value = profile.city || '';
             document.getElementById('profileWebsite').value = profile.website || '';
             document.getElementById('profileLogo').value = profile.logo_url || '';
-            document.getElementById('profileHours').value = profile.business_hours ? JSON.stringify(profile.business_hours, null, 2) : '';
+            this.renderBusinessHoursEditor(profile.business_hours || {});
             document.getElementById('profileHumanAvailable').checked = !!profile.human_agent_available;
-            document.getElementById('statusBadge').textContent = profile.status === 'active' ? 'Activo' : 'Inactivo';
+            document.getElementById('statusBadge').textContent = profile.status === 'active' ? 'Negocio activo' : 'Revisión pendiente';
+            document.getElementById('dashboardGreeting').textContent = `Revise ${profile.name || 'su negocio'} sin complicaciones`;
+            document.getElementById('tenantName').textContent = profile.name || 'Negocio sin nombre';
+            this.renderOperationalSummary();
         } catch (err) {
             console.error('Profile load failed:', err);
         }
@@ -160,6 +291,13 @@ class TenantApp {
             const products = await this.fetch('/tenants/me/products?limit=100');
             const tbody = document.getElementById('productsBody');
             tbody.innerHTML = '';
+            if (products.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="empty-state">Todavía no hay productos cargados. Agregue el primero para que su catálogo quede visible.</td>
+                    </tr>
+                `;
+            }
             products.forEach(p => {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
@@ -168,8 +306,8 @@ class TenantApp {
                     <td>${p.format || '-'}</td>
                     <td>${p.price ? '$' + p.price.toLocaleString() : '-'}</td>
                     <td>${p.stock}</td>
-                    <td>${p.is_available ? '✅' : '❌'}</td>
-                    <td>
+                    <td><span class="status-pill ${p.is_available ? 'available' : 'unavailable'}">${p.is_available ? 'Disponible' : 'No disponible'}</span></td>
+                    <td class="table-actions">
                         <button class="btn btn-sm btn-secondary" onclick="app.editProduct('${p.id}')">Editar</button>
                         <button class="btn btn-sm btn-danger" onclick="app.deleteProduct('${p.id}')">Eliminar</button>
                     </td>
@@ -177,6 +315,7 @@ class TenantApp {
                 tbody.appendChild(tr);
             });
             document.getElementById('productCount').textContent = products.length;
+            this.renderOperationalSummary();
         } catch (err) {
             console.error('Products load failed:', err);
         }
@@ -187,14 +326,21 @@ class TenantApp {
             const entries = await this.fetch('/tenants/me/kb?limit=100');
             const tbody = document.getElementById('kbBody');
             tbody.innerHTML = '';
+            if (entries.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="empty-state">Todavía no hay respuestas guardadas. Agregue una para resolver preguntas frecuentes con más rapidez.</td>
+                    </tr>
+                `;
+            }
             entries.forEach(e => {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td>${e.category}</td>
                     <td>${e.title}</td>
                     <td>${e.content.substring(0, 50)}...</td>
-                    <td>${e.is_active ? '✅' : '❌'}</td>
-                    <td>
+                    <td><span class="status-pill ${e.is_active ? 'available' : 'unavailable'}">${e.is_active ? 'Activa' : 'Inactiva'}</span></td>
+                    <td class="table-actions">
                         <button class="btn btn-sm btn-secondary" onclick="app.editKB('${e.id}')">Editar</button>
                         <button class="btn btn-sm btn-danger" onclick="app.deleteKB('${e.id}')">Eliminar</button>
                     </td>
@@ -202,6 +348,7 @@ class TenantApp {
                 tbody.appendChild(tr);
             });
             document.getElementById('kbCount').textContent = entries.length;
+            this.renderOperationalSummary();
         } catch (err) {
             console.error('KB load failed:', err);
         }
@@ -213,7 +360,8 @@ class TenantApp {
             const container = document.getElementById('channelsList');
             container.innerHTML = '';
             if (channels.length === 0) {
-                container.innerHTML = '<p class="text-muted">No hay canales configurados.</p>';
+                container.innerHTML = '<p class="text-muted">Todavía no hay canales conectados. Cuando se active uno, aparecerá aquí.</p>';
+                this.renderOperationalSummary();
                 return;
             }
             channels.forEach(c => {
@@ -221,10 +369,11 @@ class TenantApp {
                 card.className = 'channel-card';
                 card.innerHTML = `
                     <h4>${c.platform}</h4>
-                    <p>${c.channel_identifier}</p>
+                    <p>Canal conectado: ${c.channel_identifier}</p>
                 `;
                 container.appendChild(card);
             });
+            this.renderOperationalSummary();
         } catch (err) {
             console.error('Channels load failed:', err);
         }
@@ -232,15 +381,32 @@ class TenantApp {
 
     async searchKB() {
         const query = document.getElementById('kbSearchInput').value;
-        if (!query) return;
+        const feedback = document.getElementById('kbSearchFeedback');
+        if (!query) {
+            if (feedback) {
+                feedback.textContent = 'Escriba una palabra o frase para buscar entre sus respuestas guardadas.';
+                feedback.className = 'search-feedback warning';
+            }
+            return;
+        }
         try {
             const result = await this.fetch('/tenants/me/kb/search', {
                 method: 'POST',
                 body: JSON.stringify({ query, top_k: 10 }),
             });
             this.showToast(`${result.count} resultados encontrados`, 'success');
+            if (feedback) {
+                feedback.textContent = result.count > 0
+                    ? `Se encontraron ${result.count} resultados para "${query}".`
+                    : `No encontramos resultados para "${query}". Puede probar con otra palabra.`;
+                feedback.className = `search-feedback ${result.count > 0 ? 'success' : 'warning'}`;
+            }
         } catch (err) {
             this.showToast(err.message, 'error');
+            if (feedback) {
+                feedback.textContent = err.message;
+                feedback.className = 'search-feedback warning';
+            }
         }
     }
 
@@ -253,12 +419,14 @@ class TenantApp {
             <option value="${c.name}" ${product?.category === c.name ? 'selected' : ''}>${c.name}</option>
         `).join('');
 
-        title.textContent = product ? 'Editar Producto' : 'Nuevo Producto';
+        title.textContent = product ? 'Editar producto' : 'Agregar producto';
         body.innerHTML = `
+            <p class="modal-copy">Complete solo los datos que sus clientes necesitan para entender qué vende y en qué condiciones está disponible.</p>
             <form id="productForm">
                 <div class="form-group">
                     <label>Nombre</label>
                     <input type="text" id="prodName" value="${product?.name || ''}" required>
+                    <p class="field-note">Use un nombre claro y reconocible para evitar dudas al vender.</p>
                 </div>
                 <div class="form-group">
                     <label>Descripción</label>
@@ -268,10 +436,12 @@ class TenantApp {
                     <div class="form-group">
                         <label>Precio</label>
                         <input type="number" id="prodPrice" value="${product?.price || ''}" step="0.01">
+                        <p class="field-note">Si todavía no desea publicarlo, puede dejarlo vacío temporalmente.</p>
                     </div>
                     <div class="form-group">
                         <label>Stock</label>
                         <input type="number" id="prodStock" value="${product?.stock || 0}">
+                        <p class="field-note">Use cero cuando no tenga unidades disponibles.</p>
                     </div>
                 </div>
                 <div class="form-row">
@@ -287,13 +457,15 @@ class TenantApp {
                 <div class="form-group">
                     <label>Categoría</label>
                     <select id="prodCategory" class="form-control">${categoryOptions}</select>
+                    <p class="field-note">Elija el grupo que mejor ayude a ordenar el catálogo.</p>
                 </div>
-                <button type="submit" class="btn btn-primary">Guardar</button>
+                <button type="submit" class="btn btn-primary">Guardar producto</button>
             </form>
         `;
 
         document.getElementById('productForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            const saveButton = e.currentTarget.querySelector('button[type="submit"]');
             const data = {
                 name: document.getElementById('prodName').value,
                 description: document.getElementById('prodDesc').value || null,
@@ -305,6 +477,7 @@ class TenantApp {
                 is_available: true,
             };
             try {
+                this.setButtonBusy(saveButton, true, 'Guardando...');
                 if (product) {
                     await this.fetch(`/tenants/me/products/${product.id}`, { method: 'PUT', body: JSON.stringify(data) });
                 } else {
@@ -315,6 +488,8 @@ class TenantApp {
                 await this.loadProducts();
             } catch (err) {
                 this.showToast(err.message, 'error');
+            } finally {
+                this.setButtonBusy(saveButton, false, 'Guardar producto');
             }
         });
 
@@ -328,7 +503,9 @@ class TenantApp {
     }
 
     async deleteProduct(id) {
-        if (!confirm('¿Eliminar este producto?')) return;
+        const products = await this.fetch('/tenants/me/products?limit=100');
+        const product = products.find((item) => item.id === id);
+        if (!confirm(`¿Desea eliminar ${product?.name || 'este producto'}? Esta acción quitará el producto de su catálogo visible.`)) return;
         try {
             await this.fetch(`/tenants/me/products/${id}`, { method: 'DELETE' });
             this.showToast('Producto eliminado', 'success');
@@ -340,10 +517,10 @@ class TenantApp {
 
     async exportProducts() {
         try {
-            const response = await fetch('/tenants/me/products/export', {
-                headers: { 'X-API-Key': this.apiKey },
+            const response = await fetch(`${API_BASE}/tenants/me/products/export`, {
+                headers: this.headers,
             });
-            if (!response.ok) throw new Error('Export failed');
+            if (!response.ok) throw new Error('No fue posible exportar el catálogo');
             const blob = await response.blob();
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -353,7 +530,7 @@ class TenantApp {
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            this.showToast('Exportación completada', 'success');
+            this.showToast('Catálogo descargado', 'success');
         } catch (err) {
             this.showToast('Error al exportar: ' + err.message, 'error');
         }
@@ -361,10 +538,10 @@ class TenantApp {
 
     async exportTemplate() {
         try {
-            const response = await fetch('/tenants/me/products/export/template', {
-                headers: { 'X-API-Key': this.apiKey },
+            const response = await fetch(`${API_BASE}/tenants/me/products/export/template`, {
+                headers: this.headers,
             });
-            if (!response.ok) throw new Error('Template export failed');
+            if (!response.ok) throw new Error('No fue posible descargar la plantilla');
             const blob = await response.blob();
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -389,20 +566,20 @@ class TenantApp {
         try {
             const formData = new FormData();
             formData.append('file', file);
-            const response = await fetch('/tenants/me/products/import', {
+            const response = await fetch(`${API_BASE}/tenants/me/products/import`, {
                 method: 'POST',
-                headers: { 'X-API-Key': this.apiKey },
+                headers: { 'X-Tenant-ID': this.tenantId },
                 body: formData,
             });
             if (!response.ok) {
                 const err = await response.json();
-                throw new Error(err.detail || 'Import failed');
+                throw new Error(err.detail || 'No fue posible cargar el archivo');
             }
             const result = await response.json();
-            this.showToast(
-                `Importación completada: ${result.created} creados, ${result.updated} actualizados, ${result.errors} errores`,
-                result.errors > 0 ? 'error' : 'success'
-            );
+            const message = result.errors > 0
+                ? `Carga terminada con observaciones: ${result.created} nuevos, ${result.updated} actualizados y ${result.errors} por revisar.`
+                : `Carga completada: ${result.created} productos nuevos y ${result.updated} actualizados.`;
+            this.showToast(message, result.errors > 0 ? 'error' : 'success');
             await this.loadProducts();
         } catch (err) {
             this.showToast('Error al importar: ' + err.message, 'error');
@@ -414,43 +591,49 @@ class TenantApp {
         const title = document.getElementById('modalTitle');
         const body = document.getElementById('modalBody');
 
-        title.textContent = entry ? 'Editar Entrada KB' : 'Nueva Entrada KB';
+        title.textContent = entry ? 'Editar respuesta guardada' : 'Agregar respuesta';
         body.innerHTML = `
+            <p class="modal-copy">Guarde aquí respuestas generales que conviene repetir con frecuencia, sin depender del stock o del precio del momento.</p>
             <form id="kbForm">
                 <div class="form-group">
-                    <label>Categoría</label>
+                    <label>Tema</label>
                     <input type="text" id="kbCategory" value="${entry?.category || ''}" required>
+                    <p class="field-note">Ejemplos: horarios, pagos, entregas o cambios.</p>
                 </div>
                 <div class="form-group">
                     <label>Título</label>
                     <input type="text" id="kbTitle" value="${entry?.title || ''}" required>
                 </div>
                 <div class="form-group">
-                    <label>Contenido</label>
+                    <label>Respuesta</label>
                     <textarea id="kbContent" rows="5" required>${entry?.content || ''}</textarea>
                 </div>
-                <button type="submit" class="btn btn-primary">Guardar</button>
+                <button type="submit" class="btn btn-primary">Guardar respuesta</button>
             </form>
         `;
 
         document.getElementById('kbForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            const saveButton = e.currentTarget.querySelector('button[type="submit"]');
             const data = {
                 category: document.getElementById('kbCategory').value,
                 title: document.getElementById('kbTitle').value,
                 content: document.getElementById('kbContent').value,
             };
             try {
+                this.setButtonBusy(saveButton, true, 'Guardando...');
                 if (entry) {
                     await this.fetch(`/tenants/me/kb/${entry.id}`, { method: 'PUT', body: JSON.stringify(data) });
                 } else {
                     await this.fetch('/tenants/me/kb', { method: 'POST', body: JSON.stringify(data) });
                 }
-                this.showToast('Entrada guardada', 'success');
+                this.showToast('Respuesta guardada', 'success');
                 modal.classList.remove('active');
                 await this.loadKB();
             } catch (err) {
                 this.showToast(err.message, 'error');
+            } finally {
+                this.setButtonBusy(saveButton, false, 'Guardar respuesta');
             }
         });
 
@@ -464,10 +647,12 @@ class TenantApp {
     }
 
     async deleteKB(id) {
-        if (!confirm('¿Eliminar esta entrada?')) return;
+        const entries = await this.fetch('/tenants/me/kb?limit=100');
+        const entry = entries.find((item) => item.id === id);
+        if (!confirm(`¿Desea eliminar "${entry?.title || 'esta respuesta'}"? Ya no estará disponible como referencia para el negocio.`)) return;
         try {
             await this.fetch(`/tenants/me/kb/${id}`, { method: 'DELETE' });
-            this.showToast('Entrada eliminada', 'success');
+            this.showToast('Respuesta eliminada', 'success');
             await this.loadKB();
         } catch (err) {
             this.showToast(err.message, 'error');
@@ -483,12 +668,131 @@ class TenantApp {
         setTimeout(() => toast.remove(), 3000);
     }
 
-    parseJSON(str) {
-        try {
-            return str ? JSON.parse(str) : null;
-        } catch {
-            return null;
+    renderBusinessHoursEditor(hours = {}) {
+        const editor = document.getElementById('profileHoursEditor');
+        const summary = document.getElementById('profileHoursSummary');
+        if (!editor || !summary) return;
+
+        editor.innerHTML = this.weekDays.map(({ id, label, storageKey }) => {
+            const value = this.normalizeBusinessHours(
+                hours[storageKey] || hours[id] || hours[label] || hours[label.toLowerCase()] || {}
+            );
+            const isClosed = value.closed;
+            const openValue = value.open || '10:00';
+            const closeValue = value.close || '22:00';
+            return `
+                <div class="hours-row" data-day="${id}">
+                    <div class="hours-day">${label}</div>
+                    <div class="hours-time-group">
+                        <input type="time" id="hours-${id}-open" aria-label="Abre ${label}" value="${openValue}" ${isClosed ? 'disabled' : ''}>
+                    </div>
+                    <div class="hours-time-group">
+                        <input type="time" id="hours-${id}-close" aria-label="Cierra ${label}" value="${closeValue}" ${isClosed ? 'disabled' : ''}>
+                    </div>
+                    <label class="hours-closed">
+                        <input type="checkbox" id="hours-${id}-closed" ${isClosed ? 'checked' : ''}>
+                        Cerrado
+                    </label>
+                </div>
+            `;
+        }).join('');
+
+        this.weekDays.forEach(({ id }) => {
+            const closedInput = document.getElementById(`hours-${id}-closed`);
+            const openInput = document.getElementById(`hours-${id}-open`);
+            const closeInput = document.getElementById(`hours-${id}-close`);
+            if (!closedInput || !openInput || !closeInput) return;
+            closedInput.addEventListener('change', () => {
+                const isClosed = closedInput.checked;
+                openInput.disabled = isClosed;
+                closeInput.disabled = isClosed;
+                this.updateBusinessHoursSummary();
+            });
+            openInput.addEventListener('input', () => this.updateBusinessHoursSummary());
+            closeInput.addEventListener('input', () => this.updateBusinessHoursSummary());
+        });
+
+        this.updateBusinessHoursSummary();
+    }
+
+    normalizeBusinessHours(dayConfig = {}) {
+        if (!dayConfig || typeof dayConfig !== 'object') {
+            return { open: '', close: '', closed: false };
         }
+        return {
+            open: typeof dayConfig.open === 'string' ? dayConfig.open : '',
+            close: typeof dayConfig.close === 'string' ? dayConfig.close : '',
+            closed: Boolean(dayConfig.closed) || dayConfig.open === null || dayConfig.close === null,
+        };
+    }
+
+    applyBusinessHoursPreset(presetName) {
+        const presets = {
+            weekdays: {
+                Lunes: { open: '10:00', close: '22:00' },
+                Martes: { open: '10:00', close: '22:00' },
+                Miércoles: { open: '10:00', close: '22:00' },
+                Jueves: { open: '10:00', close: '22:00' },
+                Viernes: { open: '10:00', close: '22:00' },
+                Sábado: { closed: true, open: null, close: null },
+                Domingo: { closed: true, open: null, close: null },
+            },
+            weekdays_plus_sat: {
+                Lunes: { open: '10:00', close: '22:00' },
+                Martes: { open: '10:00', close: '22:00' },
+                Miércoles: { open: '10:00', close: '22:00' },
+                Jueves: { open: '10:00', close: '22:00' },
+                Viernes: { open: '10:00', close: '22:00' },
+                Sábado: { open: '10:00', close: '20:00' },
+                Domingo: { closed: true, open: null, close: null },
+            },
+            daily: {
+                Lunes: { open: '10:00', close: '22:00' },
+                Martes: { open: '10:00', close: '22:00' },
+                Miércoles: { open: '10:00', close: '22:00' },
+                Jueves: { open: '10:00', close: '22:00' },
+                Viernes: { open: '10:00', close: '22:00' },
+                Sábado: { open: '10:00', close: '22:00' },
+                Domingo: { open: '10:00', close: '22:00' },
+            },
+            closed: {
+                Lunes: { closed: true, open: null, close: null },
+                Martes: { closed: true, open: null, close: null },
+                Miércoles: { closed: true, open: null, close: null },
+                Jueves: { closed: true, open: null, close: null },
+                Viernes: { closed: true, open: null, close: null },
+                Sábado: { closed: true, open: null, close: null },
+                Domingo: { closed: true, open: null, close: null },
+            },
+        };
+
+        this.renderBusinessHoursEditor(presets[presetName] || {});
+    }
+
+    readBusinessHoursEditor() {
+        const hours = {};
+        this.weekDays.forEach(({ id, storageKey }) => {
+            const closed = document.getElementById(`hours-${id}-closed`)?.checked ?? false;
+            const open = document.getElementById(`hours-${id}-open`)?.value || '';
+            const close = document.getElementById(`hours-${id}-close`)?.value || '';
+            hours[storageKey] = closed
+                ? { closed: true, open: null, close: null }
+                : { open, close };
+        });
+        return hours;
+    }
+
+    updateBusinessHoursSummary() {
+        const summary = document.getElementById('profileHoursSummary');
+        if (!summary) return;
+        const parts = this.weekDays.map(({ id, label }) => {
+            const closed = document.getElementById(`hours-${id}-closed`)?.checked ?? false;
+            if (closed) return `${label}: cerrado`;
+            const open = document.getElementById(`hours-${id}-open`)?.value || '--:--';
+            const close = document.getElementById(`hours-${id}-close`)?.value || '--:--';
+            return `${label}: ${open} a ${close}`;
+        });
+        summary.innerHTML = `<strong>Vista rápida:</strong> ${parts.join(' · ')}`;
     }
 
     async loadCategories() {
@@ -498,10 +802,17 @@ class TenantApp {
             const tbody = document.getElementById('categoriesBody');
             if (!tbody) return;
             tbody.innerHTML = '';
+            if (categories.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="3" class="empty-state">Todavía no hay grupos creados. Puede comenzar con uno simple para ordenar su catálogo.</td>
+                    </tr>
+                `;
+            }
             categories.forEach(c => {
                 const tr = document.createElement('tr');
                 const actions = c.is_system 
-                    ? `<span class="badge status-badge" style="background: var(--bg-hover); color: var(--text-muted); cursor: not-allowed; border: 1px dashed var(--border-color);">🔒 Fijo</span>` 
+                    ? `<span class="status-pill available">Fijo</span>` 
                     : `
                         <button class="btn btn-sm btn-secondary" onclick="app.editCategory('${c.name}')">Editar</button>
                         <button class="btn btn-sm btn-danger" onclick="app.deleteCategory('${c.name}')">Eliminar</button>
@@ -509,7 +820,7 @@ class TenantApp {
                 tr.innerHTML = `
                     <td><strong>${c.name}</strong></td>
                     <td><code>${c.slug}</code></td>
-                    <td style="display: flex; gap: 8px; align-items: center;">${actions}</td>
+                    <td class="table-actions">${actions}</td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -523,21 +834,25 @@ class TenantApp {
         const title = document.getElementById('modalTitle');
         const body = document.getElementById('modalBody');
 
-        title.textContent = category ? 'Editar Categoría' : 'Nueva Categoría';
+        title.textContent = category ? 'Editar grupo' : 'Agregar grupo';
         body.innerHTML = `
+            <p class="modal-copy">Los grupos sirven para ordenar productos similares. No es necesario crear demasiados.</p>
             <form id="categoryForm">
                 <div class="form-group">
-                    <label>Nombre de Categoría</label>
-                    <input type="text" id="catName" value="${category || ''}" required placeholder="Ej: Licores Premium">
+                    <label>Nombre del grupo</label>
+                    <input type="text" id="catName" value="${category || ''}" required placeholder="Ej: Licores premium">
+                    <p class="field-note">Use nombres cortos y fáciles de reconocer.</p>
                 </div>
-                <button type="submit" class="btn btn-primary">Guardar</button>
+                <button type="submit" class="btn btn-primary">Guardar grupo</button>
             </form>
         `;
 
         document.getElementById('categoryForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            const saveButton = e.currentTarget.querySelector('button[type="submit"]');
             const newName = document.getElementById('catName').value;
             try {
+                this.setButtonBusy(saveButton, true, 'Guardando...');
                 if (category) {
                     await this.fetch(`/categories/${encodeURIComponent(category)}`, {
                         method: 'PUT',
@@ -549,12 +864,14 @@ class TenantApp {
                         body: JSON.stringify({ name: newName }),
                     });
                 }
-                this.showToast('Categoría guardada', 'success');
+                this.showToast('Grupo guardado', 'success');
                 modal.classList.remove('active');
                 await this.loadCategories();
                 await this.loadProducts();
             } catch (err) {
                 this.showToast(err.message, 'error');
+            } finally {
+                this.setButtonBusy(saveButton, false, 'Guardar grupo');
             }
         });
 
@@ -562,10 +879,10 @@ class TenantApp {
     }
 
     async deleteCategory(name) {
-        if (!confirm(`¿Estás seguro de que deseas eliminar la categoría '${name}'? Todos los productos asociados pasarán automáticamente a la categoría 'General'.`)) return;
+        if (!confirm(`¿Desea eliminar el grupo '${name}'? Los productos asociados pasarán automáticamente al grupo 'General'.`)) return;
         try {
             await this.fetch(`/categories/${encodeURIComponent(name)}`, { method: 'DELETE' });
-            this.showToast('Categoría eliminada con éxito', 'success');
+            this.showToast('Grupo eliminado', 'success');
             await this.loadCategories();
             await this.loadProducts();
         } catch (err) {
@@ -575,6 +892,46 @@ class TenantApp {
 
     editCategory(name) {
         this.showCategoryModal(name);
+    }
+
+    renderOperationalSummary() {
+        const summary = document.getElementById('dashboardSummary');
+        const recommendation = document.getElementById('dashboardRecommendation');
+        const checklist = document.getElementById('dashboardChecklist');
+        if (!summary || !recommendation) return;
+
+        const profileName = document.getElementById('profileName')?.value?.trim() || document.getElementById('tenantName')?.textContent?.trim() || 'su negocio';
+        const productCount = Number(document.getElementById('productCount')?.textContent || '0');
+        const kbCount = Number(document.getElementById('kbCount')?.textContent || '0');
+        const userCount = Number(document.getElementById('userCount')?.textContent || '0');
+        const convCount = Number(document.getElementById('convCount')?.textContent || '0');
+        const activeChannels = document.querySelectorAll('#channelsList .channel-card').length;
+
+        summary.textContent = `${profileName} registra ${productCount} productos, ${kbCount} respuestas guardadas, ${userCount} personas registradas y ${convCount} conversaciones atendidas.`;
+        if (checklist) {
+            const items = [];
+            items.push(productCount > 0 ? 'El catálogo ya tiene productos cargados.' : 'Falta cargar al menos un producto.');
+            items.push(kbCount > 0 ? 'Ya hay respuestas generales guardadas.' : 'Conviene guardar una respuesta sobre horarios, pagos o entregas.');
+            items.push(activeChannels > 0 ? 'Hay al menos un canal de atención conectado.' : 'Todavía no hay canales de atención visibles.');
+            checklist.innerHTML = items.map((item) => `<li>${item}</li>`).join('');
+        }
+
+        if (productCount === 0) {
+            recommendation.textContent = 'Agregue al menos un producto. Es la acción con mayor impacto para evitar respuestas incompletas sobre su catálogo.';
+            return;
+        }
+
+        if (kbCount === 0) {
+            recommendation.textContent = 'Agregue una respuesta útil con horarios, pagos o zonas de entrega. Eso reduce consultas repetidas y mejora la atención.';
+            return;
+        }
+
+        if (activeChannels === 0) {
+            recommendation.textContent = 'Revise los canales de atención. Si no hay ninguno conectado, sus clientes no podrán comunicarse por este medio.';
+            return;
+        }
+
+        recommendation.textContent = 'La base operativa está lista. Revise solo lo que cambie en su catálogo, horarios o información de atención.';
     }
 }
 

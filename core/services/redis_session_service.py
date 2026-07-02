@@ -2,21 +2,39 @@ from __future__ import annotations
 
 import json
 import logging
+import warnings
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Protocol
+from typing import TYPE_CHECKING, Any, AsyncIterator, Protocol
 from urllib.parse import quote
 
-from google.adk.errors.already_exists_error import AlreadyExistsError
-from google.adk.events.event import Event
-from google.adk.platform import time as platform_time
-from google.adk.platform import uuid as platform_uuid
-from google.adk.sessions import Session
-from google.adk.sessions import _session_util
-from google.adk.sessions.base_session_service import BaseSessionService
-from google.adk.sessions.base_session_service import GetSessionConfig
-from google.adk.sessions.base_session_service import ListSessionsResponse
-from google.adk.sessions.state import State
 from redis.exceptions import LockError
+
+if TYPE_CHECKING:
+    from google.adk.events.event import Event
+    from google.adk.sessions import Session
+    from google.adk.sessions.base_session_service import (
+        BaseSessionService,
+        GetSessionConfig,
+        ListSessionsResponse,
+    )
+    from google.adk.sessions.state import State
+
+with warnings.catch_warnings():
+    warnings.filterwarnings(
+        "ignore",
+        category=DeprecationWarning,
+        message="BaseAgentConfig is deprecated and will be removed in future versions\\.",
+    )
+    from google.adk.errors.already_exists_error import AlreadyExistsError
+    from google.adk.events.event import Event
+    from google.adk.platform import time as platform_time
+    from google.adk.platform import uuid as platform_uuid
+    from google.adk.sessions import Session
+    from google.adk.sessions import _session_util
+    from google.adk.sessions.base_session_service import BaseSessionService
+    from google.adk.sessions.base_session_service import GetSessionConfig
+    from google.adk.sessions.base_session_service import ListSessionsResponse
+    from google.adk.sessions.state import State
 
 logger = logging.getLogger(__name__)
 

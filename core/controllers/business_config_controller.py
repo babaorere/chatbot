@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from openpyxl import load_workbook
 from sqlalchemy.orm import Session
 
+from app.security import get_admin_api_key
 from config.database import get_db
 from services import (
     BusinessConfigService,
@@ -34,7 +35,11 @@ from dtos import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/business/config", tags=["business-config"])
+router = APIRouter(
+    prefix="/business/config",
+    tags=["business-config"],
+    dependencies=[Depends(get_admin_api_key)],
+)
 
 
 # ── Profile ──────────────────────────────────────────────────────────────────
@@ -44,6 +49,7 @@ router = APIRouter(prefix="/business/config", tags=["business-config"])
 def get_profile(
     db: Session = Depends(get_db),
 ) -> BusinessConfigResponse:
+    """Recupera la configuración general del negocio usada por la aplicación."""
     try:
         config_service = BusinessConfigService(db)
         config = config_service.get_config()
@@ -58,6 +64,7 @@ def update_profile(
     data: BusinessConfigUpdateRequest,
     db: Session = Depends(get_db),
 ) -> BusinessConfigResponse:
+    """Actualiza la configuración general del negocio dentro de una transacción."""
     try:
         config_service = BusinessConfigService(db)
         with db.begin():
@@ -89,6 +96,7 @@ def list_products(
     limit: int = 50,
     db: Session = Depends(get_db),
 ) -> list[ProductResponse]:
+    """Lista productos del catálogo con filtros administrativos y paginación."""
     try:
         product_svc = ProductService(db)
         products = product_svc.list_products(
@@ -108,6 +116,7 @@ def create_product(
     data: ProductCreateRequest,
     db: Session = Depends(get_db),
 ) -> ProductResponse:
+    """Crea un producto nuevo en el catálogo administrado por el negocio."""
     try:
         product_svc = ProductService(db)
         with db.begin():
@@ -138,6 +147,7 @@ def update_product(
     data: ProductUpdateRequest,
     db: Session = Depends(get_db),
 ) -> ProductResponse:
+    """Actualiza un producto existente del catálogo usando su UUID."""
     try:
         product_svc = ProductService(db)
         with db.begin():
@@ -168,6 +178,7 @@ def delete_product(
     product_id: str,
     db: Session = Depends(get_db),
 ) -> dict:
+    """Elimina un producto del catálogo y devuelve el identificador eliminado."""
     try:
         product_svc = ProductService(db)
         with db.begin():
@@ -186,13 +197,13 @@ def delete_product(
 def get_product_categories(
     db: Session = Depends(get_db),
 ) -> list[str]:
+    """Lista las categorías actualmente usadas por los productos del catálogo."""
     try:
         product_svc = ProductService(db)
         return product_svc.get_categories()
     except Exception as e:
         logger.error("get_product_categories failed: %s", e)
         raise HTTPException(500, f"Failed to retrieve categories: {e}")
-
 
 
 # ── Excel Export / Import ────────────────────────────────────────────────────
@@ -225,7 +236,9 @@ def export_products_template(
     try:
         product_svc = ProductService(db)
         buf = product_svc.export_template_workbook()
-        headers = {"Content-Disposition": 'attachment; filename="plantilla_productos.xlsx"'}
+        headers = {
+            "Content-Disposition": 'attachment; filename="plantilla_productos.xlsx"'
+        }
         return StreamingResponse(
             buf,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -293,6 +306,7 @@ def list_kb_entries(
     limit: int = 50,
     db: Session = Depends(get_db),
 ) -> list[KBEntryResponse]:
+    """Lista entradas de knowledge base con filtros administrativos y paginación."""
     try:
         kb_svc = KBService(db)
         entries = kb_svc.list_entries(
@@ -312,6 +326,7 @@ async def create_kb_entry(
     data: KBEntryCreateRequest,
     db: Session = Depends(get_db),
 ) -> KBEntryResponse:
+    """Crea una nueva entrada en la knowledge base y genera sus artefactos asociados."""
     try:
         kb_svc = KBService(db)
         entry = await kb_svc.create_entry(
@@ -331,6 +346,7 @@ async def update_kb_entry(
     data: KBEntryUpdateRequest,
     db: Session = Depends(get_db),
 ) -> KBEntryResponse:
+    """Actualiza una entrada existente de la knowledge base usando su UUID."""
     try:
         kb_svc = KBService(db)
         entry = await kb_svc.update_entry(
@@ -351,6 +367,7 @@ def delete_kb_entry(
     entry_id: str,
     db: Session = Depends(get_db),
 ) -> dict:
+    """Elimina una entrada de knowledge base y devuelve el identificador eliminado."""
     try:
         kb_svc = KBService(db)
         with db.begin():
@@ -370,6 +387,7 @@ async def search_kb(
     data: KBSearchRequest,
     db: Session = Depends(get_db),
 ) -> KBSearchResponse:
+    """Ejecuta una búsqueda administrativa sobre la knowledge base indexada."""
     try:
         kb_svc = KBService(db)
         results = await kb_svc.search(
@@ -389,6 +407,7 @@ async def search_kb(
 def get_kb_categories(
     db: Session = Depends(get_db),
 ) -> list[str]:
+    """Lista las categorías disponibles en la knowledge base."""
     try:
         kb_svc = KBService(db)
         return kb_svc.get_categories()
@@ -404,6 +423,7 @@ def get_kb_categories(
 def get_user_count(
     db: Session = Depends(get_db),
 ) -> dict:
+    """Devuelve el conteo total de usuarios persistidos."""
     try:
         user_svc = UserService(db)
         count = user_svc.repo.count()
@@ -417,6 +437,7 @@ def get_user_count(
 def get_conversation_count(
     db: Session = Depends(get_db),
 ) -> dict:
+    """Devuelve el conteo total de conversaciones persistidas."""
     try:
         conv_svc = ConversationService(db)
         count = conv_svc.repo.count()

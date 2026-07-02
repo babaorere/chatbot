@@ -64,6 +64,7 @@ def add_to_cart(
     data: CartAddRequest,
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Agrega un producto al carrito activo del usuario y devuelve el estado actualizado."""
     try:
         user_svc = UserService(db)
         user = user_svc.get_or_create(external_id=data.user_id, platform=data.platform)
@@ -87,6 +88,7 @@ def remove_from_cart(
     data: CartRemoveRequest,
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Quita unidades de un producto del carrito activo del usuario."""
     try:
         user_svc = UserService(db)
         user = user_svc.get_or_create(external_id=data.user_id, platform=data.platform)
@@ -109,6 +111,7 @@ def get_cart(
     platform: str,
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Recupera el carrito actual de un usuario, creándolo si todavía no existe."""
     try:
         user_svc = UserService(db)
         user = user_svc.get_or_create(external_id=user_id, platform=platform)
@@ -126,6 +129,7 @@ def checkout(
     data: CheckoutRequest,
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Convierte el carrito activo en una orden validando stock y datos de entrega."""
     try:
         user_svc = UserService(db)
         user = user_svc.get_or_create(external_id=data.user_id, platform=data.platform)
@@ -152,6 +156,7 @@ def get_order(
     order_id: uuid.UUID,
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Recupera una orden específica por su identificador único."""
     try:
         order_svc = OrderService(db)
         order = order_svc.get_order(order_id)
@@ -171,6 +176,7 @@ def list_orders(
     platform: str,
     db: Session = Depends(get_db),
 ) -> list[dict[str, Any]]:
+    """Lista las órdenes asociadas al usuario identificado por canal y external ID."""
     try:
         user_svc = UserService(db)
         user = user_svc.get_or_create(external_id=user_id, platform=platform)
@@ -190,7 +196,7 @@ def update_order_status(
     db: Session = Depends(get_db),
     admin_key: str = Depends(get_admin_api_key),
 ) -> dict[str, Any]:
-    """Secured admin endpoint to update the status of an order."""
+    """Actualiza el estado de una orden desde un endpoint administrativo protegido."""
     try:
         order_svc = OrderService(db)
         with safe_transaction(db):
@@ -209,7 +215,7 @@ def cancel_order(
     data: OrderCancelRequest,
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    """Client endpoint to cancel their own order if it is still pending."""
+    """Permite al cliente cancelar su propia orden mientras siga pendiente."""
     try:
         user_svc = UserService(db)
         user = user_svc.get_or_create(external_id=data.user_id, platform=data.platform)

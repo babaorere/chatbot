@@ -2,7 +2,9 @@ import asyncio
 import time
 import httpx
 
-WEBHOOK_URL = "http://localhost/telegram/webhook/8581822135:AAEZQ6azDAbZOT17DHrKVtVyU-P7uh7HIgM"
+WEBHOOK_URL = (
+    "http://localhost/telegram/webhook/8581822135:AAEZQ6azDAbZOT17DHrKVtVyU-P7uh7HIgM"
+)
 USER_ID = 5391760292
 CHAT_ID = 5391760292
 
@@ -14,7 +16,7 @@ async def send_msg(text: str) -> dict:
             "from": {"id": USER_ID, "first_name": "ClienteSimulado"},
             "chat": {"id": CHAT_ID, "type": "private"},
             "date": int(time.time()),
-            "text": text
+            "text": text,
         }
     }
     async with httpx.AsyncClient() as client:
@@ -25,14 +27,14 @@ async def send_msg(text: str) -> dict:
 async def send_callback(callback_data: str, message_id: int) -> dict:
     payload = {
         "callback_query": {
-            "id": f"cb_{int(time.time()*1000)}",
+            "id": f"cb_{int(time.time() * 1000)}",
             "from": {"id": USER_ID, "first_name": "ClienteSimulado"},
             "message": {
                 "message_id": message_id,
                 "chat": {"id": CHAT_ID},
-                "date": int(time.time()) - 5
+                "date": int(time.time()) - 5,
             },
-            "data": callback_data
+            "data": callback_data,
         }
     }
     async with httpx.AsyncClient() as client:
@@ -83,12 +85,16 @@ async def main():
     t2 = send_msg("tienen cerveza heineken?")
     r1, r2 = await asyncio.gather(t1, t2)
     print(f"[Bot Webhook (Request 1)]: {r1}")
-    print(f"[Bot Webhook (Request 2)]: {r2}  <-- ¡Bloqueado por el lock de concurrencia!")
+    print(
+        f"[Bot Webhook (Request 2)]: {r2}  <-- ¡Bloqueado por el lock de concurrencia!"
+    )
     await asyncio.sleep(6.0)
 
     # --- ESCENARIO 4: MENÚ EXPIRADO / TURNO INCORRECTO ---
     print("\n--- ESCENARIO 4: MENÚS EXPIRADOS / CAPAS DE FALLBACK ---")
-    print("[Cliente]: Pulsa un botón obsoleto (versión vieja #1, cuando FSM ya avanzó a versión #4)")
+    print(
+        "[Cliente]: Pulsa un botón obsoleto (versión vieja #1, cuando FSM ya avanzó a versión #4)"
+    )
     res = await send_callback("menu:stock#1", message_id=999)
     print(f"[Bot Webhook]: {res}  <-- ¡Rechazado por Capa 2 de versión FSM!")
     await asyncio.sleep(6.0)

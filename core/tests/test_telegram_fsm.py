@@ -1,8 +1,10 @@
 import pytest
+from unittest.mock import AsyncMock
 from infrastructure.channels.telegram_fsm import (
     TelegramConversationFSM,
     FSMStateStore,
     FSMState,
+    RedisFSMStateStore,
 )
 
 
@@ -64,3 +66,40 @@ async def test_telegram_fsm_menu_tracking_and_versioning():
     # El ID de menú activo anterior debe persistir en el contexto
     assert await fsm.get_active_menu_id() == 12345
 
+
+@pytest.mark.asyncio
+async def test_telegram_fsm_persist_menu_metadata_single_write_shape():
+    store = FSMStateStore()
+    fsm = TelegramConversationFSM("user-menu", store)
+
+    await fsm.persist_menu_metadata(
+        version=4,
+        options=["menu:categorias", "menu:stock"],
+        active_menu_id=777,
+    )
+
+    state, context = await fsm.get_state_and_context()
+    assert state == FSMState.IDLE
+    assert context["_fsm_version"] == 4
+    assert context["_menu_options"] == ["menu:categorias", "menu:stock"]
+    assert context["_active_menu_id"] == 777
+
+
+@pytest.mark.asyncio
+async def test_telegram_fsm_invalid_state_raises() -> None:
+    store = FSMStateStore()
+    store._store["user-bad"] = {"state": "bogus", "context": {}}
+    fsm = TelegramConversationFSM("user-bad", store)
+
+    with pytest.raises(ValueError, match="Invalid FSM state stored"):
+        await fsm.get_state()
+
+
+@pytest.mark.asyncio
+async def test_redis_fsm_store_invalid_payload_raises() -> None:
+    redis_mock = AsyncMock()
+    redis_mock.get.return_value = "{invalid-json"
+    store = RedisFSMStateStore(redis_client=redis_mock, namespace="ns")
+
+    with pytest.raises(ValueError, match="Invalid FSM payload stored in Redis"):
+        await store.get("user-1")

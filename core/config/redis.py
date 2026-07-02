@@ -10,6 +10,7 @@ from config.settings import Settings, settings
 
 
 def create_redis_client(config: Settings | None = None) -> Redis:
+    """Construye un cliente Redis con timeouts, health checks y política de reintentos."""
     runtime_settings = config or settings
     retry = Retry(
         backoff=ExponentialBackoff(base=0.1, cap=1.0),

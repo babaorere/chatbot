@@ -1,6 +1,6 @@
 import pytest
+import httpx
 from unittest.mock import patch, AsyncMock, MagicMock
-from fastapi.testclient import TestClient
 from main import app
 from app.container import get_process_message_uc
 from infrastructure.channels.telegram_fsm import TelegramConversationFSM, FSMStateStore
@@ -13,8 +13,32 @@ def setup_mocks():
     yield
     app.dependency_overrides.pop(get_process_message_uc, None)
 
+@pytest.mark.asyncio
+async def test_webhook_fails_when_redis_lock_cannot_be_acquired():
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        with (
+            patch("controllers.telegram_controller.get_redis_client") as redis_client_mock,
+            patch(
+                "controllers.telegram_controller.settings.telegram_bot_token", "fake_token"
+            ),
+        ):
+            redis_instance = MagicMock()
+            redis_instance.set = AsyncMock(side_effect=RuntimeError("redis down"))
+            redis_client_mock.return_value = redis_instance
 
-client = TestClient(app)
+            payload = {
+                "message": {
+                    "message_id": 1,
+                    "from": {"id": 111, "first_name": "Test"},
+                    "chat": {"id": 111, "type": "private"},
+                    "date": 100000,
+                    "text": "hola",
+                }
+            }
+
+            response = await client.post("/telegram/webhook/fake_token", json=payload)
+            assert response.status_code == 500
 
 
 @pytest.mark.asyncio
@@ -31,15 +55,15 @@ async def test_webhook_rejects_expired_callback_via_message_id():
         patch(
             "controllers.telegram_controller.settings.telegram_bot_token", "fake_token"
         ),
+        patch("services.job_dispatcher.JobDispatcher") as dispatcher_mock,
         patch(
             "services.telegram_service.answer_telegram_callback_query",
             new_callable=AsyncMock,
         ) as mock_answer,
-        patch(
-            "services.telegram_service.clear_telegram_reply_markup",
-            new_callable=AsyncMock,
-        ) as mock_clear,
     ):
+        dispatcher_instance = dispatcher_mock.return_value
+        dispatcher_instance.enqueue_job = AsyncMock(return_value={"job_id": "job-1"})
+
         payload = {
             "callback_query": {
                 "id": "query_123",
@@ -53,7 +77,9 @@ async def test_webhook_rejects_expired_callback_via_message_id():
             }
         }
 
-        response = client.post("/telegram/webhook/fake_token", json=payload)
+        transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post("/telegram/webhook/fake_token", json=payload)
         assert response.status_code == 200
 
         # Debe haber respondido con alerta de expiración
@@ -62,10 +88,10 @@ async def test_webhook_rejects_expired_callback_via_message_id():
             callback_query_id="query_123",
             text="Este menú ha expirado o ya no está activo.",
         )
-        # Debe haber limpiado los botones del mensaje obsoleto
-        mock_clear.assert_called_once_with(
-            bot_token="fake_token", chat_id="user_capa1", message_id=8888
-        )
+        dispatcher_instance.enqueue_job.assert_awaited_once()
+        assert dispatcher_instance.enqueue_job.call_args.args[0] == "job_clear_reply_markup"
+        assert dispatcher_instance.enqueue_job.call_args.kwargs["message_id"] == 8888
+        assert dispatcher_instance.enqueue_job.call_args.kwargs["chat_id"] == "user_capa1"
 
 
 @pytest.mark.asyncio
@@ -83,15 +109,15 @@ async def test_webhook_rejects_expired_callback_via_version():
         patch(
             "controllers.telegram_controller.settings.telegram_bot_token", "fake_token"
         ),
+        patch("services.job_dispatcher.JobDispatcher") as dispatcher_mock,
         patch(
             "services.telegram_service.answer_telegram_callback_query",
             new_callable=AsyncMock,
         ) as mock_answer,
-        patch(
-            "services.telegram_service.clear_telegram_reply_markup",
-            new_callable=AsyncMock,
-        ) as mock_clear,
     ):
+        dispatcher_instance = dispatcher_mock.return_value
+        dispatcher_instance.enqueue_job = AsyncMock(return_value={"job_id": "job-2"})
+
         payload = {
             "callback_query": {
                 "id": "query_124",
@@ -105,7 +131,9 @@ async def test_webhook_rejects_expired_callback_via_version():
             }
         }
 
-        response = client.post("/telegram/webhook/fake_token", json=payload)
+        transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post("/telegram/webhook/fake_token", json=payload)
         assert response.status_code == 200
 
         mock_answer.assert_called_once_with(
@@ -113,6 +141,7 @@ async def test_webhook_rejects_expired_callback_via_version():
             callback_query_id="query_124",
             text="Este menú ha expirado o ya no está activo.",
         )
-        mock_clear.assert_called_once_with(
-            bot_token="fake_token", chat_id="user_capa2", message_id=8888
-        )
+        dispatcher_instance.enqueue_job.assert_awaited_once()
+        assert dispatcher_instance.enqueue_job.call_args.args[0] == "job_clear_reply_markup"
+        assert dispatcher_instance.enqueue_job.call_args.kwargs["message_id"] == 8888
+        assert dispatcher_instance.enqueue_job.call_args.kwargs["chat_id"] == "user_capa2"

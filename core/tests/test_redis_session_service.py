@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import warnings
 
-from google.adk.events import Event
-from google.adk.sessions.base_session_service import GetSessionConfig
-from google.adk.sessions import InMemorySessionService
+with warnings.catch_warnings():
+    warnings.filterwarnings(
+        "ignore",
+        category=DeprecationWarning,
+        message="BaseAgentConfig is deprecated and will be removed in future versions\\.",
+    )
+    from google.adk.events import Event
+    from google.adk.sessions.base_session_service import GetSessionConfig
+    from google.adk.sessions import InMemorySessionService
 
 from config.settings import Settings
 from services.redis_session_service import RedisSessionService

@@ -12,6 +12,7 @@ from models.user import User
 from models.conversation import Conversation
 from models.knowledge_base import KnowledgeBase
 from models.product import Product
+from models.system_admin import SystemAdmin
 from repositories.system_setting_repository import (
     SystemSettingRepository as SysSettingRepo,
 )
@@ -32,6 +33,7 @@ router = APIRouter(
 def get_all_settings(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Devuelve el conjunto completo de system settings administrables."""
     try:
         repo = SysSettingRepo(db)
         return repo.get_all_settings()
@@ -46,6 +48,7 @@ def update_setting(
     data: dict[str, Any],
     db: Session = Depends(get_db),
 ) -> dict:
+    """Actualiza el valor y la descripción de una system setting existente."""
     try:
         repo = SysSettingRepo(db)
         with db.begin():
@@ -71,6 +74,7 @@ def update_setting(
 def get_system_metrics(
     db: Session = Depends(get_db),
 ) -> dict:
+    """Entrega métricas agregadas del sistema para paneles administrativos."""
     try:
         total_users = db.query(User).count()
         total_conversations = db.query(Conversation).count()
@@ -88,3 +92,94 @@ def get_system_metrics(
     except Exception as e:
         logger.error("admin.get_system_metrics failed: %s", e)
         raise HTTPException(500, f"Failed to retrieve metrics: {e}")
+
+
+# ── System Admins CRUD ─────────────────────────────────────────────────────────
+
+
+@router.get("/system-admins")
+def get_system_admins(
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    """Lista todos los administradores del sistema."""
+    try:
+        admins = db.query(SystemAdmin).all()
+        return [admin.to_dict() for admin in admins]
+    except Exception as e:
+        logger.error("admin.get_system_admins failed: %s", e)
+        raise HTTPException(500, f"Failed to list system admins: {e}")
+
+
+@router.post("/system-admins")
+def create_system_admin(
+    data: dict[str, Any],
+    db: Session = Depends(get_db),
+) -> dict:
+    """Crea un nuevo administrador y sus preferencias de alertas."""
+    try:
+        with db.begin():
+            admin = SystemAdmin(
+                name=data.get("name"),
+                email=data.get("email"),
+                telegram_chat_id=data.get("telegram_chat_id"),
+                whatsapp_phone=data.get("whatsapp_phone"),
+                notify_email=data.get("notify_email", False),
+                notify_telegram=data.get("notify_telegram", True),
+                notify_whatsapp=data.get("notify_whatsapp", False),
+                alert_types=data.get("alert_types", []),
+            )
+            db.add(admin)
+        db.refresh(admin)
+        return admin.to_dict()
+    except Exception as e:
+        logger.error("admin.create_system_admin failed: %s", e)
+        raise HTTPException(500, f"Failed to create system admin: {e}")
+
+
+@router.put("/system-admins/{admin_id}")
+def update_system_admin(
+    admin_id: int,
+    data: dict[str, Any],
+    db: Session = Depends(get_db),
+) -> dict:
+    """Actualiza un administrador existente y sus preferencias de alertas."""
+    try:
+        with db.begin():
+            admin = db.query(SystemAdmin).filter(SystemAdmin.id == admin_id).first()
+            if not admin:
+                raise HTTPException(404, "System admin not found")
+            admin.name = data.get("name", admin.name)
+            admin.email = data.get("email", admin.email)
+            admin.telegram_chat_id = data.get("telegram_chat_id", admin.telegram_chat_id)
+            admin.whatsapp_phone = data.get("whatsapp_phone", admin.whatsapp_phone)
+            admin.notify_email = data.get("notify_email", admin.notify_email)
+            admin.notify_telegram = data.get("notify_telegram", admin.notify_telegram)
+            admin.notify_whatsapp = data.get("notify_whatsapp", admin.notify_whatsapp)
+            admin.alert_types = data.get("alert_types", admin.alert_types)
+        db.refresh(admin)
+        return admin.to_dict()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("admin.update_system_admin failed [id=%s]: %s", admin_id, e)
+        raise HTTPException(500, f"Failed to update system admin: {e}")
+
+
+@router.delete("/system-admins/{admin_id}")
+def delete_system_admin(
+    admin_id: int,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Elimina un administrador."""
+    try:
+        with db.begin():
+            admin = db.query(SystemAdmin).filter(SystemAdmin.id == admin_id).first()
+            if not admin:
+                raise HTTPException(404, "System admin not found")
+            db.delete(admin)
+        return {"status": "success", "message": "System admin deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("admin.delete_system_admin failed [id=%s]: %s", admin_id, e)
+        raise HTTPException(500, f"Failed to delete system admin: {e}")

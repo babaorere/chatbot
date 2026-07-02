@@ -7,12 +7,14 @@ Delegará la ejecución al agente central definido en `agents.root_agent`.
 from __future__ import annotations
 
 import logging
-from typing import Any, AsyncGenerator
+from typing import Any, AsyncGenerator, TYPE_CHECKING
 
-from google.adk.sessions.base_session_service import BaseSessionService
 from google.genai import types
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from google.adk.sessions.base_session_service import BaseSessionService
 
 
 class ADKLLMProvider:
@@ -23,7 +25,7 @@ class ADKLLMProvider:
 
     def __init__(
         self,
-        session_service: BaseSessionService,
+        session_service: Any,
     ) -> None:
         """Inicializa el proveedor con el session service.
 
@@ -181,6 +183,7 @@ class ADKLLMProvider:
         """Elimina el historial y limpia la sesión conversacional de ADK."""
         try:
             from agents.constants import GADK_APP_NAME
+
             await self._session_service.delete_session(
                 app_name=GADK_APP_NAME,
                 user_id=user_id,

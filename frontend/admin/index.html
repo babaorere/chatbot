@@ -18,6 +18,7 @@
                 <a href="#tenants" class="nav-link" data-section="tenants">🏢 Tenants</a>
                 <a href="#agent" class="nav-link" data-section="agent">🤖 Agente IA</a>
                 <a href="#settings" class="nav-link" data-section="settings">⚙️ Configuración</a>
+                <a href="#admins" class="nav-link" data-section="admins">👥 Administradores</a>
             </nav>
         </aside>
 
@@ -30,6 +31,18 @@
             </header>
 
             <div class="content-area">
+                <section class="overview-panel">
+                    <div>
+                        <p class="eyebrow">Control central</p>
+                        <h3>Gestiona tenants, agente IA y parámetros del sistema desde un solo lugar.</h3>
+                        <p class="overview-copy">Las acciones de mayor impacto están arriba. Los detalles y ajustes finos quedan agrupados debajo para que la navegación sea directa.</p>
+                    </div>
+                    <div class="overview-actions">
+                        <button class="btn btn-primary" id="addTenantBtnTop" type="button">+ Nuevo Tenant</button>
+                        <button class="btn btn-secondary" id="goToAgentBtn" type="button">Configurar Agente</button>
+                    </div>
+                </section>
+
                 <!-- Dashboard Section -->
                 <section id="dashboard" class="section active">
                     <div class="stats-grid">
@@ -53,7 +66,9 @@
                 <!-- Tenants Section -->
                 <section id="tenants" class="section">
                     <div class="section-header">
-                        <h3>Tenants</h3>
+                        <h3 class="section-title-with-help">Tenants
+                            <button type="button" class="help-tip" data-tooltip="Cada tenant representa un negocio independiente con su propia configuración y su propio asistente." aria-label="Ayuda sobre tenants">?</button>
+                        </h3>
                         <button class="btn btn-primary" id="addTenantBtn">+ Nuevo Tenant</button>
                     </div>
                     <div class="table-container">
@@ -75,23 +90,33 @@
                 <!-- Agent Configuration Section -->
                 <section id="agent" class="section">
                     <div class="section-header">
-                        <h3>Configuración del Agente IA</h3>
+                        <h3 class="section-title-with-help">Configuración del Agente IA
+                            <button type="button" class="help-tip" data-tooltip="Aquí defines cómo responde la IA de cada tenant: modelo, instrucciones y credenciales del proveedor." aria-label="Ayuda sobre agente IA">?</button>
+                        </h3>
                     </div>
                     <div class="form-card">
                         <div class="form-group">
-                            <label for="agentTenant">Seleccionar Tenant</label>
+                            <label for="agentTenant" class="label-with-help">Seleccionar Tenant
+                                <button type="button" class="help-tip" data-tooltip="Elige primero el negocio que quieres configurar. Cada tenant mantiene su propia IA." aria-label="Ayuda sobre tenant">?</button>
+                            </label>
                             <select id="agentTenant"></select>
                         </div>
                         <div class="form-group">
-                            <label for="agentModel">Modelo LLM</label>
+                            <label for="agentModel" class="label-with-help">Modelo LLM
+                                <button type="button" class="help-tip" data-tooltip="Es el motor de IA que usará el asistente. Si no sabes cuál elegir, mantén el valor recomendado." aria-label="Ayuda sobre modelo LLM">?</button>
+                            </label>
                             <input type="text" id="agentModel" placeholder="openrouter/nvidia/nemotron-3-super-120b-a12b:free">
                         </div>
                         <div class="form-group">
-                            <label for="agentApiKey">API Key (OpenRouter)</label>
+                            <label for="agentApiKey" class="label-with-help">API Key (OpenRouter)
+                                <button type="button" class="help-tip" data-tooltip="Clave privada para conectar el tenant con el proveedor de IA. No debe compartirse con clientes ni personal no autorizado." aria-label="Ayuda sobre API key">?</button>
+                            </label>
                             <input type="password" id="agentApiKey" placeholder="<OPENROUTER_API_KEY>">
                         </div>
                         <div class="form-group">
-                            <label for="agentInstruction">Instrucción del Agente (System Prompt)</label>
+                            <label for="agentInstruction" class="label-with-help">Instrucción del Agente (System Prompt)
+                                <button type="button" class="help-tip" data-tooltip="Es la guía principal del asistente: tono, reglas del negocio, límites y comportamiento esperado." aria-label="Ayuda sobre instrucciones del agente">?</button>
+                            </label>
                             <textarea id="agentInstruction" rows="10"></textarea>
                         </div>
                         <button class="btn btn-primary" id="saveAgentBtn">Guardar Configuración</button>
@@ -101,7 +126,9 @@
                 <!-- Settings Section -->
                 <section id="settings" class="section">
                     <div class="section-header">
-                        <h3>Configuración del Sistema</h3>
+                        <h3 class="section-title-with-help">Configuración del Sistema
+                            <button type="button" class="help-tip" data-tooltip="Son parámetros globales de la plataforma. Cambiarlos puede afectar a varios tenants al mismo tiempo." aria-label="Ayuda sobre configuración del sistema">?</button>
+                        </h3>
                     </div>
                     <div class="table-container">
                         <table class="data-table" id="settingsTable">
@@ -114,6 +141,30 @@
                                 </tr>
                             </thead>
                             <tbody id="settingsBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Admins Section -->
+                <section id="admins" class="section">
+                    <div class="section-header">
+                        <h3 class="section-title-with-help">Administradores y Alertas
+                            <button type="button" class="help-tip" data-tooltip="Gestiona los administradores que reciben notificaciones del sistema ante eventos críticos." aria-label="Ayuda sobre administradores">?</button>
+                        </h3>
+                        <button class="btn btn-primary" id="addAdminBtn">+ Nuevo Administrador</button>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="adminsTable">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Contacto (Telegram/Email/WA)</th>
+                                    <th>Canales Activos</th>
+                                    <th>Alertas</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adminsBody"></tbody>
                         </table>
                     </div>
                 </section>

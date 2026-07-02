@@ -8,7 +8,7 @@ from application.use_cases.commands import ProcessMessageCommand
 
 
 @pytest.mark.asyncio
-async def test_alert_service_skips_notification_when_no_chat_ids():
+async def test_alert_service_requires_recipients_or_fails():
     db_mock = MagicMock()
     db_mock.query.return_value.all.return_value = []
     # Mock SystemSettingRepository to return None for chat ids
@@ -21,9 +21,11 @@ async def test_alert_service_skips_notification_when_no_chat_ids():
         repo_instance.get_value.return_value = None
         RepoMock.return_value = repo_instance
 
-        await AlertService.notify_critical_issue(
-            db_mock, "Test Title", "Test Details"
-        )
+        with pytest.raises(RuntimeError, match="No alert recipients configured"):
+            await AlertService.notify_critical_issue(
+                db_mock, "Test Title", "Test Details"
+            )
+
         send_mock.assert_not_called()
 
 
@@ -174,13 +176,13 @@ async def test_process_message_alerts_on_llm_failure():
 
 
 @pytest.mark.asyncio
-async def test_process_message_alerts_on_llm_latency_falls_back_when_queue_disabled():
+async def test_process_message_alerts_on_llm_latency_requires_arq_queue():
     db_mock = MagicMock()
     db_mock.query.return_value.all.return_value = []
     llm_mock = AsyncMock()
     rag_mock = AsyncMock()
     dispatcher_mock = AsyncMock()
-    dispatcher_mock.enqueue_job.side_effect = RuntimeError("ARQ is disabled")
+    dispatcher_mock.enqueue_job.side_effect = RuntimeError("ARQ is unavailable")
     llm_mock.run_chat.return_value = "Hello response"
 
     user_mock = MagicMock()
@@ -202,9 +204,6 @@ async def test_process_message_alerts_on_llm_latency_falls_back_when_queue_disab
     ), patch(
         "application.use_cases.process_message.RAGPolicyService"
     ) as RAGPolicyMock, patch(
-        "services.alert_service.AlertService.check_llm_latency",
-        new_callable=AsyncMock,
-    ) as latency_check_mock, patch(
         "time.perf_counter", side_effect=[0.0, 15.0]
     ):
         rag_policy_instance = MagicMock()
@@ -217,11 +216,6 @@ async def test_process_message_alerts_on_llm_latency_falls_back_when_queue_disab
             rag_provider=rag_mock,
             job_dispatcher=dispatcher_mock,
         )
-        await use_case.execute(cmd)
 
-        latency_check_mock.assert_called_once_with(
-            db=db_mock,
-            duration=15.0,
-            user_id="user123",
-            session_id="session123",
-        )
+        with pytest.raises(RuntimeError, match="ARQ must be available"):
+            await use_case.execute(cmd)

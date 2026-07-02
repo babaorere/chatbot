@@ -10,7 +10,8 @@ def slugify(text_val: str) -> str:
     """Genera un slug limpio y simplificado a partir de un texto."""
     text_val = text_val.strip().lower()
     text_val = "".join(
-        c for c in unicodedata.normalize("NFD", text_val)
+        c
+        for c in unicodedata.normalize("NFD", text_val)
         if unicodedata.category(c) != "Mn"
     )
     # Reemplazar caracteres no alfanuméricos por guiones sin usar regex
@@ -32,8 +33,7 @@ def normalize_category_name(name: str) -> str:
     """Normaliza un nombre de categoría para comparación semántica básica (remueve acentos, minúsculas, y plurales simples)."""
     name = name.strip().lower()
     name = "".join(
-        c for c in unicodedata.normalize("NFD", name)
-        if unicodedata.category(c) != "Mn"
+        c for c in unicodedata.normalize("NFD", name) if unicodedata.category(c) != "Mn"
     )
     # Regla básica de singularización en español
     if name.endswith("es"):
@@ -67,14 +67,18 @@ class CategoryService:
         # Validar colisión por slug único
         existing_slug = self.db.query(Category).filter(Category.slug == slug).first()
         if existing_slug:
-            raise ValueError(f"Colisión de slug: la categoría '{existing_slug.name}' ya ocupa un identificador similar.")
+            raise ValueError(
+                f"Colisión de slug: la categoría '{existing_slug.name}' ya ocupa un identificador similar."
+            )
 
         # Validar colisión matemática de similitud usando pg_trgm en la base de datos
         # Excluimos categorías muy cortas para evitar falsos positivos
         if len(cleaned_name) > 3:
             similar = self.db.execute(
-                text("SELECT name FROM categories WHERE similarity(name, :new_name) > 0.60 LIMIT 1;"),
-                {"new_name": cleaned_name}
+                text(
+                    "SELECT name FROM categories WHERE similarity(name, :new_name) > 0.60 LIMIT 1;"
+                ),
+                {"new_name": cleaned_name},
             ).fetchone()
             if similar:
                 raise ValueError(
@@ -82,11 +86,7 @@ class CategoryService:
                     f"es demasiado similar a la categoría existente '{similar[0]}' (similitud > 60%)."
                 )
 
-        category = Category(
-            name=cleaned_name,
-            slug=slug,
-            is_system=False
-        )
+        category = Category(name=cleaned_name, slug=slug, is_system=False)
         self.db.add(category)
         self.db.flush()
         return category
@@ -110,17 +110,22 @@ class CategoryService:
                 raise ValueError(f"La categoría '{cleaned_new}' ya existe.")
 
             slug = slugify(cleaned_new)
-            existing_slug = self.db.query(Category).filter(
-                Category.slug == slug,
-                Category.name != old_name
-            ).first()
+            existing_slug = (
+                self.db.query(Category)
+                .filter(Category.slug == slug, Category.name != old_name)
+                .first()
+            )
             if existing_slug:
-                raise ValueError(f"Colisión de slug: la categoría '{existing_slug.name}' ya ocupa un identificador similar.")
+                raise ValueError(
+                    f"Colisión de slug: la categoría '{existing_slug.name}' ya ocupa un identificador similar."
+                )
 
             if len(cleaned_new) > 3:
                 similar = self.db.execute(
-                    text("SELECT name FROM categories WHERE name != :old_name AND similarity(name, :new_name) > 0.60 LIMIT 1;"),
-                    {"old_name": old_name, "new_name": cleaned_new}
+                    text(
+                        "SELECT name FROM categories WHERE name != :old_name AND similarity(name, :new_name) > 0.60 LIMIT 1;"
+                    ),
+                    {"old_name": old_name, "new_name": cleaned_new},
                 ).fetchone()
                 if similar:
                     raise ValueError(
@@ -141,7 +146,9 @@ class CategoryService:
             raise ValueError("Categoría no encontrada.")
 
         if category.is_system or name == "General":
-            raise ValueError("No se permite eliminar la categoría del sistema 'General'.")
+            raise ValueError(
+                "No se permite eliminar la categoría del sistema 'General'."
+            )
 
         self.db.delete(category)
         self.db.flush()

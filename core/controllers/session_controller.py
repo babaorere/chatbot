@@ -5,6 +5,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from app.security import get_admin_api_key
 from config.database import get_db
 from app.container import get_llm_provider
 from application.ports.llm_port import ILLMProvider
@@ -13,7 +14,10 @@ from dtos.response import SessionHistoryItem, ConversationResponse
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["sessions"])
+router = APIRouter(
+    tags=["sessions"],
+    dependencies=[Depends(get_admin_api_key)],
+)
 
 
 @router.get("/sessions/{session_id}/history", response_model=list[SessionHistoryItem])
@@ -24,6 +28,7 @@ async def get_session_history(
     llm: ILLMProvider = Depends(get_llm_provider),
     fastapi_request: Request = None,
 ) -> list[SessionHistoryItem]:
+    """Recupera el historial de una sesión ADK específica para un usuario dado."""
     try:
         history = await llm.get_session_history(
             user_id=user_id,
@@ -51,8 +56,10 @@ def list_conversations(
     db: Session = Depends(get_db),
     fastapi_request: Request = None,
 ) -> list[ConversationResponse]:
+    """Lista las conversaciones persistidas de un usuario respetando el aislamiento por RLS."""
     try:
         from sqlalchemy import text
+
         db.execute(text("SET app.current_user_id = :user_id"), {"user_id": user_id})
         conv_svc = ConversationService(db)
         conversations = conv_svc.get_by_user_id(user_id)

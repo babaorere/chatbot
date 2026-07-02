@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends, HTTPException, status
 from sse_starlette.sse import EventSourceResponse
+
+from app.security import get_current_user_from_jwt
 
 from app.container import ProcessMessageUCDep
 from application.use_cases.commands import ProcessMessageCommand
@@ -20,7 +22,15 @@ async def chat(
     request: ChatRequest,
     process_message_uc: ProcessMessageUCDep,
     fastapi_request: Request = None,
+    token_data: dict = Depends(get_current_user_from_jwt),
 ) -> ChatResponse:
+    """Procesa un mensaje de chat y devuelve la respuesta final del asistente."""
+    if str(token_data.get("sub")) != str(request.user_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para interactuar en nombre de este usuario.",
+        )
+
     try:
         cmd = ProcessMessageCommand(
             user_id=request.user_id,
@@ -52,6 +62,7 @@ async def chat_stream(
     process_message_uc: ProcessMessageUCDep,
     fastapi_request: Request = None,
 ) -> EventSourceResponse:
+    """Reserva el endpoint SSE de streaming hasta implementar el flujo incremental."""
     raise NotImplementedError(
         "Streaming is not yet implemented in the new architecture."
     )
