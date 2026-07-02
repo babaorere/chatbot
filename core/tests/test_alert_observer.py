@@ -176,6 +176,51 @@ async def test_process_message_alerts_on_llm_failure():
 
 
 @pytest.mark.asyncio
+async def test_process_message_raises_when_llm_failure_alert_enqueue_fails():
+    db_mock = MagicMock()
+    db_mock.query.return_value.all.return_value = []
+    llm_mock = AsyncMock()
+    rag_mock = AsyncMock()
+    dispatcher_mock = AsyncMock()
+
+    llm_mock.run_chat.side_effect = RuntimeError("API key invalid")
+    dispatcher_mock.enqueue_job.side_effect = RuntimeError("queue down")
+
+    user_mock = MagicMock()
+    user_mock.id = 1
+    rag_result = MagicMock()
+    rag_result.intent = "TRANSACTIONAL"
+
+    cmd = ProcessMessageCommand(
+        user_id="user123",
+        platform="web",
+        message="hello",
+        session_id="session123",
+    )
+
+    with patch.object(
+        ProcessMessageUseCase, "_get_or_create_user", return_value=user_mock
+    ), patch.object(
+        ProcessMessageUseCase, "_ensure_conversation"
+    ), patch(
+        "application.use_cases.process_message.RAGPolicyService"
+    ) as RAGPolicyMock:
+        rag_policy_instance = MagicMock()
+        rag_policy_instance.classify.return_value = rag_result
+        RAGPolicyMock.return_value = rag_policy_instance
+
+        use_case = ProcessMessageUseCase(
+            db=db_mock,
+            llm_provider=llm_mock,
+            rag_provider=rag_mock,
+            job_dispatcher=dispatcher_mock,
+        )
+
+        with pytest.raises(RuntimeError, match="ARQ must be available"):
+            await use_case.execute(cmd)
+
+
+@pytest.mark.asyncio
 async def test_process_message_alerts_on_llm_latency_requires_arq_queue():
     db_mock = MagicMock()
     db_mock.query.return_value.all.return_value = []

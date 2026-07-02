@@ -4,6 +4,7 @@ from unittest.mock import patch, AsyncMock, MagicMock
 from main import app
 from app.container import get_process_message_uc
 from infrastructure.channels.telegram_fsm import TelegramConversationFSM, FSMStateStore
+from controllers.telegram_controller import prime_human_agent_cache
 
 
 @pytest.fixture(autouse=True)
@@ -24,6 +25,7 @@ async def test_telegram_hybrid_menu_flow(mock_use_case):
     store = FSMStateStore()
     user_id = "5391760292"
     fsm = TelegramConversationFSM(user_id, store)
+    prime_human_agent_cache(True)
 
     # 1. Parcheamos el envío a Telegram y la persistencia del FSM
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
@@ -68,6 +70,7 @@ async def test_telegram_hybrid_menu_flow(mock_use_case):
             }
             resp = await client.post("/telegram/webhook/fake_token", json=payload_start)
             assert resp.status_code == 200
+            mock_use_case.execute.assert_not_awaited()
             mock_use_case.clear_session.assert_not_awaited()
             mock_clear_latest_session.assert_awaited_once()
             mock_defer_clear_reply_markup.assert_not_called()

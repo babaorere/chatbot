@@ -10,6 +10,8 @@ import logging
 from typing import Any, AsyncGenerator
 
 from google.genai import types
+from agents.constants import GADK_APP_NAME
+from agents.root_agent import get_runner
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +55,6 @@ class ADKLLMProvider:
             RuntimeError: Si el modelo no puede generar respuesta.
         """
         try:
-            from agents.root_agent import get_runner
-
             runner = get_runner()
             content = self._build_content(message, rag_context)
             full_response: list[str] = []
@@ -103,8 +103,6 @@ class ADKLLMProvider:
             str: Fragmentos de texto a medida que el modelo los genera.
         """
         try:
-            from agents.root_agent import get_runner
-
             runner = get_runner()
             content = self._build_content(message, rag_context)
 
@@ -142,8 +140,6 @@ class ADKLLMProvider:
             list[dict[str, str]]: Lista de mensajes con 'author' y 'content'.
         """
         try:
-            from agents.root_agent import get_runner
-
             runner = get_runner()
             session = await self._session_service.get_session(
                 app_name=runner.app_name,
@@ -179,8 +175,6 @@ class ADKLLMProvider:
     ) -> None:
         """Elimina el historial y limpia la sesión conversacional de ADK."""
         try:
-            from agents.constants import GADK_APP_NAME
-
             await self._session_service.delete_session(
                 app_name=GADK_APP_NAME,
                 user_id=user_id,

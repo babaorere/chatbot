@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from arq import create_pool
+from arq.connections import RedisSettings
+
 from config.settings import settings
 
 
@@ -26,9 +29,6 @@ class JobDispatcher:
         """
         if not settings.arq_enabled:
             raise RuntimeError("ARQ is disabled. Set ARQ_ENABLED=true to enqueue jobs.")
-
-        from arq import create_pool
-        from arq.connections import RedisSettings
 
         redis_settings = RedisSettings.from_dsn(settings.redis_url)
         pool = await create_pool(redis_settings)

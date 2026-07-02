@@ -42,7 +42,7 @@ def create_user(
             else "unknown"
         )
         logger.error("create_user failed [request_id=%s]: %s", request_id, e)
-        raise HTTPException(500, f"Failed to create user: {e}")
+        raise HTTPException(500, "Failed to create user")
 
 
 @router.get("/{user_id}", response_model=UserResponse)
@@ -70,7 +70,7 @@ def get_user(
         logger.error(
             "get_user failed [request_id=%s, user_id=%s]: %s", request_id, user_id, e
         )
-        raise HTTPException(500, f"Failed to retrieve user: {e}")
+        raise HTTPException(500, "Failed to retrieve user")
 
 
 @router.get("", response_model=list[UserResponse])
@@ -92,4 +92,4 @@ def list_users(
             else "unknown"
         )
         logger.error("list_users failed [request_id=%s]: %s", request_id, e)
-        raise HTTPException(500, f"Failed to list users: {e}")
+        raise HTTPException(500, "Failed to list users")

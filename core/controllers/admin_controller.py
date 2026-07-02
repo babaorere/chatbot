@@ -39,7 +39,7 @@ def get_all_settings(
         return repo.get_all_settings()
     except Exception as e:
         logger.error("admin.get_all_settings failed: %s", e)
-        raise HTTPException(500, f"Failed to retrieve settings: {e}")
+        raise HTTPException(500, "Failed to retrieve settings")
 
 
 @router.put("/settings/{key}")
@@ -64,7 +64,7 @@ def update_setting(
         }
     except Exception as e:
         logger.error("admin.update_setting failed [key=%s]: %s", key, e)
-        raise HTTPException(500, f"Failed to update setting: {e}")
+        raise HTTPException(500, "Failed to update setting")
 
 
 # ── Metrics ──────────────────────────────────────────────────────────────────
@@ -91,7 +91,7 @@ def get_system_metrics(
         }
     except Exception as e:
         logger.error("admin.get_system_metrics failed: %s", e)
-        raise HTTPException(500, f"Failed to retrieve metrics: {e}")
+        raise HTTPException(500, "Failed to retrieve metrics")
 
 
 # ── System Admins CRUD ─────────────────────────────────────────────────────────
@@ -107,7 +107,7 @@ def get_system_admins(
         return [admin.to_dict() for admin in admins]
     except Exception as e:
         logger.error("admin.get_system_admins failed: %s", e)
-        raise HTTPException(500, f"Failed to list system admins: {e}")
+        raise HTTPException(500, "Failed to list system admins")
 
 
 @router.post("/system-admins")
@@ -133,7 +133,7 @@ def create_system_admin(
         return admin.to_dict()
     except Exception as e:
         logger.error("admin.create_system_admin failed: %s", e)
-        raise HTTPException(500, f"Failed to create system admin: {e}")
+        raise HTTPException(500, "Failed to create system admin")
 
 
 @router.put("/system-admins/{admin_id}")
@@ -162,7 +162,7 @@ def update_system_admin(
         raise
     except Exception as e:
         logger.error("admin.update_system_admin failed [id=%s]: %s", admin_id, e)
-        raise HTTPException(500, f"Failed to update system admin: {e}")
+        raise HTTPException(500, "Failed to update system admin")
 
 
 @router.delete("/system-admins/{admin_id}")
@@ -182,4 +182,4 @@ def delete_system_admin(
         raise
     except Exception as e:
         logger.error("admin.delete_system_admin failed [id=%s]: %s", admin_id, e)
-        raise HTTPException(500, f"Failed to delete system admin: {e}")
+        raise HTTPException(500, "Failed to delete system admin")

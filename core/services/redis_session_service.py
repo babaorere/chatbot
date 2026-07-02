@@ -20,6 +20,9 @@ if TYPE_CHECKING:
     from google.adk.sessions.state import State
 
 with warnings.catch_warnings():
+    # google-adk 2.3.0 todavía emite el DeprecationWarning de BaseAgentConfig
+    # al importar su paquete de sesiones. Este adapter es la frontera correcta
+    # para contener ese ruido sin contaminar el arranque completo.
     warnings.filterwarnings(
         "ignore",
         category=DeprecationWarning,

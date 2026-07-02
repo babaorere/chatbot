@@ -36,7 +36,7 @@ def list_categories(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
         return [c.to_dict() for c in categories]
     except Exception as e:
         logger.error("Failed to list categories: %s", e)
-        raise HTTPException(500, f"Error al listar categorías: {e}")
+        raise HTTPException(500, "Error al listar categorías")
 
 
 @router.post("")
@@ -55,7 +55,7 @@ def create_category(
         raise HTTPException(400, str(e))
     except Exception as e:
         logger.error("Failed to create category: %s", e)
-        raise HTTPException(500, f"Error al crear categoría: {e}")
+        raise HTTPException(500, "Error al crear categoría")
 
 
 @router.put("/{name}")
@@ -75,7 +75,7 @@ def update_category(
         raise HTTPException(400, str(e))
     except Exception as e:
         logger.error("Failed to update category '%s': %s", name, e)
-        raise HTTPException(500, f"Error al actualizar categoría: {e}")
+        raise HTTPException(500, "Error al actualizar categoría")
 
 
 @router.delete("/{name}")
@@ -97,4 +97,4 @@ def delete_category(
         raise HTTPException(400, str(e))
     except Exception as e:
         logger.error("Failed to delete category '%s': %s", name, e)
-        raise HTTPException(500, f"Error al eliminar categoría: {e}")
+        raise HTTPException(500, "Error al eliminar categoría")

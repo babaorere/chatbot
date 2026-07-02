@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from models.knowledge_base import KnowledgeBase
 from repositories.kb_repository import KBRepository
+from services.embedding_service import EmbeddingService
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +54,6 @@ class KBService:
         content: str,
     ) -> KnowledgeBase:
         try:
-            from services.embedding_service import EmbeddingService
-
             emb_svc = EmbeddingService()
             combined_text = f"{title}\n{content}"
             embedding = await emb_svc.get_embedding(combined_text)
@@ -97,8 +96,6 @@ class KBService:
 
             # Si se actualizó el título o el contenido, recalculamos embedding
             if title is not None or content is not None:
-                from services.embedding_service import EmbeddingService
-
                 emb_svc = EmbeddingService()
                 combined_text = f"{entry.title}\n{entry.content}"
                 entry.embedding = await emb_svc.get_embedding(combined_text)
@@ -129,8 +126,6 @@ class KBService:
         self, query: str, top_k: int = 5, category: str | None = None
     ) -> list[dict[str, Any]]:
         try:
-            from services.embedding_service import EmbeddingService
-
             emb_svc = EmbeddingService()
             query_vector = await emb_svc.get_embedding(query)
             return self.repo.search_hybrid(

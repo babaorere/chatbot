@@ -17,9 +17,18 @@ def create_session_service(
     config: Settings | None = None,
     redis_client: Redis | None = None,
 ) -> "BaseSessionService":
-    """Crea el backend de sesiones ADK según la configuración activa de la aplicación."""
+    """Crea el backend de sesiones ADK según la configuración activa de la aplicación.
+
+    Evidencia del aislamiento:
+    - En google-adk 2.3.0, importar `google.adk.sessions` sigue emitiendo el
+      `DeprecationWarning` de `BaseAgentConfig`.
+    - Por eso el backend ADK se resuelve aquí, en el borde de composición,
+      y no en import-time del módulo.
+    """
     runtime_settings = config or settings
     if not runtime_settings.use_redis_sessions:
+        # Mantener este import dentro de la rama evita cargar ADK en arranque
+        # cuando el backend de sesiones no lo necesita.
         with warnings.catch_warnings():
             warnings.filterwarnings(
                 "ignore",
@@ -31,6 +40,9 @@ def create_session_service(
         return InMemorySessionService()
 
     client = redis_client or create_redis_client(runtime_settings)
+    # La implementación Redis vive en nuestro código, pero depende de ADK en
+    # el tipo de sesión base; mantenerlo aquí evita que todo el árbol de
+    # sesiones se materialice antes de necesitarse.
     with warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore",

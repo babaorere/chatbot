@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from typing import Any
@@ -11,6 +12,7 @@ from app.container import get_redis_client
 from config.settings import settings
 
 router = APIRouter(tags=["health"])
+logger = logging.getLogger(__name__)
 
 
 async def _read_arq_health() -> dict[str, Any]:
@@ -30,9 +32,24 @@ async def _read_arq_health() -> dict[str, Any]:
     raw = await redis_client.get(settings.arq_health_check_key)
     if not raw:
         snapshot["worker_status"] = "heartbeat_missing"
+        logger.warning(
+            "ARQ health check: heartbeat missing [queue=%s key=%s]",
+            settings.arq_queue_name,
+            settings.arq_health_check_key,
+        )
         return snapshot
 
-    payload = json.loads(raw)
+    try:
+        payload = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        snapshot["worker_status"] = "heartbeat_corrupt"
+        logger.warning(
+            "ARQ health check: heartbeat corrupt [queue=%s key=%s]",
+            settings.arq_queue_name,
+            settings.arq_health_check_key,
+        )
+        return snapshot
+
     worker_ts = int(payload.get("timestamp", 0))
     age_seconds = max(0, int(time.time()) - worker_ts)
     snapshot.update(
@@ -43,6 +60,20 @@ async def _read_arq_health() -> dict[str, Any]:
             "worker_pid": payload.get("pid"),
         }
     )
+    if snapshot["worker_status"] == "ok":
+        logger.info(
+            "ARQ health check: worker ok [queue=%s age_seconds=%s pid=%s]",
+            snapshot["queue_name"],
+            age_seconds,
+            snapshot["worker_pid"],
+        )
+    else:
+        logger.warning(
+            "ARQ health check: worker stale [queue=%s age_seconds=%s pid=%s]",
+            snapshot["queue_name"],
+            age_seconds,
+            snapshot["worker_pid"],
+        )
     return snapshot
 
 

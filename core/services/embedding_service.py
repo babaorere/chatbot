@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import hashlib
+
 import litellm
 from config.settings import settings
 
@@ -47,8 +49,6 @@ class EmbeddingService:
 
     def _mock_embedding(self, text: str) -> list[float]:
         """Genera un vector determinista de 1536 floats basado en el string."""
-        import hashlib
-
         h = hashlib.sha256(text.encode("utf-8")).digest()
         vector = []
         for i in range(1536):

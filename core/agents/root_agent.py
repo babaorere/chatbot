@@ -8,6 +8,9 @@ import time
 from typing import Any, cast
 from zoneinfo import ZoneInfo
 
+from config.database import SessionLocal
+from services.conversation_service import ConversationService
+from services.product_service import ProductService
 from services.session_service_factory import create_session_service
 from config.settings import settings
 from .constants import GADK_APP_NAME, GADK_INSTRUCTION, GADK_MODEL
@@ -94,9 +97,6 @@ def consultar_stock(producto: str | None = None) -> str:
             "¿Qué producto te interesa? Indícame el nombre y consultaré disponibilidad."
         )
 
-    from config.database import SessionLocal
-    from services.product_service import ProductService
-
     db = SessionLocal()
     try:
         product_svc = ProductService(db)
@@ -136,9 +136,6 @@ def consultar_precio(producto: str | None = None) -> str:
     if not producto:
         return "¿De qué producto quieres saber el precio?"
 
-    from config.database import SessionLocal
-    from services.product_service import ProductService
-
     db = SessionLocal()
     try:
         product_svc = ProductService(db)
@@ -177,9 +174,6 @@ def contactar_humano(motivo: str | None = None) -> str:
     """
     session_id = current_session_id_var.get()
     if session_id:
-        from config.database import SessionLocal
-        from services.conversation_service import ConversationService
-
         db = SessionLocal()
         try:
             conv_svc = ConversationService(db)
@@ -222,7 +216,14 @@ _runner_cache: Any | None = None
 
 
 def _get_agent() -> Any:
-    """Crea o retorna el agente ADK cacheado (singleton por proceso)."""
+    """Crea o retorna el agente ADK cacheado (singleton por proceso).
+
+    Evidencia del límite:
+    - La importación de `google.adk` sigue disparando deprecations internas en
+      2.3.0.
+    - El agente solo se necesita cuando entra tráfico LLM, así que el coste de
+      importación se difiere al primer uso del camino conversacional.
+    """
     global _agent_cache
     if _agent_cache is None:
         from google.adk.models.lite_llm import LiteLlm
@@ -273,7 +274,11 @@ def _get_agent() -> Any:
 
 
 def _get_runner() -> Any:
-    """Crea o retorna el Runner ADK cacheado (singleton por proceso)."""
+    """Crea o retorna el Runner ADK cacheado (singleton por proceso).
+
+    Esta importación queda encerrada aquí para mantener el arranque del proceso
+    libre de ADK hasta que la ruta LLM realmente se ejecute.
+    """
     global _runner_cache
     if _runner_cache is None:
         from google.adk import Runner

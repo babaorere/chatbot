@@ -80,7 +80,7 @@ def add_to_cart(
         raise HTTPException(400, str(e))
     except Exception as e:
         logger.error("add_to_cart endpoint failed: %s", e)
-        raise HTTPException(500, f"Failed to add item to cart: {e}")
+        raise HTTPException(500, "Failed to add item to cart")
 
 
 @router.post("/cart/remove")
@@ -102,7 +102,7 @@ def remove_from_cart(
         return {"status": "success", "cart": cart.to_dict()}
     except Exception as e:
         logger.error("remove_from_cart endpoint failed: %s", e)
-        raise HTTPException(500, f"Failed to remove item from cart: {e}")
+        raise HTTPException(500, "Failed to remove item from cart")
 
 
 @router.get("/cart")
@@ -121,7 +121,7 @@ def get_cart(
         return cart.to_dict()
     except Exception as e:
         logger.error("get_cart endpoint failed: %s", e)
-        raise HTTPException(500, f"Failed to retrieve cart: {e}")
+        raise HTTPException(500, "Failed to retrieve cart")
 
 
 @router.post("/checkout")
@@ -148,7 +148,7 @@ def checkout(
         raise HTTPException(400, str(e))
     except Exception as e:
         logger.error("checkout endpoint failed: %s", e)
-        raise HTTPException(500, f"Failed to place order: {e}")
+        raise HTTPException(500, "Failed to place order")
 
 
 @router.get("/{order_id}")
@@ -167,7 +167,7 @@ def get_order(
         raise
     except Exception as e:
         logger.error("get_order endpoint failed: %s", e)
-        raise HTTPException(500, f"Failed to retrieve order: {e}")
+        raise HTTPException(500, "Failed to retrieve order")
 
 
 @router.get("")
@@ -186,7 +186,7 @@ def list_orders(
         return [order.to_dict() for order in orders]
     except Exception as e:
         logger.error("list_orders endpoint failed: %s", e)
-        raise HTTPException(500, f"Failed to list orders: {e}")
+        raise HTTPException(500, "Failed to list orders")
 
 
 @router.put("/{order_id}/status")
@@ -206,7 +206,7 @@ def update_order_status(
         raise HTTPException(400, str(e))
     except Exception as e:
         logger.error("update_order_status endpoint failed: %s", e)
-        raise HTTPException(500, f"Failed to update order status: {e}")
+        raise HTTPException(500, "Failed to update order status")
 
 
 @router.post("/{order_id}/cancel")
@@ -229,4 +229,4 @@ def cancel_order(
         raise HTTPException(400, str(e))
     except Exception as e:
         logger.error("cancel_order endpoint failed [order_id=%s]: %s", order_id, e)
-        raise HTTPException(500, f"Failed to cancel order: {e}")
+        raise HTTPException(500, "Failed to cancel order")

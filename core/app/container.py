@@ -13,10 +13,12 @@ from __future__ import annotations
 import logging
 from typing import Annotated, Any
 
+import httpx
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from config.database import get_db
+from infrastructure.rag.kb_rag_provider import KBRAGProvider
 
 logger = logging.getLogger(__name__)
 
@@ -67,8 +69,6 @@ def get_http_client() -> Any:
     """Retorna o inicializa perezosamente el cliente HTTP global para Keep-Alive."""
     global _http_client
     if _http_client is None:
-        import httpx
-
         _http_client = httpx.AsyncClient(timeout=10.0)
     return _http_client
 
@@ -107,8 +107,6 @@ def get_rag_provider(
     Returns:
         IRAGProvider: Implementación de recuperación de contexto RAG.
     """
-    from infrastructure.rag.kb_rag_provider import KBRAGProvider  # noqa: PLC0415
-
     return KBRAGProvider(db=db)
 
 
@@ -127,6 +125,9 @@ def get_process_message_uc(
     Returns:
         ProcessMessageUseCase listo para ejecutar.
     """
+    # Estas dependencias se resuelven aquí porque el use case arrastra el
+    # orquestador LLM/Telegram completo; subirlas al módulo aumentaría el
+    # coste de arranque y puede reabrir ciclos con root_agent.
     from application.use_cases.process_message import ProcessMessageUseCase  # noqa: PLC0415
     from services.job_dispatcher import JobDispatcher  # noqa: PLC0415
 
@@ -147,6 +148,8 @@ def get_telegram_handler(token: str) -> "TelegramChannelHandler":  # type: ignor
     Returns:
         TelegramChannelHandler configurado para ese token.
     """
+    # El handler Telegram se instancia por canal/token; mantener la importación
+    # en el factory evita cargar esa superficie al inicio del proceso.
     from infrastructure.channels.telegram_handler import TelegramChannelHandler  # noqa: PLC0415
 
     return TelegramChannelHandler(bot_token=token)

@@ -161,6 +161,9 @@ Design law:
 - Build dependencies at the composition root, not inside business logic, unless the object is a trivial local value.
 - Pass collaborators explicitly through parameters, factories, or provider functions.
 - Do not hide dependencies behind globals, singletons, or implicit module state when explicit injection is practical.
+- Do not use lazy imports by default. Use them only when they are strictly necessary to break an unavoidable import cycle, reduce critical startup cost, or isolate an optional dependency.
+- If a lazy import is introduced, document the reason at the boundary and keep the scope as narrow as possible.
+- Prefer fast-response system design over convenience-based lazy loading; do not trade a clean import graph for an avoidable deferred import.
 - Apply DRY, SOLID, and KISS as hard constraints, not as slogans.
 - DRY means one authoritative implementation for one rule.
 - SOLID means small responsibilities, explicit interfaces, and replaceable components.

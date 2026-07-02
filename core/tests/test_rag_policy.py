@@ -110,7 +110,7 @@ class TestKBRAGProviderPolicy:
         provider = KBRAGProvider(db)
         query = "¿Cuál es el horario de atención?"
 
-        with patch("repositories.kb_repository.KBRepository") as repo_cls:
+        with patch("infrastructure.rag.kb_rag_provider.KBRepository") as repo_cls:
             repo_cls.return_value.search_fts.return_value = [
                 {
                     "category": "horarios",
@@ -127,3 +127,15 @@ class TestKBRAGProviderPolicy:
             top_k=5,
             category=None,
         )
+
+    @pytest.mark.asyncio
+    async def test_build_context_returns_none_when_repository_raises(self) -> None:
+        db = MagicMock()
+        provider = KBRAGProvider(db)
+
+        with patch("infrastructure.rag.kb_rag_provider.KBRepository") as repo_cls:
+            repo_cls.return_value.search_fts.side_effect = RuntimeError("db exploded")
+
+            context = await provider.build_context("¿Cuál es el horario de atención?")
+
+        assert context is None

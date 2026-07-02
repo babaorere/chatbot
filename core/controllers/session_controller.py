@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.security import get_admin_api_key
@@ -47,7 +48,7 @@ async def get_session_history(
             session_id,
             e,
         )
-        raise HTTPException(500, f"Failed to retrieve session history: {e}")
+        raise HTTPException(500, "Failed to retrieve session history")
 
 
 @router.get("/users/{user_id}/conversations", response_model=list[ConversationResponse])
@@ -58,8 +59,6 @@ def list_conversations(
 ) -> list[ConversationResponse]:
     """Lista las conversaciones persistidas de un usuario respetando el aislamiento por RLS."""
     try:
-        from sqlalchemy import text
-
         db.execute(text("SET app.current_user_id = :user_id"), {"user_id": user_id})
         conv_svc = ConversationService(db)
         conversations = conv_svc.get_by_user_id(user_id)
@@ -76,4 +75,4 @@ def list_conversations(
             user_id,
             e,
         )
-        raise HTTPException(500, f"Failed to list conversations: {e}")
+        raise HTTPException(500, "Failed to list conversations")

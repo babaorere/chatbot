@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 
 from pydantic import model_validator
@@ -17,8 +18,6 @@ class Settings(BaseSettings):
     @classmethod
     def load_docker_secrets(cls, data: dict) -> dict:
         """Carga secretos desde Docker Secrets (/run/secrets) si existen."""
-        import os
-
         def get_secret(name: str) -> str | None:
             path = f"/run/secrets/{name}"
             if os.path.exists(path):

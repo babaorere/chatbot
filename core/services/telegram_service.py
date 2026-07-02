@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 import time
 
+from app.container import get_http_client
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,7 +27,6 @@ async def send_telegram_message(
 
     try:
         started_at = time.perf_counter()
-        from app.container import get_http_client
 
         url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
         payload = {
@@ -105,8 +106,6 @@ async def clear_telegram_reply_markup(
             f"[token={'OK' if bot_token else 'MISSING'}, chat_id={'OK' if chat_id else 'MISSING'}, message_id={'OK' if message_id else 'MISSING'}]."
         )
     try:
-        from app.container import get_http_client
-
         url = f"https://api.telegram.org/bot{bot_token}/editMessageReplyMarkup"
         payload = {
             "chat_id": chat_id,
@@ -137,8 +136,6 @@ async def answer_telegram_callback_query(
             f"[token={'OK' if bot_token else 'MISSING'}, callback_query_id={'OK' if callback_query_id else 'MISSING'}]."
         )
     try:
-        from app.container import get_http_client
-
         url = f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery"
         payload = {
             "callback_query_id": callback_query_id,

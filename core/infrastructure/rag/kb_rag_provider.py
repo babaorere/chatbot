@@ -11,6 +11,7 @@ import logging
 
 from sqlalchemy.orm import Session
 
+from repositories.kb_repository import KBRepository
 from services.rag_policy import RAGPolicyService
 
 
@@ -79,8 +80,6 @@ class KBRAGProvider:
             return None
 
         try:
-            from repositories.kb_repository import KBRepository  # noqa: PLC0415
-
             repo = KBRepository(self._db)
             results = repo.search_fts(
                 query=query,

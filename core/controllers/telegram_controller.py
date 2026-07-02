@@ -17,6 +17,11 @@ from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
 
 from app.container import ProcessMessageUCDep, get_redis_client
 from application.use_cases.commands import ProcessMessageCommand
+from config.database import SessionLocal
+from models.product import Product
+from services.business_config_service import BusinessConfigService
+from services.category_service import CategoryService
+from services.job_dispatcher import JobDispatcher
 from infrastructure.channels.telegram_fsm import (
     TelegramConversationFSM,
     FSMStateStore,
@@ -25,8 +30,9 @@ from infrastructure.channels.telegram_fsm import (
 )
 from config.settings import settings
 from services.telegram_service import (
-    send_telegram_message,
+    answer_telegram_callback_query,
     build_main_menu,
+    send_telegram_message,
     inject_version_to_reply_markup,
 )
 
@@ -156,16 +162,28 @@ async def send_menu_message(
 _human_agent_cache: dict[str, Any] = {"value": True, "expires_at": 0}
 
 
+def prime_human_agent_cache(value: bool, ttl_seconds: int = 300) -> None:
+    """Carga en memoria el estado de atención humana para evitar un lookup inicial en DB."""
+    global _human_agent_cache
+    _human_agent_cache = {
+        "value": value,
+        "expires_at": time.time() + ttl_seconds,
+    }
+
+
 def _get_human_agent_available() -> bool:
     """Retrieves whether a human agent is currently available from business configuration with caching."""
     global _human_agent_cache
     now = time.time()
     if now < _human_agent_cache["expires_at"]:
+        logger.info(
+            "[telegram_cache] key=human_agent_available hit ttl_remaining=%.2f value=%s",
+            _human_agent_cache["expires_at"] - now,
+            _human_agent_cache["value"],
+        )
         return _human_agent_cache["value"]
 
-    from config.database import SessionLocal
-    from services.business_config_service import BusinessConfigService
-
+    logger.info("[telegram_cache] key=human_agent_available miss")
     db = SessionLocal()
     try:
         cfg_svc = BusinessConfigService(db)
@@ -187,8 +205,6 @@ async def _clear_latest_conversation_session(
 ) -> None:
     """Programa o ejecuta el clear de la sesión conversacional más reciente."""
     started_at = time.perf_counter()
-    from services.job_dispatcher import JobDispatcher
-
     event_id = str(uuid.uuid4())
 
     try:
@@ -227,8 +243,6 @@ async def _defer_clear_reply_markup(
     user_id: str | None = None,
 ) -> None:
     """Programa la limpieza del teclado inline con job durable."""
-    from services.job_dispatcher import JobDispatcher
-
     started_at = time.perf_counter()
     event_id = str(uuid.uuid4())
     try:
@@ -367,10 +381,8 @@ async def _process_telegram_update_core(
                 is_valid = btn_version == current_fsm_version
             else:
                 # Capa 3: Validación Temporal (menos de 10 minutos) y Estado FSM
-                import time as ttime
-
                 msg_date = msg_obj.get("date", 0) if msg_obj else 0
-                current_time = int(ttime.time())
+                current_time = int(time.time())
                 is_valid = (current_time - msg_date < 600) and (
                     current_state in {FSMState.IDLE, FSMState.IN_MENU}
                 )
@@ -387,8 +399,6 @@ async def _process_telegram_update_core(
             # Solución 2: Responder callback y limpiar reply markup en paralelo
             tasks = []
             if callback_query_id:
-                from services.telegram_service import answer_telegram_callback_query
-
                 tasks.append(
                     answer_telegram_callback_query(
                         bot_token=token,
@@ -411,8 +421,6 @@ async def _process_telegram_update_core(
         # Si el click es válido, respondemos primero el callback para liberar la UI.
         tasks = []
         if callback_query_id:
-            from services.telegram_service import answer_telegram_callback_query
-
             tasks.append(
                 answer_telegram_callback_query(
                     bot_token=token, callback_query_id=callback_query_id
@@ -434,9 +442,6 @@ async def _process_telegram_update_core(
 
         # Interceptar botones de navegación de categorías
         if callback_data == "menu:categorias":
-            from config.database import SessionLocal
-            from services.category_service import CategoryService
-
             db = SessionLocal()
             try:
                 cat_svc = CategoryService(db)
@@ -477,9 +482,6 @@ async def _process_telegram_update_core(
 
         elif callback_data.startswith("cat_select:"):
             category_name = callback_data.split(":", 1)[1]
-            from config.database import SessionLocal
-            from models.product import Product
-
             db = SessionLocal()
             try:
                 products = (
@@ -825,38 +827,7 @@ async def telegram_webhook(
                 )
                 if callback_query:
                     callback_query_id = callback_query.get("id")
-                    if callback_query_id:
-                        from services.telegram_service import (
-                            answer_telegram_callback_query,
-                        )
-
-                        background_tasks.add_task(
-                            answer_telegram_callback_query,
-                            bot_token=token,
-                            callback_query_id=callback_query_id,
-                            text="Procesando tu solicitud anterior, por favor espera...",
-                        )
-                        _log_timing(
-                            trace_id=trace_id,
-                            stage="duplicate_callback_deferred",
-                            started_at=webhook_started_at,
-                            user_id=user_id,
-                        )
-                return {"status": "ok", "detail": "duplicate request blocked"}
-        except Exception as e:
-            logger.exception("Redis concurrency lock error")
-            raise RuntimeError("Failed to acquire Redis concurrency lock") from e
-    else:
-        if user_id in _local_locks:
-            logger.warning(
-                "Local concurrency warning: duplicate request from user %s blocked",
-                user_id,
-            )
-            if callback_query:
-                callback_query_id = callback_query.get("id")
                 if callback_query_id:
-                    from services.telegram_service import answer_telegram_callback_query
-
                     background_tasks.add_task(
                         answer_telegram_callback_query,
                         bot_token=token,
@@ -869,6 +840,31 @@ async def telegram_webhook(
                         started_at=webhook_started_at,
                         user_id=user_id,
                     )
+                return {"status": "ok", "detail": "duplicate request blocked"}
+        except Exception as e:
+            logger.exception("Redis concurrency lock error")
+            raise RuntimeError("Failed to acquire Redis concurrency lock") from e
+    else:
+        if user_id in _local_locks:
+            logger.warning(
+                "Local concurrency warning: duplicate request from user %s blocked",
+                user_id,
+            )
+            if callback_query:
+                callback_query_id = callback_query.get("id")
+            if callback_query_id:
+                background_tasks.add_task(
+                    answer_telegram_callback_query,
+                    bot_token=token,
+                    callback_query_id=callback_query_id,
+                    text="Procesando tu solicitud anterior, por favor espera...",
+                )
+                _log_timing(
+                    trace_id=trace_id,
+                    stage="duplicate_callback_deferred",
+                    started_at=webhook_started_at,
+                    user_id=user_id,
+                )
             return {"status": "ok", "detail": "duplicate request blocked"}
         _local_locks.add(user_id)
         lock_acquired = True

@@ -15,15 +15,21 @@ Pipeline:
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 
+from agents.root_agent import current_session_id_var
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from application.ports.llm_port import ILLMProvider
 from application.ports.rag_port import IRAGProvider
 from application.use_cases.commands import ProcessMessageCommand, ProcessMessageResult
+from services.alert_service import AlertService
+from services.conversation_service import ConversationService
 from services.job_dispatcher import JobDispatcher
 from services.rag_policy import RAGIntent, RAGPolicyService
+from services.user_service import UserService
 
 logger = logging.getLogger(__name__)
 
@@ -71,8 +77,6 @@ class ProcessMessageUseCase:
             )
 
             # Set user context in the session for Postgres Row-Level Security (RLS)
-            from sqlalchemy import text
-
             self._db.execute(
                 text("SET app.current_user_id = :user_id"), {"user_id": user.id}
             )
@@ -81,16 +85,12 @@ class ProcessMessageUseCase:
             session_id = cmd.session_id or str(uuid.uuid4())
 
             # Set contextvar for GADK tool invocation
-            from agents.root_agent import current_session_id_var
-
             current_session_id_var.set(session_id)
 
             # 3. Persist conversation si es nueva
             self._ensure_conversation(user_id=user.id, session_id=session_id)
 
             # Check if bot is paused for this conversation (Human Takeover active)
-            from services.conversation_service import ConversationService
-
             conv_svc = ConversationService(self._db)
             conv = conv_svc.get_by_session_id(session_id)
             if conv and getattr(conv, "is_bot_paused", False) is True:
@@ -123,9 +123,6 @@ class ProcessMessageUseCase:
                 )
 
             # 5. LLM inference
-            import time
-            from services.alert_service import AlertService
-
             start_time = time.perf_counter()
             try:
                 response = await self._llm.run_chat(
@@ -266,8 +263,6 @@ class ProcessMessageUseCase:
         Returns:
             Instancia del modelo User.
         """
-        from services.user_service import UserService  # noqa: PLC0415
-
         return UserService(self._db).get_or_create(
             external_id=external_id,
             platform=platform,
@@ -284,8 +279,6 @@ class ProcessMessageUseCase:
             user_id: ID interno del usuario.
             session_id: Identificador de la sesión.
         """
-        from services.conversation_service import ConversationService  # noqa: PLC0415
-
         conv_svc = ConversationService(self._db)
         existing = conv_svc.get_by_session_id(session_id)
         if not existing:

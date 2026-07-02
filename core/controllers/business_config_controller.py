@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.security import get_admin_api_key
 from config.database import get_db
+from controllers.telegram_controller import prime_human_agent_cache
 from services import (
     BusinessConfigService,
     KBService,
@@ -56,7 +57,7 @@ def get_profile(
         return BusinessConfigResponse.model_validate(config)
     except Exception as e:
         logger.error("get_profile failed: %s", e)
-        raise HTTPException(500, f"Failed to retrieve profile: {e}")
+        raise HTTPException(500, "Failed to retrieve profile")
 
 
 @router.put("/profile", response_model=BusinessConfigResponse)
@@ -79,10 +80,11 @@ def update_profile(
                 business_hours=data.business_hours,
                 human_agent_available=data.human_agent_available,
             )
+        prime_human_agent_cache(config.human_agent_available)
         return BusinessConfigResponse.model_validate(config)
     except Exception as e:
         logger.error("update_profile failed: %s", e)
-        raise HTTPException(500, f"Failed to update profile: {e}")
+        raise HTTPException(500, "Failed to update profile")
 
 
 # ── Products ─────────────────────────────────────────────────────────────────
@@ -108,7 +110,7 @@ def list_products(
         return [ProductResponse.model_validate(p) for p in products]
     except Exception as e:
         logger.error("list_products failed: %s", e)
-        raise HTTPException(500, f"Failed to list products: {e}")
+        raise HTTPException(500, "Failed to list products")
 
 
 @router.post("/products", response_model=ProductResponse)
@@ -138,7 +140,7 @@ def create_product(
         return ProductResponse.model_validate(product)
     except Exception as e:
         logger.error("create_product failed: %s", e)
-        raise HTTPException(500, f"Failed to create product: {e}")
+        raise HTTPException(500, "Failed to create product")
 
 
 @router.put("/products/{product_id}", response_model=ProductResponse)
@@ -170,7 +172,7 @@ def update_product(
         return ProductResponse.model_validate(product)
     except Exception as e:
         logger.error("update_product failed: %s", e)
-        raise HTTPException(500, f"Failed to update product: {e}")
+        raise HTTPException(500, "Failed to update product")
 
 
 @router.delete("/products/{product_id}")
@@ -190,7 +192,7 @@ def delete_product(
         raise
     except Exception as e:
         logger.error("delete_product failed: %s", e)
-        raise HTTPException(500, f"Failed to delete product: {e}")
+        raise HTTPException(500, "Failed to delete product")
 
 
 @router.get("/products/categories", response_model=list[str])
@@ -203,7 +205,7 @@ def get_product_categories(
         return product_svc.get_categories()
     except Exception as e:
         logger.error("get_product_categories failed: %s", e)
-        raise HTTPException(500, f"Failed to retrieve categories: {e}")
+        raise HTTPException(500, "Failed to retrieve categories")
 
 
 # ── Excel Export / Import ────────────────────────────────────────────────────
@@ -225,7 +227,7 @@ def export_products(
         )
     except Exception as e:
         logger.error("export_products failed: %s", e)
-        raise HTTPException(500, f"Failed to export products: {e}")
+        raise HTTPException(500, "Failed to export products")
 
 
 @router.get("/products/export/template")
@@ -246,7 +248,7 @@ def export_products_template(
         )
     except Exception as e:
         logger.error("export_products_template failed: %s", e)
-        raise HTTPException(500, f"Failed to export template: {e}")
+        raise HTTPException(500, "Failed to export template")
 
 
 @router.post("/products/import")
@@ -292,7 +294,7 @@ def import_products(
         raise
     except Exception as e:
         logger.error("import_products failed: %s", e)
-        raise HTTPException(500, f"Failed to import products: {e}")
+        raise HTTPException(500, "Failed to import products")
 
 
 # ── Knowledge Base ───────────────────────────────────────────────────────────
@@ -318,7 +320,7 @@ def list_kb_entries(
         return [KBEntryResponse.model_validate(e) for e in entries]
     except Exception as e:
         logger.error("list_kb_entries failed: %s", e)
-        raise HTTPException(500, f"Failed to list KB entries: {e}")
+        raise HTTPException(500, "Failed to list KB entries")
 
 
 @router.post("/kb", response_model=KBEntryResponse)
@@ -337,7 +339,7 @@ async def create_kb_entry(
         return KBEntryResponse.model_validate(entry)
     except Exception as e:
         logger.error("create_kb_entry failed: %s", e)
-        raise HTTPException(500, f"Failed to create KB entry: {e}")
+        raise HTTPException(500, "Failed to create KB entry")
 
 
 @router.put("/kb/{entry_id}", response_model=KBEntryResponse)
@@ -359,7 +361,7 @@ async def update_kb_entry(
         return KBEntryResponse.model_validate(entry)
     except Exception as e:
         logger.error("update_kb_entry failed: %s", e)
-        raise HTTPException(500, f"Failed to update KB entry: {e}")
+        raise HTTPException(500, "Failed to update KB entry")
 
 
 @router.delete("/kb/{entry_id}")
@@ -379,7 +381,7 @@ def delete_kb_entry(
         raise
     except Exception as e:
         logger.error("delete_kb_entry failed: %s", e)
-        raise HTTPException(500, f"Failed to delete KB entry: {e}")
+        raise HTTPException(500, "Failed to delete KB entry")
 
 
 @router.post("/kb/search", response_model=KBSearchResponse)
@@ -400,7 +402,7 @@ async def search_kb(
         )
     except Exception as e:
         logger.error("search_kb failed: %s", e)
-        raise HTTPException(500, f"Failed to search KB: {e}")
+        raise HTTPException(500, "Failed to search KB")
 
 
 @router.get("/kb/categories", response_model=list[str])
@@ -413,7 +415,7 @@ def get_kb_categories(
         return kb_svc.get_categories()
     except Exception as e:
         logger.error("get_kb_categories failed: %s", e)
-        raise HTTPException(500, f"Failed to retrieve KB categories: {e}")
+        raise HTTPException(500, "Failed to retrieve KB categories")
 
 
 # ── Users & Conversations (read-only) ────────────────────────────────────────
@@ -430,7 +432,7 @@ def get_user_count(
         return {"count": count}
     except Exception as e:
         logger.error("get_user_count failed: %s", e)
-        raise HTTPException(500, f"Failed to get user count: {e}")
+        raise HTTPException(500, "Failed to get user count")
 
 
 @router.get("/conversations/count")
@@ -444,4 +446,4 @@ def get_conversation_count(
         return {"count": count}
     except Exception as e:
         logger.error("get_conversation_count failed: %s", e)
-        raise HTTPException(500, f"Failed to get conversation count: {e}")
+        raise HTTPException(500, "Failed to get conversation count")

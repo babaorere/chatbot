@@ -42,6 +42,39 @@ async def test_webhook_fails_when_redis_lock_cannot_be_acquired():
 
 
 @pytest.mark.asyncio
+async def test_webhook_rejects_invalid_json_payload():
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        with patch("controllers.telegram_controller.settings.telegram_bot_token", "fake_token"):
+            response = await client.post(
+                "/telegram/webhook/fake_token",
+                content="{invalid-json",
+                headers={"content-type": "application/json"},
+            )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_webhook_rejects_payload_missing_user_or_chat_ids():
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        with patch("controllers.telegram_controller.settings.telegram_bot_token", "fake_token"):
+            response = await client.post(
+                "/telegram/webhook/fake_token",
+                json={
+                    "message": {
+                        "message_id": 1,
+                        "text": "hola",
+                    }
+                },
+            )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "detail": "invalid user_id or chat_id"}
+
+
+@pytest.mark.asyncio
 async def test_webhook_rejects_expired_callback_via_message_id():
     """Prueba que el webhook rechace un callback_query si el message_id no coincide con el menú activo (Capa 1)."""
     store = FSMStateStore()
@@ -55,9 +88,9 @@ async def test_webhook_rejects_expired_callback_via_message_id():
         patch(
             "controllers.telegram_controller.settings.telegram_bot_token", "fake_token"
         ),
-        patch("services.job_dispatcher.JobDispatcher") as dispatcher_mock,
+        patch("controllers.telegram_controller.JobDispatcher") as dispatcher_mock,
         patch(
-            "services.telegram_service.answer_telegram_callback_query",
+            "controllers.telegram_controller.answer_telegram_callback_query",
             new_callable=AsyncMock,
         ) as mock_answer,
     ):
@@ -109,9 +142,9 @@ async def test_webhook_rejects_expired_callback_via_version():
         patch(
             "controllers.telegram_controller.settings.telegram_bot_token", "fake_token"
         ),
-        patch("services.job_dispatcher.JobDispatcher") as dispatcher_mock,
+        patch("controllers.telegram_controller.JobDispatcher") as dispatcher_mock,
         patch(
-            "services.telegram_service.answer_telegram_callback_query",
+            "controllers.telegram_controller.answer_telegram_callback_query",
             new_callable=AsyncMock,
         ) as mock_answer,
     ):

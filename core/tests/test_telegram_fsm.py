@@ -103,3 +103,33 @@ async def test_redis_fsm_store_invalid_payload_raises() -> None:
 
     with pytest.raises(ValueError, match="Invalid FSM payload stored in Redis"):
         await store.get("user-1")
+
+
+@pytest.mark.asyncio
+async def test_telegram_fsm_invalid_context_type_raises_on_transition() -> None:
+    store = FSMStateStore()
+    store._store["user-bad-context"] = {
+        "state": FSMState.IDLE.value,
+        "context": "not-a-dict",
+    }
+    fsm = TelegramConversationFSM("user-bad-context", store)
+
+    with pytest.raises(ValueError, match="Invalid FSM context stored"):
+        await fsm.transition("menu:stock")
+
+
+@pytest.mark.asyncio
+async def test_telegram_fsm_invalid_context_type_raises_on_persist_menu_metadata() -> None:
+    store = FSMStateStore()
+    store._store["user-bad-context"] = {
+        "state": FSMState.IDLE.value,
+        "context": "not-a-dict",
+    }
+    fsm = TelegramConversationFSM("user-bad-context", store)
+
+    with pytest.raises(ValueError, match="Invalid FSM context stored"):
+        await fsm.persist_menu_metadata(
+            version=2,
+            options=["menu:stock"],
+            active_menu_id=123,
+        )

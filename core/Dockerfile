@@ -9,7 +9,7 @@ WORKDIR /app
 
 # Install runtime system dependencies & create non-root user
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libpq5 curl && \
+    apt-get install -y --no-install-recommends libpq5 && \
     rm -rf /var/lib/apt/lists/* && \
     useradd -m -U appuser && \
     echo "precedence ::ffff:0:0/96  100" >> /etc/gai.conf
@@ -23,7 +23,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Install uv using the official binary copy pattern
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /uvx /bin/
 
 # Create a virtual environment
 RUN uv venv /opt/venv
@@ -36,7 +36,7 @@ RUN uv pip install --no-cache -r pyproject.toml
 FROM base AS development
 
 # Install uv and development packages
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /uvx /bin/
 RUN apt-get update && \
     apt-get install -y --no-install-recommends gcc libpq-dev git && \
     rm -rf /var/lib/apt/lists/*

@@ -57,3 +57,31 @@ async def test_read_arq_health_reports_missing_heartbeat():
 
     assert result["enabled"] is True
     assert result["worker_status"] == "heartbeat_missing"
+
+
+@pytest.mark.asyncio
+async def test_read_arq_health_reports_corrupt_heartbeat():
+    redis_mock = AsyncMock()
+    redis_mock.get.return_value = "{invalid-json"
+
+    with patch("controllers.health_controller.settings.arq_enabled", True), patch(
+        "controllers.health_controller.get_redis_client",
+        return_value=redis_mock,
+    ):
+        result = await _read_arq_health()
+
+    assert result["enabled"] is True
+    assert result["worker_status"] == "heartbeat_corrupt"
+
+
+@pytest.mark.asyncio
+async def test_read_arq_health_raises_when_redis_get_fails():
+    redis_mock = AsyncMock()
+    redis_mock.get.side_effect = RuntimeError("redis down")
+
+    with patch("controllers.health_controller.settings.arq_enabled", True), patch(
+        "controllers.health_controller.get_redis_client",
+        return_value=redis_mock,
+    ):
+        with pytest.raises(RuntimeError, match="redis down"):
+            await _read_arq_health()

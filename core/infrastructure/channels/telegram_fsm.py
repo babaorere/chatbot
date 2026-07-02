@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from enum import Enum
 from typing import Any
 
@@ -108,6 +109,10 @@ class TelegramConversationFSM:
                 f"Invalid FSM state stored for user {self._user_id}: {state_value!r}"
             ) from exc
         context = raw.get("context", {}) or {}
+        if not isinstance(context, dict):
+            raise ValueError(
+                f"Invalid FSM context stored for user {self._user_id}: {type(context).__name__}"
+            )
         return state, context
 
     async def set_state(
@@ -121,10 +126,8 @@ class TelegramConversationFSM:
             state: Nuevo estado a establecer.
             context: Datos adicionales del estado (ej: producto consultado).
         """
-        import time as ttime
-
         ctx = context or {}
-        ctx["_last_interaction_at"] = ttime.time()
+        ctx["_last_interaction_at"] = time.time()
         await self._store.set(
             self._user_id,
             {"state": state.value, "context": ctx},
@@ -143,7 +146,12 @@ class TelegramConversationFSM:
         raw = await self._store.get(self._user_id)
         if raw is None:
             return {}
-        return raw.get("context", {})
+        context = raw.get("context", {})
+        if not isinstance(context, dict):
+            raise ValueError(
+                f"Invalid FSM context stored for user {self._user_id}: {type(context).__name__}"
+            )
+        return context
 
     async def get_active_menu_id(self) -> int | None:
         """Recupera el ID de mensaje del menú activo actualmente."""

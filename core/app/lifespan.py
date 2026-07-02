@@ -25,6 +25,7 @@ from app.container import clear_providers, set_llm_provider, set_redis_client
 from config.database import Base, SessionLocal, _sync_engine
 from config.redis import create_redis_client
 from config.settings import settings
+from controllers.telegram_controller import prime_human_agent_cache
 from infrastructure.llm.adk_provider import ADKLLMProvider
 from models import category as _category_module, SystemAdmin  # noqa: F401 – registers models in Base
 from repositories.business_config_repository import BusinessConfigRepository
@@ -252,6 +253,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # 2. Seed
     with SessionLocal() as seed_db:
         _seed_business_config(seed_db)
+        prime_human_agent_cache(
+            BusinessConfigRepository(seed_db).get_config().human_agent_available
+        )
         seed_db.commit()
 
     # 3. Session service
