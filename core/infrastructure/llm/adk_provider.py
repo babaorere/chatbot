@@ -7,14 +7,11 @@ Delegará la ejecución al agente central definido en `agents.root_agent`.
 from __future__ import annotations
 
 import logging
-from typing import Any, AsyncGenerator, TYPE_CHECKING
+from typing import Any, AsyncGenerator
 
 from google.genai import types
 
 logger = logging.getLogger(__name__)
-
-if TYPE_CHECKING:
-    from google.adk.sessions.base_session_service import BaseSessionService
 
 
 class ADKLLMProvider:
