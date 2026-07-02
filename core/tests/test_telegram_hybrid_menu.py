@@ -80,10 +80,9 @@ async def test_telegram_hybrid_menu_flow(mock_use_case):
             assert "_menu_options" in ctx
             assert ctx["_menu_options"] == [
                 "menu:categorias",
-                "menu:stock",
-                "menu:precio",
-                "menu:horario",
-                "menu:contacto",
+                "menu:promociones",
+                "menu:mas_vendidos",
+                "menu:carrito",
             ]
 
             # 2. Enviar la opción "1" como mensaje de texto para ir a Categorías
@@ -157,19 +156,13 @@ async def test_telegram_hybrid_menu_flow(mock_use_case):
                             "callback_data": "menu:categorias#4",
                         },
                         {
-                            "text": "2. 📦 Consultar Stock",
-                            "callback_data": "menu:stock#4",
+                            "text": "2. ✨ Promociones",
+                            "callback_data": "menu:promociones#4",
                         },
                     ],
                     [
-                        {"text": "3. 💰 Ver Precios", "callback_data": "menu:precio#4"},
-                        {"text": "4. 🕒 Horarios", "callback_data": "menu:horario#4"},
-                    ],
-                    [
-                        {
-                            "text": "5. 👤 Hablar con Humano",
-                            "callback_data": "menu:contacto#4",
-                        }
+                        {"text": "3. 🔥 Más vendidos", "callback_data": "menu:mas_vendidos#4"},
+                        {"text": "4. 🛒 Ver carrito", "callback_data": "menu:carrito#4"},
                     ],
                 ]
             }
@@ -196,7 +189,8 @@ async def test_telegram_hybrid_menu_ignored_if_out_of_range(mock_use_case):
         ):
             # Guardar opciones simuladas en FSM
             await fsm.set_state(
-                await fsm.get_state(), {"_menu_options": ["menu:categorias", "menu:stock"]}
+                await fsm.get_state(),
+                {"_menu_options": ["menu:categorias", "menu:promociones"]},
             )
 
             # Enviar opción "9" (fuera de rango)

@@ -98,7 +98,7 @@ select {
     margin: 0.45rem 0 0.6rem;
 }
 
-.tenant-name {
+.business-name {
     color: rgba(247, 245, 239, 0.88);
     font-size: 0.98rem;
 }
@@ -375,6 +375,10 @@ select {
     margin: 0.2rem 0 0.2rem;
 }
 
+.section-intro--compact {
+    margin: 0 0 1rem;
+}
+
 .section-intro h3 {
     font-size: 1.75rem;
     color: var(--ink-strong);
@@ -390,6 +394,99 @@ select {
 .form-card {
     max-width: 840px;
     padding: 1.8rem;
+}
+
+.featured-content-card {
+    margin-top: 1rem;
+    padding: 1.25rem;
+    border-radius: var(--radius);
+    border: 1px solid rgba(173, 184, 170, 0.74);
+    background: linear-gradient(180deg, rgba(255, 253, 248, 0.94), rgba(245, 241, 232, 0.96));
+    box-shadow: var(--shadow);
+}
+
+.featured-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+}
+
+.featured-block {
+    padding: 1rem;
+    border-radius: 18px;
+    border: 1px solid rgba(173, 184, 170, 0.7);
+    background: rgba(255, 255, 255, 0.72);
+}
+
+.featured-block-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+}
+
+.toggle-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.55rem 0.8rem;
+    border-radius: 999px;
+    background: var(--brand-soft);
+    color: var(--brand-strong);
+    font-size: 0.85rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.toggle-pill input {
+    margin: 0;
+    width: auto;
+}
+
+.inline-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.featured-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-top: 0.5rem;
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.65rem;
+    border-radius: 999px;
+    background: rgba(47, 106, 77, 0.1);
+    border: 1px solid rgba(47, 106, 77, 0.18);
+    color: var(--ink-strong);
+}
+
+.chip span {
+    display: inline-flex;
+    gap: 0.35rem;
+    align-items: center;
+}
+
+.chip em {
+    font-style: normal;
+    color: var(--muted);
+    font-size: 0.82rem;
+}
+
+.chip-remove {
+    border: 0;
+    background: transparent;
+    color: var(--danger);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
 }
 
 .form-group {

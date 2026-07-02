@@ -60,6 +60,7 @@ async def test_order_lifecycle_e2e_conversational_flow(db_session):
     # 5. El operador confirma el pedido
     order_svc.update_order_status(order.id, "confirmed")
     assert order.status == "confirmed"
+    assert order.confirmed_at is not None
 
     # El stock sigue reservado/disminuido
     db_session.refresh(pisco)

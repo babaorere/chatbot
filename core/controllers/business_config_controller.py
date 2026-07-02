@@ -78,6 +78,22 @@ def update_profile(
                 website=data.website,
                 logo_url=data.logo_url,
                 business_hours=data.business_hours,
+                promotions_config=(
+                    data.promotions_config.model_dump(mode="json")
+                    if data.promotions_config is not None
+                    else None
+                ),
+                best_sellers_config=(
+                    data.best_sellers_config.model_dump(mode="json")
+                    if data.best_sellers_config is not None
+                    else None
+                ),
+                favorites_config=(
+                    data.favorites_config.model_dump(mode="json")
+                    if data.favorites_config is not None
+                    else None
+                ),
+                estimated_attention_minutes=data.estimated_attention_minutes,
                 human_agent_available=data.human_agent_available,
             )
         prime_human_agent_cache(config.human_agent_available)

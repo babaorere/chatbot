@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 import logging
 import uuid
 from decimal import Decimal
@@ -151,6 +152,8 @@ class OrderService:
                         product.is_available = True
 
             order.status = status
+            if status == "confirmed" and order.confirmed_at is None:
+                order.confirmed_at = datetime.now()
             self.db.flush()
             self.db.refresh(order)
             return order
@@ -158,6 +161,40 @@ class OrderService:
             logger.error(
                 "OrderService.update_order_status failed [id=%s]: %s", order_id, e
             )
+            raise
+
+    def get_attention_time_metrics(self) -> dict[str, int | None]:
+        try:
+            orders = (
+                self.db.query(Order)
+                .filter(Order.confirmed_at.isnot(None))
+                .all()
+            )
+            today = datetime.now().date()
+            durations: list[int] = []
+            for order in orders:
+                if not order.created_at or not order.confirmed_at:
+                    continue
+                if order.confirmed_at.date() != today:
+                    continue
+                delta_minutes = int(
+                    round((order.confirmed_at - order.created_at).total_seconds() / 60)
+                )
+                durations.append(max(delta_minutes, 0))
+
+            if not durations:
+                return {
+                    "real_daily_average_minutes": None,
+                    "confirmed_orders_count": 0,
+                }
+
+            average_minutes = int(round(sum(durations) / len(durations)))
+            return {
+                "real_daily_average_minutes": average_minutes,
+                "confirmed_orders_count": len(durations),
+            }
+        except Exception as e:
+            logger.error("OrderService.get_attention_time_metrics failed: %s", e)
             raise
 
     def cancel_order(self, order_id: uuid.UUID, user_id: int) -> Order:

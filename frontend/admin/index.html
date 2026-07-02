@@ -11,11 +11,11 @@
         <aside class="sidebar">
             <div class="sidebar-header">
                 <h1>⚙️ Admin</h1>
-                <p class="tenant-name">Panel de Administración</p>
+                <p class="business-name">Panel de Administración</p>
             </div>
             <nav class="sidebar-nav">
                 <a href="#dashboard" class="nav-link active" data-section="dashboard">📊 Dashboard</a>
-                <a href="#tenants" class="nav-link" data-section="tenants">🏢 Tenants</a>
+                <a href="#tenants" class="nav-link" data-section="tenants">🏢 Negocio</a>
                 <a href="#agent" class="nav-link" data-section="agent">🤖 Agente IA</a>
                 <a href="#settings" class="nav-link" data-section="settings">⚙️ Configuración</a>
                 <a href="#admins" class="nav-link" data-section="admins">👥 Administradores</a>
@@ -34,7 +34,7 @@
                 <section class="overview-panel">
                     <div>
                         <p class="eyebrow">Control central</p>
-                        <h3>Gestiona tenants, agente IA y parámetros del sistema desde un solo lugar.</h3>
+                        <h3>Gestiona el negocio, el agente IA y los parámetros del sistema desde un solo lugar.</h3>
                         <p class="overview-copy">Las acciones de mayor impacto están arriba. Los detalles y ajustes finos quedan agrupados debajo para que la navegación sea directa.</p>
                     </div>
                     <div class="overview-actions">
@@ -50,35 +50,33 @@
                             <div class="stat-icon">🏢</div>
                             <div class="stat-info">
                                 <span class="stat-value" id="tenantCount">0</span>
-                                <span class="stat-label">Tenants</span>
+                                <span class="stat-label" id="tenantCountLabel">Negocio</span>
                             </div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-icon">✅</div>
                             <div class="stat-info">
                                 <span class="stat-value" id="activeTenantCount">0</span>
-                                <span class="stat-label">Activos</span>
+                                <span class="stat-label" id="activeTenantCountLabel">Activo</span>
                             </div>
                         </div>
                     </div>
                 </section>
 
-                <!-- Tenants Section -->
+                <!-- Business Section -->
                 <section id="tenants" class="section">
                     <div class="section-header">
-                        <h3 class="section-title-with-help">Tenants
-                            <button type="button" class="help-tip" data-tooltip="Cada tenant representa un negocio independiente con su propia configuración y su propio asistente." aria-label="Ayuda sobre tenants">?</button>
+                        <h3 class="section-title-with-help">Negocio
+                            <button type="button" class="help-tip" data-tooltip="La plataforma opera con un solo negocio y un único agente configurado de forma centralizada." aria-label="Ayuda sobre negocio">?</button>
                         </h3>
-                        <button class="btn btn-primary" id="addTenantBtn">+ Nuevo Tenant</button>
                     </div>
                     <div class="table-container">
                         <table class="data-table" id="tenantsTable">
                             <thead>
                                 <tr>
-                                    <th>Slug</th>
-                                    <th>Nombre</th>
                                     <th>Estado</th>
-                                    <th>Creado</th>
+                                    <th>Detalle</th>
+                                    <th>Notas</th>
                                     <th>Acciones</th>
                                 </tr>
                             </thead>
@@ -91,13 +89,13 @@
                 <section id="agent" class="section">
                     <div class="section-header">
                         <h3 class="section-title-with-help">Configuración del Agente IA
-                            <button type="button" class="help-tip" data-tooltip="Aquí defines cómo responde la IA de cada tenant: modelo, instrucciones y credenciales del proveedor." aria-label="Ayuda sobre agente IA">?</button>
+                            <button type="button" class="help-tip" data-tooltip="Aquí defines cómo responde la IA del negocio: modelo, instrucciones y credenciales del proveedor." aria-label="Ayuda sobre agente IA">?</button>
                         </h3>
                     </div>
                     <div class="form-card">
                         <div class="form-group">
-                            <label for="agentTenant" class="label-with-help">Seleccionar Tenant
-                                <button type="button" class="help-tip" data-tooltip="Elige primero el negocio que quieres configurar. Cada tenant mantiene su propia IA." aria-label="Ayuda sobre tenant">?</button>
+                            <label for="agentTenant" class="label-with-help">Negocio
+                                <button type="button" class="help-tip" data-tooltip="El negocio es único. La configuración se aplica de forma centralizada." aria-label="Ayuda sobre negocio">?</button>
                             </label>
                             <select id="agentTenant"></select>
                         </div>
@@ -109,7 +107,7 @@
                         </div>
                         <div class="form-group">
                             <label for="agentApiKey" class="label-with-help">API Key (OpenRouter)
-                                <button type="button" class="help-tip" data-tooltip="Clave privada para conectar el tenant con el proveedor de IA. No debe compartirse con clientes ni personal no autorizado." aria-label="Ayuda sobre API key">?</button>
+                                <button type="button" class="help-tip" data-tooltip="Clave privada para conectar el negocio con el proveedor de IA. No debe compartirse con clientes ni personal no autorizado." aria-label="Ayuda sobre API key">?</button>
                             </label>
                             <input type="password" id="agentApiKey" placeholder="<OPENROUTER_API_KEY>">
                         </div>
@@ -127,7 +125,7 @@
                 <section id="settings" class="section">
                     <div class="section-header">
                         <h3 class="section-title-with-help">Configuración del Sistema
-                            <button type="button" class="help-tip" data-tooltip="Son parámetros globales de la plataforma. Cambiarlos puede afectar a varios tenants al mismo tiempo." aria-label="Ayuda sobre configuración del sistema">?</button>
+                            <button type="button" class="help-tip" data-tooltip="Son parámetros globales de la plataforma. Cambiarlos afecta al negocio completo." aria-label="Ayuda sobre configuración del sistema">?</button>
                         </h3>
                     </div>
                     <div class="table-container">

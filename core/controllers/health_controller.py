@@ -85,7 +85,7 @@ async def health_check() -> dict[str, Any]:
         "status": "ok",
         "service": "chatbot-core",
         "version": "1.0.0",
-        "multi_tenant": "false",
+        "single_tenant": "true",
         "session_backend": settings.session_backend,
         "arq": arq_health,
         "worker_pid": str(os.getpid()),

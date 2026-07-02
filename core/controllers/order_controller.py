@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 import logging
 import uuid
 from typing import Any
@@ -11,6 +12,7 @@ from config.database import get_db, safe_transaction
 from app.security import get_admin_api_key
 from services.user_service import UserService
 from services.cart_service import CartService
+from services.business_config_service import BusinessConfigService
 from services.order_service import OrderService
 
 logger = logging.getLogger(__name__)
@@ -54,6 +56,23 @@ class OrderStatusUpdateRequest(BaseModel):
 class OrderCancelRequest(BaseModel):
     user_id: str = Field(..., description="ID del usuario en la plataforma")
     platform: str = Field(..., description="Plataforma de origen (ej: telegram)")
+
+
+def build_checkout_confirmation_message(
+    order: dict[str, Any], estimated_attention_minutes: int
+) -> str:
+    order_id = str(order.get("id", "")).strip()
+    total_amount = order.get("total_amount")
+    total_text = f"${float(total_amount):,.0f}" if total_amount is not None else "—"
+    parts = [
+        "Compra confirmada.",
+        "",
+        f"Pedido: {order_id or 'sin identificador'}",
+        f"Total: {total_text}",
+        f"Tiempo estimado de atención: {estimated_attention_minutes} minutos.",
+        "Te avisaremos si hay algún cambio relevante.",
+    ]
+    return "\n".join(parts)
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
@@ -135,7 +154,10 @@ def checkout(
         user = user_svc.get_or_create(external_id=data.user_id, platform=data.platform)
 
         order_svc = OrderService(db)
-        with safe_transaction(db):
+        transaction = safe_transaction(db)
+        if transaction is None:
+            transaction = nullcontext()
+        with transaction:
             order = order_svc.checkout_cart(
                 user_id=user.id,
                 session_id=data.session_id,
@@ -143,7 +165,18 @@ def checkout(
                 payment_method=data.payment_method,
             )
 
-        return {"status": "success", "order": order.to_dict()}
+        estimated_attention_minutes = (
+            BusinessConfigService(db).get_config().estimated_attention_minutes
+        )
+        return {
+            "status": "success",
+            "order": order.to_dict(),
+            "estimated_attention_minutes": estimated_attention_minutes,
+            "customer_message": build_checkout_confirmation_message(
+                order.to_dict(),
+                estimated_attention_minutes,
+            ),
+        }
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:

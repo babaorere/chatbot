@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from copy import deepcopy
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -11,6 +12,13 @@ from models.business_config import BusinessConfig
 from repositories.base import JpaRepository
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_FEATURED_CONFIG: dict[str, Any] = {
+    "enabled": False,
+    "title": "",
+    "mode": "manual",
+    "product_ids": [],
+}
 
 
 class BusinessConfigRepository(JpaRepository[BusinessConfig]):
@@ -33,9 +41,22 @@ class BusinessConfigRepository(JpaRepository[BusinessConfig]):
                     city=settings.business_city,
                     website=settings.business_website or None,
                     business_hours=self._default_business_hours(),
+                    promotions_config=deepcopy(_DEFAULT_FEATURED_CONFIG),
+                    best_sellers_config=deepcopy(_DEFAULT_FEATURED_CONFIG),
+                    favorites_config=deepcopy(_DEFAULT_FEATURED_CONFIG),
+                    estimated_attention_minutes=30,
                 )
                 self.save(config)
                 self.db.commit()
+            else:
+                if config.promotions_config is None:
+                    config.promotions_config = deepcopy(_DEFAULT_FEATURED_CONFIG)
+                if config.best_sellers_config is None:
+                    config.best_sellers_config = deepcopy(_DEFAULT_FEATURED_CONFIG)
+                if config.favorites_config is None:
+                    config.favorites_config = deepcopy(_DEFAULT_FEATURED_CONFIG)
+                if config.estimated_attention_minutes is None:
+                    config.estimated_attention_minutes = 30
             return config
         except Exception as e:
             logger.error("BusinessConfigRepository.get_config failed: %s", e)

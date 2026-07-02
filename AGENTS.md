@@ -173,6 +173,12 @@ Design law:
 - Logging an error without failing the operation is forbidden unless the operation is intentionally best-effort and the caller contract allows that fallback.
 - Silent fallback, silent recovery, and silent data loss are forbidden.
 
+Single-tenant law:
+- The active product is single-tenant and multi-user.
+- Do not introduce or preserve public multi-tenant workflows such as tenant selectors, tenant creation, tenant switching, tenant-scoped headers, `X-Tenant-ID`, or `/tenants/*` APIs unless the user explicitly requests a new multi-tenant architecture.
+- Use the business configuration as the single operational scope for the product.
+- Internal code may still reference legacy names while refactoring, but the public API, frontend, and docs must not present the system as multi-tenant.
+
 Issue rule:
 - Do not downgrade an issue to a warning, note, or optional follow-up.
 - If something is identified as an issue, it must be resolved.

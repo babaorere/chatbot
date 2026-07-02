@@ -8,10 +8,8 @@ class AdminApp {
     async init() {
         this.setupNavigation();
         this.setupModals();
-        this.setupAgentConfig();
         this.setupQuickActions();
         await this.loadDashboard();
-        await this.loadTenants();
         await this.loadSettings();
         await this.loadAdmins();
     }
@@ -50,104 +48,43 @@ class AdminApp {
             document.getElementById('modal').classList.remove('active');
         });
 
-        document.getElementById('addTenantBtn').addEventListener('click', () => {
-            this.showTenantModal();
-        });
-
         document.getElementById('addAdminBtn').addEventListener('click', () => {
             this.showAdminModal();
         });
     }
 
     setupQuickActions() {
-        document.getElementById('addTenantBtnTop')?.addEventListener('click', () => {
-            this.showTenantModal();
-        });
-        document.getElementById('goToAgentBtn')?.addEventListener('click', () => {
-            document.querySelector('.nav-link[data-section="agent"]')?.click();
-        });
-    }
-
-    setupAgentConfig() {
-        document.getElementById('agentTenant').addEventListener('change', async (e) => {
-            await this.loadAgentConfig(e.target.value);
-        });
-
-        document.getElementById('saveAgentBtn').addEventListener('click', async () => {
-            const tenantId = document.getElementById('agentTenant').value;
-            if (!tenantId) return;
-            try {
-                const data = {
-                    model: document.getElementById('agentModel').value,
-                    instruction: document.getElementById('agentInstruction').value,
-                };
-                const apiKey = document.getElementById('agentApiKey').value;
-                if (apiKey) data.api_key = apiKey;
-
-                await this.fetch(`/admin/tenants/${tenantId}/agent`, {
-                    method: 'PUT',
-                    body: JSON.stringify(data),
-                });
-                this.showToast('Configuración del agente actualizada', 'success');
-            } catch (err) {
-                this.showToast(err.message, 'error');
-            }
-        });
+        return;
     }
 
     async loadDashboard() {
         try {
-            const tenants = await this.fetch('/admin/tenants?limit=100');
-            document.getElementById('tenantCount').textContent = tenants.length;
-            document.getElementById('activeTenantCount').textContent = tenants.filter(t => t.status === 'active').length;
+            const settings = await this.fetch('/admin/settings');
+            document.getElementById('tenantCount').textContent = '1';
+            document.getElementById('activeTenantCount').textContent = '1';
+            document.getElementById('tenantCountLabel').textContent = 'Negocio';
+            document.getElementById('activeTenantCountLabel').textContent = 'Activo';
+            document.getElementById('dashboardOverview').textContent = `Negocio configurado con ${Object.keys(settings).length} parámetros globales.`;
         } catch (err) {
             console.error('Dashboard load failed:', err);
         }
     }
 
     async loadTenants() {
-        try {
-            const tenants = await this.fetch('/admin/tenants?limit=100');
-            const tbody = document.getElementById('tenantsBody');
-            const select = document.getElementById('agentTenant');
-            tbody.innerHTML = '';
-            select.innerHTML = '<option value="">Seleccionar tenant...</option>';
-
-            tenants.forEach(t => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${t.slug}</td>
-                    <td>${t.name}</td>
-                    <td>${t.status === 'active' ? '✅ Activo' : '❌ Inactivo'}</td>
-                    <td>${new Date().toLocaleDateString()}</td>
-                    <td>
-                        <button class="btn btn-sm btn-secondary" onclick="app.toggleStatus('${t.id}', '${t.status}')">
-                            ${t.status === 'active' ? 'Desactivar' : 'Activar'}
-                        </button>
-                        <button class="btn btn-sm btn-danger" onclick="app.deleteTenant('${t.id}')">Eliminar</button>
-                    </td>
-                `;
-                tbody.appendChild(tr);
-
-                const option = document.createElement('option');
-                option.value = t.id;
-                option.textContent = `${t.name} (${t.slug})`;
-                select.appendChild(option);
-            });
-        } catch (err) {
-            console.error('Tenants load failed:', err);
+        const tbody = document.getElementById('tenantsBody');
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="5" class="empty-state">El modo multi-negocio está deshabilitado. La administración ahora es de un solo negocio.</td>
+                </tr>
+            `;
         }
     }
 
-    async loadAgentConfig(tenantId) {
-        if (!tenantId) return;
-        try {
-            const config = await this.fetch(`/admin/tenants/${tenantId}/agent`);
-            document.getElementById('agentModel').value = config.model || '';
-            document.getElementById('agentInstruction').value = config.instruction || '';
-            document.getElementById('agentApiKey').value = config.has_api_key ? '••••••••' : '';
-        } catch (err) {
-            this.showToast(err.message, 'error');
+    async loadAgentConfig() {
+        const notice = document.getElementById('agentNotice');
+        if (notice) {
+            notice.textContent = 'La configuración del agente se administra desde los parámetros globales del negocio.';
         }
     }
 
@@ -172,85 +109,6 @@ class AdminApp {
             });
         } catch (err) {
             console.error('Settings load failed:', err);
-        }
-    }
-
-    showTenantModal() {
-        const modal = document.getElementById('modal');
-        const title = document.getElementById('modalTitle');
-        const body = document.getElementById('modalBody');
-
-        title.textContent = 'Nuevo Tenant';
-        body.innerHTML = `
-            <form id="tenantForm">
-                <div class="form-group">
-                    <label>Slug</label>
-                    <input type="text" id="tenantSlug" required placeholder="mi_chatbot">
-                </div>
-                <div class="form-group">
-                    <label>Nombre</label>
-                    <input type="text" id="tenantName" required placeholder="Negocio Mi Negocio">
-                </div>
-                <div class="form-group">
-                    <label>Instrucción del Agente</label>
-                    <textarea id="tenantInstruction" rows="5" required placeholder="Eres el asistente virtual de..."></textarea>
-                </div>
-                <div class="form-group">
-                    <label>Modelo</label>
-                    <input type="text" id="tenantModel" value="openrouter/nvidia/nemotron-3-super-120b-a12b:free">
-                </div>
-                <div class="form-group">
-                    <label>API Key (OpenRouter)</label>
-                    <input type="password" id="tenantApiKey" placeholder="<OPENROUTER_API_KEY>">
-                </div>
-                <button type="submit" class="btn btn-primary">Crear Tenant</button>
-            </form>
-        `;
-
-        document.getElementById('tenantForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            try {
-                const data = {
-                    slug: document.getElementById('tenantSlug').value,
-                    name: document.getElementById('tenantName').value,
-                    instruction: document.getElementById('tenantInstruction').value,
-                    model: document.getElementById('tenantModel').value,
-                    api_key: document.getElementById('tenantApiKey').value,
-                };
-                await this.fetch('/admin/tenants', { method: 'POST', body: JSON.stringify(data) });
-                this.showToast('Tenant creado', 'success');
-                modal.classList.remove('active');
-                await this.loadTenants();
-                await this.loadDashboard();
-            } catch (err) {
-                this.showToast(err.message, 'error');
-            }
-        });
-
-        modal.classList.add('active');
-    }
-
-    async toggleStatus(id, currentStatus) {
-        const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
-        try {
-            await this.fetch(`/admin/tenants/${id}/status?status=${newStatus}`, { method: 'PATCH' });
-            this.showToast(`Tenant ${newStatus === 'active' ? 'activado' : 'desactivado'}`, 'success');
-            await this.loadTenants();
-            await this.loadDashboard();
-        } catch (err) {
-            this.showToast(err.message, 'error');
-        }
-    }
-
-    async deleteTenant(id) {
-        if (!confirm('¿Eliminar este tenant? Esta acción no se puede deshacer.')) return;
-        try {
-            await this.fetch(`/admin/tenants/${id}`, { method: 'DELETE' });
-            this.showToast('Tenant eliminado', 'success');
-            await this.loadTenants();
-            await this.loadDashboard();
-        } catch (err) {
-            this.showToast(err.message, 'error');
         }
     }
 

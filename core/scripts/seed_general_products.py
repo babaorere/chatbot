@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import logging
 import sys
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
-import re
 from typing import Iterable
+
+from sqlalchemy import text
 
 # Permitir importación del módulo core
 sys.path.insert(0, ".")
@@ -24,7 +26,52 @@ _PRESENTATION_PATTERN = re.compile(
 )
 
 GENERAL_PRODUCTS = [
-    # 5 Presentaciones diferentes del mismo producto (Pisco Mistral)
+    # 5 presentaciones diferentes del mismo producto (Pisco Mistral)
+    {
+        "sku": "MISTRAL-35-200",
+        "name": "Pisco Mistral 35° 200cc",
+        "presentation_family": "Pisco Mistral",
+        "description": "Pisco Mistral tradicional de 35 grados en presentación de 200cc.",
+        "price": 2990.0,
+        "cost": 1800.0,
+        "stock": 40,
+        "category": "General",
+        "format": "200cc",
+        "unit_of_measure": "un",
+        "is_available": True,
+        "margin": 0.31,
+        "taxes": 0.19,
+    },
+    {
+        "sku": "MISTRAL-35-350",
+        "name": "Pisco Mistral 35° 350cc",
+        "presentation_family": "Pisco Mistral",
+        "description": "Pisco Mistral tradicional de 35 grados en presentación de 350cc.",
+        "price": 4290.0,
+        "cost": 2600.0,
+        "stock": 32,
+        "category": "General",
+        "format": "350cc",
+        "unit_of_measure": "un",
+        "is_available": True,
+        "margin": 0.31,
+        "taxes": 0.19,
+    },
+    {
+        "sku": "MISTRAL-35-500",
+        "name": "Pisco Mistral 35° 500cc",
+        "presentation_family": "Pisco Mistral",
+        "description": "Pisco Mistral tradicional de 35 grados en presentación de 500cc.",
+        "price": 5690.0,
+        "cost": 3700.0,
+        "stock": 28,
+        "category": "General",
+        "format": "500cc",
+        "unit_of_measure": "un",
+        "is_available": True,
+        "margin": 0.31,
+        "taxes": 0.19,
+    },
     {
         "sku": "MISTRAL-35-750",
         "name": "Pisco Mistral 35° 750cc",
@@ -55,52 +102,7 @@ GENERAL_PRODUCTS = [
         "margin": 0.31,
         "taxes": 0.19,
     },
-    {
-        "sku": "MISTRAL-40-750",
-        "name": "Pisco Mistral 40° 750cc",
-        "presentation_family": "Pisco Mistral",
-        "description": "Pisco Mistral Añejado en Roble de 40 grados en presentación de 750cc.",
-        "price": 8490.0,
-        "cost": 5800.0,
-        "stock": 25,
-        "category": "General",
-        "format": "750cc",
-        "unit_of_measure": "un",
-        "is_available": True,
-        "margin": 0.31,
-        "taxes": 0.19,
-    },
-    {
-        "sku": "MISTRAL-40-1L",
-        "name": "Pisco Mistral 40° 1L",
-        "presentation_family": "Pisco Mistral",
-        "description": "Pisco Mistral Especial Añejado de 40 grados en presentación de 1 Litro.",
-        "price": 10490.0,
-        "cost": 7200.0,
-        "stock": 15,
-        "category": "General",
-        "format": "1L",
-        "unit_of_measure": "un",
-        "is_available": True,
-        "margin": 0.31,
-        "taxes": 0.19,
-    },
-    {
-        "sku": "MISTRAL-46-750",
-        "name": "Pisco Mistral Nobel 46° 750cc",
-        "presentation_family": "Pisco Mistral",
-        "description": "Edición especial Pisco Mistral Nobel de 46 grados añejado en barricas de roble.",
-        "price": 15990.0,
-        "cost": 11000.0,
-        "stock": 10,
-        "category": "General",
-        "format": "750cc",
-        "unit_of_measure": "un",
-        "is_available": True,
-        "margin": 0.31,
-        "taxes": 0.19,
-    },
-    # 5 Productos adicionales diferentes en la categoría General
+    # 5 productos adicionales diferentes en la categoría General
     {
         "sku": "COCA-350",
         "name": "Coca-Cola Original Lata 350cc",
@@ -268,7 +270,13 @@ def _raise_for_similar_presentations(products: Iterable[dict[str, object]]) -> N
     )
 
 
-def seed_general() -> None:
+def _reset_existing_general_catalog(db) -> None:
+    db.execute(text("DELETE FROM cart_items WHERE product_id IN (SELECT id FROM products);"))
+    db.execute(text("DELETE FROM order_items WHERE product_id IN (SELECT id FROM products);"))
+    db.execute(text("DELETE FROM products;"))
+
+
+def seed_general(reset_existing_products: bool = True) -> None:
     db = None
     try:
         _raise_for_similar_presentations(GENERAL_PRODUCTS)
@@ -284,6 +292,11 @@ def seed_general() -> None:
             logger.info("Categoría 'General' creada exitosamente.")
         else:
             logger.info("Categoría 'General' ya existe.")
+
+        if reset_existing_products:
+            logger.info("Limpiando catálogo existente para sembrar productos generales...")
+            _reset_existing_general_catalog(db)
+            db.flush()
 
         for p_data in GENERAL_PRODUCTS:
             sku = p_data["sku"]

@@ -29,6 +29,7 @@ from controllers.telegram_controller import prime_human_agent_cache
 from infrastructure.llm.adk_provider import ADKLLMProvider
 from models import category as _category_module, SystemAdmin  # noqa: F401 – registers models in Base
 from repositories.business_config_repository import BusinessConfigRepository
+from scripts.seed_general_products import seed_general
 from services.session_service_factory import create_session_service
 
 logger = logging.getLogger(__name__)
@@ -91,6 +92,74 @@ def _run_migrations(conn: object) -> None:
             )
         )
         logger.info("Added 'human_agent_available' column to business_config table")
+
+    check_promotions = conn.execute(
+        text("""
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name='business_config' AND column_name='promotions_config';
+    """)
+    ).first()
+    if not check_promotions:
+        conn.execute(
+            text(
+                "ALTER TABLE business_config ADD COLUMN promotions_config JSON NOT NULL DEFAULT '{}'::json;"
+            )
+        )
+        logger.info("Added 'promotions_config' column to business_config table")
+
+    check_best_sellers = conn.execute(
+        text("""
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name='business_config' AND column_name='best_sellers_config';
+    """)
+    ).first()
+    if not check_best_sellers:
+        conn.execute(
+            text(
+                "ALTER TABLE business_config ADD COLUMN best_sellers_config JSON NOT NULL DEFAULT '{}'::json;"
+            )
+        )
+        logger.info("Added 'best_sellers_config' column to business_config table")
+
+    check_favorites = conn.execute(
+        text("""
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name='business_config' AND column_name='favorites_config';
+    """)
+    ).first()
+    if not check_favorites:
+        conn.execute(
+            text(
+                "ALTER TABLE business_config ADD COLUMN favorites_config JSON NOT NULL DEFAULT '{}'::json;"
+            )
+        )
+        logger.info("Added 'favorites_config' column to business_config table")
+
+    check_attention = conn.execute(
+        text("""
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name='business_config' AND column_name='estimated_attention_minutes';
+    """)
+    ).first()
+    if not check_attention:
+        conn.execute(
+            text(
+                "ALTER TABLE business_config ADD COLUMN estimated_attention_minutes INTEGER NOT NULL DEFAULT 30;"
+            )
+        )
+        logger.info("Added 'estimated_attention_minutes' column to business_config table")
+
+    check_confirmed_at = conn.execute(
+        text("""
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name='orders' AND column_name='confirmed_at';
+    """)
+    ).first()
+    if not check_confirmed_at:
+        conn.execute(
+            text("ALTER TABLE orders ADD COLUMN confirmed_at TIMESTAMP NULL;")
+        )
+        logger.info("Added 'confirmed_at' column to orders table")
 
     # Add is_bot_paused column if missing
     check_paused = conn.execute(
@@ -256,6 +325,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         prime_human_agent_cache(
             BusinessConfigRepository(seed_db).get_config().human_agent_available
         )
+        if not settings.is_production:
+            seed_general(reset_existing_products=True)
         seed_db.commit()
 
     # 3. Session service

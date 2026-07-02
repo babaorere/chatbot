@@ -14,6 +14,7 @@ from controllers import (
     user_router,
     session_router,
     business_config_router,
+    business_router,
     admin_router,
     telegram_router,
     order_router,
@@ -54,6 +55,7 @@ app.include_router(chat_router)
 app.include_router(user_router)
 app.include_router(session_router)
 app.include_router(business_config_router)
+app.include_router(business_router)
 app.include_router(admin_router)
 app.include_router(telegram_router)
 app.include_router(order_router)

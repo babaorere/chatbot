@@ -14,6 +14,10 @@ class BusinessConfigResponse(BaseModel):
     website: str | None
     logo_url: str | None
     business_hours: dict | None
+    promotions_config: dict | None
+    best_sellers_config: dict | None
+    favorites_config: dict | None
+    estimated_attention_minutes: int
     human_agent_available: bool
 
     model_config = {"from_attributes": True}

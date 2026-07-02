@@ -32,10 +32,20 @@ def test_update_profile_refreshes_human_agent_cache() -> None:
                 website=None,
                 logo_url=None,
                 business_hours=None,
+                promotions_config=None,
+                best_sellers_config=None,
+                favorites_config=None,
+                estimated_attention_minutes=45,
                 human_agent_available=False,
             ),
             db=db_mock,
         )
 
     prime_mock.assert_called_once_with(False)
+    svc_instance.update_config.assert_called_once()
+    update_kwargs = svc_instance.update_config.call_args.kwargs
+    assert update_kwargs["promotions_config"] is None
+    assert update_kwargs["best_sellers_config"] is None
+    assert update_kwargs["favorites_config"] is None
+    assert update_kwargs["estimated_attention_minutes"] == 45
     assert result == {"ok": True}

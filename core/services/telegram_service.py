@@ -53,6 +53,32 @@ async def send_telegram_message(
         raise RuntimeError(f"Failed to send Telegram message to chat {chat_id}") from e
 
 
+def extract_checkout_customer_message(payload: dict) -> str | None:
+    """Extrae el texto oficial de confirmación de compra desde una respuesta de checkout."""
+    message = payload.get("customer_message")
+    if isinstance(message, str) and message.strip():
+        return message.strip()
+    return None
+
+
+async def send_checkout_confirmation_message(
+    bot_token: str,
+    chat_id: str | int,
+    checkout_payload: dict,
+    trace_id: str | None = None,
+) -> int | None:
+    """Envía al cliente la confirmación de compra generada por el checkout."""
+    message = extract_checkout_customer_message(checkout_payload)
+    if not message:
+        raise ValueError("checkout_payload must include a non-empty customer_message")
+    return await send_telegram_message(
+        bot_token=bot_token,
+        chat_id=chat_id,
+        text=message,
+        trace_id=trace_id,
+    )
+
+
 def inject_version_to_reply_markup(
     reply_markup: dict | None, version: int
 ) -> dict | None:
@@ -75,16 +101,16 @@ def inject_version_to_reply_markup(
     return {"inline_keyboard": new_keyboard}
 
 
-def build_main_menu(human_agent_available: bool = True) -> dict:
+def build_main_menu(human_agent_available: bool = False) -> dict:
     """Construye el menú principal de Telegram."""
     buttons = [
         [
             {"text": "1. 🏷️ Ver Categorías", "callback_data": "menu:categorias"},
-            {"text": "2. 📦 Consultar Stock", "callback_data": "menu:stock"},
+            {"text": "2. ✨ Promociones", "callback_data": "menu:promociones"},
         ],
         [
-            {"text": "3. 💰 Ver Precios", "callback_data": "menu:precio"},
-            {"text": "4. 🕒 Horarios", "callback_data": "menu:horario"},
+            {"text": "3. 🔥 Más vendidos", "callback_data": "menu:mas_vendidos"},
+            {"text": "4. 🛒 Ver carrito", "callback_data": "menu:carrito"},
         ],
     ]
     if human_agent_available:

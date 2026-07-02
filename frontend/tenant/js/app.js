@@ -2,7 +2,6 @@ const API_BASE = 'http://localhost:8001';
 
 class TenantApp {
     constructor() {
-        this.tenantId = localStorage.getItem('tenant_id');
         this.sectionMeta = {
             dashboard: {
                 kicker: 'Inicio',
@@ -44,15 +43,12 @@ class TenantApp {
             { id: 'sabado', label: 'Sábado', storageKey: 'Sábado' },
             { id: 'domingo', label: 'Domingo', storageKey: 'Domingo' },
         ];
+        this.products = [];
+        this.profileData = {};
         this.init();
     }
 
     async init() {
-        if (!this.tenantId) {
-            this.tenantId = prompt('Ingrese el identificador de su negocio:');
-            if (this.tenantId) localStorage.setItem('tenant_id', this.tenantId);
-        }
-
         this.categories = [];
         await this.loadCategories();
         this.setupNavigation();
@@ -60,8 +56,8 @@ class TenantApp {
         this.setupForms();
         this.setupModals();
         await this.loadDashboard();
-        await this.loadProfile();
         await this.loadProducts();
+        await this.loadProfile();
         await this.loadKB();
         await this.loadChannels();
     }
@@ -69,7 +65,6 @@ class TenantApp {
     get headers() {
         return {
             'Content-Type': 'application/json',
-            'X-Tenant-ID': this.tenantId,
         };
     }
 
@@ -94,6 +89,15 @@ class TenantApp {
         if (status === 404) return 'No encontramos la información solicitada.';
         if (status >= 500) return 'Hubo un problema del sistema. Intente nuevamente en unos minutos.';
         return 'No fue posible completar la acción solicitada.';
+    }
+
+    escapeHtml(value) {
+        return String(value ?? '')
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#39;');
     }
 
     setupNavigation() {
@@ -157,9 +161,15 @@ class TenantApp {
                     website: document.getElementById('profileWebsite').value || null,
                     logo_url: document.getElementById('profileLogo').value || null,
                     business_hours: this.readBusinessHoursEditor(),
+                    estimated_attention_minutes: document.getElementById('profileEstimatedAttentionMinutes').value.trim()
+                        ? parseInt(document.getElementById('profileEstimatedAttentionMinutes').value, 10)
+                        : null,
+                    promotions_config: this.getFeaturedSectionState('promotions', this.profileData.promotions_config || {}),
+                    best_sellers_config: this.getFeaturedSectionState('bestSellers', this.profileData.best_sellers_config || {}),
+                    favorites_config: this.getFeaturedSectionState('favorites', this.profileData.favorites_config || {}),
                     human_agent_available: document.getElementById('profileHumanAvailable').checked,
                 };
-                await this.fetch('/tenants/me/profile', { method: 'PUT', body: JSON.stringify(data) });
+                await this.fetch('/business/me/profile', { method: 'PUT', body: JSON.stringify(data) });
                 this.showToast('Datos del negocio actualizados', 'success');
                 await this.loadProfile();
                 this.setProfileSaveState('saved');
@@ -252,12 +262,14 @@ class TenantApp {
 
     async loadDashboard() {
         try {
-            const [users, convs] = await Promise.all([
-                this.fetch('/tenants/me/users/count'),
-                this.fetch('/tenants/me/conversations/count'),
+            const [users, convs, attentionTime] = await Promise.all([
+                this.fetch('/business/me/users/count'),
+                this.fetch('/business/me/conversations/count'),
+                this.fetch('/business/me/attention-time'),
             ]);
             document.getElementById('userCount').textContent = users.count;
             document.getElementById('convCount').textContent = convs.count;
+            document.getElementById('realDailyAverageMinutes').textContent = attentionTime.real_daily_average_minutes ?? '—';
             this.renderOperationalSummary();
         } catch (err) {
             console.error('Dashboard load failed:', err);
@@ -266,8 +278,9 @@ class TenantApp {
 
     async loadProfile() {
         try {
-            const profile = await this.fetch('/tenants/me/profile');
-            document.getElementById('tenantName').textContent = profile.name;
+            const profile = await this.fetch('/business/me/profile');
+            this.profileData = profile;
+            document.getElementById('businessName').textContent = profile.name;
             document.getElementById('profileName').value = profile.name || '';
             document.getElementById('profileEmail').value = profile.email || '';
             document.getElementById('profilePhone').value = profile.phone || '';
@@ -275,11 +288,13 @@ class TenantApp {
             document.getElementById('profileCity').value = profile.city || '';
             document.getElementById('profileWebsite').value = profile.website || '';
             document.getElementById('profileLogo').value = profile.logo_url || '';
+            document.getElementById('profileEstimatedAttentionMinutes').value = profile.estimated_attention_minutes ?? '';
             this.renderBusinessHoursEditor(profile.business_hours || {});
             document.getElementById('profileHumanAvailable').checked = !!profile.human_agent_available;
             document.getElementById('statusBadge').textContent = profile.status === 'active' ? 'Negocio activo' : 'Revisión pendiente';
             document.getElementById('dashboardGreeting').textContent = `Revise ${profile.name || 'su negocio'} sin complicaciones`;
-            document.getElementById('tenantName').textContent = profile.name || 'Negocio sin nombre';
+            document.getElementById('businessName').textContent = profile.name || 'Negocio sin nombre';
+            this.renderFeaturedContentEditor(profile);
             this.renderOperationalSummary();
         } catch (err) {
             console.error('Profile load failed:', err);
@@ -288,7 +303,8 @@ class TenantApp {
 
     async loadProducts() {
         try {
-            const products = await this.fetch('/tenants/me/products?limit=100');
+            const products = await this.fetch('/business/me/products?limit=100');
+            this.products = products;
             const tbody = document.getElementById('productsBody');
             tbody.innerHTML = '';
             if (products.length === 0) {
@@ -315,6 +331,7 @@ class TenantApp {
                 tbody.appendChild(tr);
             });
             document.getElementById('productCount').textContent = products.length;
+            this.renderFeaturedContentEditor(this.profileData || {});
             this.renderOperationalSummary();
         } catch (err) {
             console.error('Products load failed:', err);
@@ -323,7 +340,7 @@ class TenantApp {
 
     async loadKB() {
         try {
-            const entries = await this.fetch('/tenants/me/kb?limit=100');
+            const entries = await this.fetch('/business/me/kb?limit=100');
             const tbody = document.getElementById('kbBody');
             tbody.innerHTML = '';
             if (entries.length === 0) {
@@ -356,7 +373,7 @@ class TenantApp {
 
     async loadChannels() {
         try {
-            const channels = await this.fetch('/tenants/me/channels');
+            const channels = await this.fetch('/business/me/channels');
             const container = document.getElementById('channelsList');
             container.innerHTML = '';
             if (channels.length === 0) {
@@ -390,7 +407,7 @@ class TenantApp {
             return;
         }
         try {
-            const result = await this.fetch('/tenants/me/kb/search', {
+            const result = await this.fetch('/business/me/kb/search', {
                 method: 'POST',
                 body: JSON.stringify({ query, top_k: 10 }),
             });
@@ -479,9 +496,9 @@ class TenantApp {
             try {
                 this.setButtonBusy(saveButton, true, 'Guardando...');
                 if (product) {
-                    await this.fetch(`/tenants/me/products/${product.id}`, { method: 'PUT', body: JSON.stringify(data) });
+                    await this.fetch(`/business/me/products/${product.id}`, { method: 'PUT', body: JSON.stringify(data) });
                 } else {
-                    await this.fetch('/tenants/me/products', { method: 'POST', body: JSON.stringify(data) });
+                    await this.fetch('/business/me/products', { method: 'POST', body: JSON.stringify(data) });
                 }
                 this.showToast('Producto guardado', 'success');
                 modal.classList.remove('active');
@@ -497,17 +514,17 @@ class TenantApp {
     }
 
     async editProduct(id) {
-        const products = await this.fetch('/tenants/me/products?limit=100');
+        const products = await this.fetch('/business/me/products?limit=100');
         const product = products.find(p => p.id === id);
         if (product) this.showProductModal(product);
     }
 
     async deleteProduct(id) {
-        const products = await this.fetch('/tenants/me/products?limit=100');
+        const products = await this.fetch('/business/me/products?limit=100');
         const product = products.find((item) => item.id === id);
         if (!confirm(`¿Desea eliminar ${product?.name || 'este producto'}? Esta acción quitará el producto de su catálogo visible.`)) return;
         try {
-            await this.fetch(`/tenants/me/products/${id}`, { method: 'DELETE' });
+            await this.fetch(`/business/me/products/${id}`, { method: 'DELETE' });
             this.showToast('Producto eliminado', 'success');
             await this.loadProducts();
         } catch (err) {
@@ -517,7 +534,7 @@ class TenantApp {
 
     async exportProducts() {
         try {
-            const response = await fetch(`${API_BASE}/tenants/me/products/export`, {
+            const response = await fetch(`${API_BASE}/business/me/products/export`, {
                 headers: this.headers,
             });
             if (!response.ok) throw new Error('No fue posible exportar el catálogo');
@@ -538,7 +555,7 @@ class TenantApp {
 
     async exportTemplate() {
         try {
-            const response = await fetch(`${API_BASE}/tenants/me/products/export/template`, {
+            const response = await fetch(`${API_BASE}/business/me/products/export/template`, {
                 headers: this.headers,
             });
             if (!response.ok) throw new Error('No fue posible descargar la plantilla');
@@ -566,9 +583,9 @@ class TenantApp {
         try {
             const formData = new FormData();
             formData.append('file', file);
-            const response = await fetch(`${API_BASE}/tenants/me/products/import`, {
+            const response = await fetch(`${API_BASE}/business/me/products/import`, {
                 method: 'POST',
-                headers: { 'X-Tenant-ID': this.tenantId },
+                headers: this.headers,
                 body: formData,
             });
             if (!response.ok) {
@@ -623,9 +640,9 @@ class TenantApp {
             try {
                 this.setButtonBusy(saveButton, true, 'Guardando...');
                 if (entry) {
-                    await this.fetch(`/tenants/me/kb/${entry.id}`, { method: 'PUT', body: JSON.stringify(data) });
+                    await this.fetch(`/business/me/kb/${entry.id}`, { method: 'PUT', body: JSON.stringify(data) });
                 } else {
-                    await this.fetch('/tenants/me/kb', { method: 'POST', body: JSON.stringify(data) });
+                    await this.fetch('/business/me/kb', { method: 'POST', body: JSON.stringify(data) });
                 }
                 this.showToast('Respuesta guardada', 'success');
                 modal.classList.remove('active');
@@ -641,17 +658,17 @@ class TenantApp {
     }
 
     async editKB(id) {
-        const entries = await this.fetch('/tenants/me/kb?limit=100');
+        const entries = await this.fetch('/business/me/kb?limit=100');
         const entry = entries.find(e => e.id === id);
         if (entry) this.showKBModal(entry);
     }
 
     async deleteKB(id) {
-        const entries = await this.fetch('/tenants/me/kb?limit=100');
+        const entries = await this.fetch('/business/me/kb?limit=100');
         const entry = entries.find((item) => item.id === id);
         if (!confirm(`¿Desea eliminar "${entry?.title || 'esta respuesta'}"? Ya no estará disponible como referencia para el negocio.`)) return;
         try {
-            await this.fetch(`/tenants/me/kb/${id}`, { method: 'DELETE' });
+            await this.fetch(`/business/me/kb/${id}`, { method: 'DELETE' });
             this.showToast('Respuesta eliminada', 'success');
             await this.loadKB();
         } catch (err) {
@@ -900,7 +917,7 @@ class TenantApp {
         const checklist = document.getElementById('dashboardChecklist');
         if (!summary || !recommendation) return;
 
-        const profileName = document.getElementById('profileName')?.value?.trim() || document.getElementById('tenantName')?.textContent?.trim() || 'su negocio';
+        const profileName = document.getElementById('profileName')?.value?.trim() || document.getElementById('businessName')?.textContent?.trim() || 'su negocio';
         const productCount = Number(document.getElementById('productCount')?.textContent || '0');
         const kbCount = Number(document.getElementById('kbCount')?.textContent || '0');
         const userCount = Number(document.getElementById('userCount')?.textContent || '0');
@@ -932,6 +949,195 @@ class TenantApp {
         }
 
         recommendation.textContent = 'La base operativa está lista. Revise solo lo que cambie en su catálogo, horarios o información de atención.';
+    }
+
+    getFeaturedSectionState(sectionKey, fallback = {}) {
+        const enabled = document.getElementById(`${sectionKey}Enabled`)?.checked ?? Boolean(fallback.enabled);
+        const title = document.getElementById(`${sectionKey}Title`)?.value?.trim() || fallback.title || '';
+        const productIds = Array.from(
+            document.querySelectorAll(`[data-featured-list="${sectionKey}"] [data-product-id]`)
+        ).map((item) => item.dataset.productId);
+        const mode = sectionKey === 'bestSellers'
+            ? (productIds.length > 0 ? 'manual' : 'automatic')
+            : 'manual';
+        return { enabled, title, mode, product_ids: productIds };
+    }
+
+    renderFeaturedContentEditor(profile = {}) {
+        const container = document.getElementById('featuredContentEditor');
+        if (!container) return;
+        const promotions = profile.promotions_config || {};
+        const bestSellers = profile.best_sellers_config || {};
+        const favorites = profile.favorites_config || {};
+        const productOptions = this.products.length
+            ? this.products
+                .map((product) => `<option value="${this.escapeHtml(product.id)}">${this.escapeHtml(product.name)}</option>`)
+                .join('')
+            : '<option value="">Cargue productos para activar la selección</option>';
+
+        container.innerHTML = `
+            <article class="featured-block" data-featured-section="promotions">
+                <div class="featured-block-header">
+                    <div>
+                        <p class="card-kicker">Bloque 1</p>
+                        <h4>Promociones</h4>
+                        <p class="field-note">Muestre primero las ofertas que quiera destacar.</p>
+                    </div>
+                    <label class="toggle-pill">
+                        <input type="checkbox" id="promotionsEnabled" ${promotions.enabled ? 'checked' : ''}>
+                        <span>Activo</span>
+                    </label>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="label-with-help">Título visible
+                            <button type="button" class="help-tip" data-tooltip="Texto breve que verá el cliente al abrir la sección." aria-label="Ayuda sobre título de promociones">?</button>
+                        </label>
+                        <input type="text" id="promotionsTitle" value="${this.escapeHtml(promotions.title || 'Promociones destacadas')}" maxlength="120">
+                    </div>
+                    <div class="form-group">
+                        <label class="label-with-help">Agregar producto
+                            <button type="button" class="help-tip" data-tooltip="Seleccione productos del catálogo para incluirlos en este bloque." aria-label="Ayuda sobre selección de promociones">?</button>
+                        </label>
+                        <div class="inline-actions">
+                            <select id="promotionsPicker">${productOptions}</select>
+                            <button type="button" class="btn btn-secondary" data-action="add-featured-product" data-section="promotions">Agregar</button>
+                        </div>
+                    </div>
+                </div>
+                <input type="hidden" id="promotionsMode" value="manual">
+                <div class="featured-list" data-featured-list="promotions"></div>
+            </article>
+            <article class="featured-block" data-featured-section="bestSellers">
+                <div class="featured-block-header">
+                    <div>
+                        <p class="card-kicker">Bloque 2</p>
+                        <h4>Más vendidos</h4>
+                        <p class="field-note">Si no agrega productos, se mostrará la selección calculada por ventas reales.</p>
+                    </div>
+                    <label class="toggle-pill">
+                        <input type="checkbox" id="bestSellersEnabled" ${bestSellers.enabled ? 'checked' : ''}>
+                        <span>Activo</span>
+                    </label>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="label-with-help">Título visible
+                            <button type="button" class="help-tip" data-tooltip="Texto breve que verá el cliente al abrir la sección." aria-label="Ayuda sobre título de más vendidos">?</button>
+                        </label>
+                        <input type="text" id="bestSellersTitle" value="${this.escapeHtml(bestSellers.title || 'Más vendidos')}" maxlength="120">
+                    </div>
+                    <div class="form-group">
+                        <label class="label-with-help">Agregar producto
+                            <button type="button" class="help-tip" data-tooltip="Seleccione productos para fijarlos manualmente cuando prefiera priorizar una selección editorial." aria-label="Ayuda sobre selección de más vendidos">?</button>
+                        </label>
+                        <div class="inline-actions">
+                            <select id="bestSellersPicker">${productOptions}</select>
+                            <button type="button" class="btn btn-secondary" data-action="add-featured-product" data-section="bestSellers">Agregar</button>
+                        </div>
+                    </div>
+                </div>
+                <input type="hidden" id="bestSellersMode" value="${bestSellers.product_ids && bestSellers.product_ids.length ? 'manual' : 'automatic'}">
+                <div class="featured-list" data-featured-list="bestSellers"></div>
+            </article>
+            <article class="featured-block" data-featured-section="favorites">
+                <div class="featured-block-header">
+                    <div>
+                        <p class="card-kicker">Bloque 3</p>
+                        <h4>Favoritos</h4>
+                        <p class="field-note">Productos que el negocio quiere mostrar con prioridad editorial.</p>
+                    </div>
+                    <label class="toggle-pill">
+                        <input type="checkbox" id="favoritesEnabled" ${favorites.enabled ? 'checked' : ''}>
+                        <span>Activo</span>
+                    </label>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="label-with-help">Título visible
+                            <button type="button" class="help-tip" data-tooltip="Texto breve que verá el cliente al abrir la sección." aria-label="Ayuda sobre título de favoritos">?</button>
+                        </label>
+                        <input type="text" id="favoritesTitle" value="${this.escapeHtml(favorites.title || 'Productos favoritos')}" maxlength="120">
+                    </div>
+                    <div class="form-group">
+                        <label class="label-with-help">Agregar producto
+                            <button type="button" class="help-tip" data-tooltip="Seleccione productos del catálogo que quiera priorizar en la vista del cliente." aria-label="Ayuda sobre selección de favoritos">?</button>
+                        </label>
+                        <div class="inline-actions">
+                            <select id="favoritesPicker">${productOptions}</select>
+                            <button type="button" class="btn btn-secondary" data-action="add-featured-product" data-section="favorites">Agregar</button>
+                        </div>
+                    </div>
+                </div>
+                <input type="hidden" id="favoritesMode" value="${favorites.product_ids && favorites.product_ids.length ? 'manual' : 'manual'}">
+                <div class="featured-list" data-featured-list="favorites"></div>
+            </article>
+        `;
+
+        const setList = (sectionKey, productIds) => {
+            const list = container.querySelector(`[data-featured-list="${sectionKey}"]`);
+            if (!list) return;
+            const productsById = new Map(this.products.map((product) => [product.id, product]));
+            if (!productIds.length) {
+                list.innerHTML = '<p class="field-note">Todavía no hay productos seleccionados.</p>';
+                return;
+            }
+            list.innerHTML = productIds.map((productId) => {
+                const product = productsById.get(productId);
+                const name = this.escapeHtml(product?.name || 'Producto');
+                const meta = product?.price ? `$${Number(product.price).toLocaleString()}` : 'Sin precio';
+                return `
+                    <span class="chip" data-product-id="${this.escapeHtml(productId)}">
+                        <span>${name} <em>${this.escapeHtml(meta)}</em></span>
+                        <button type="button" class="chip-remove" data-action="remove-featured-product" data-section="${sectionKey}" data-product-id="${this.escapeHtml(productId)}" aria-label="Quitar producto">×</button>
+                    </span>
+                `;
+            }).join('');
+        };
+
+        const promotionsIds = Array.isArray(promotions.product_ids) ? promotions.product_ids : [];
+        const bestSellersIds = Array.isArray(bestSellers.product_ids) ? bestSellers.product_ids : [];
+        const favoritesIds = Array.isArray(favorites.product_ids) ? favorites.product_ids : [];
+        setList('promotions', promotionsIds);
+        setList('bestSellers', bestSellersIds);
+        setList('favorites', favoritesIds);
+
+        if (!container.dataset.listenersAttached) {
+            container.dataset.listenersAttached = 'true';
+            container.addEventListener('input', () => this.markProfileDirty());
+            container.addEventListener('change', () => this.markProfileDirty());
+            container.addEventListener('click', (event) => {
+                const button = event.target.closest('[data-action="add-featured-product"]');
+                if (button) {
+                    const sectionKey = button.dataset.section;
+                    const picker = container.querySelector(`#${sectionKey}Picker`);
+                    if (!picker || !picker.value) return;
+                    const list = container.querySelector(`[data-featured-list="${sectionKey}"]`);
+                    const selectedIds = new Set(
+                        Array.from(list?.querySelectorAll('[data-product-id]') || []).map((item) => item.dataset.productId)
+                    );
+                    selectedIds.add(picker.value);
+                    setList(sectionKey, Array.from(selectedIds));
+                    this.markProfileDirty();
+                    return;
+                }
+
+                const removeButton = event.target.closest('[data-action="remove-featured-product"]');
+                if (removeButton) {
+                    const sectionKey = removeButton.dataset.section;
+                    const list = container.querySelector(`[data-featured-list="${sectionKey}"]`);
+                    const selectedIds = Array.from(
+                        list?.querySelectorAll('[data-product-id]') || []
+                    )
+                        .map((item) => item.dataset.productId)
+                        .filter((productId) => productId !== removeButton.dataset.productId);
+                    setList(sectionKey, selectedIds);
+                    this.markProfileDirty();
+                }
+            });
+        }
+
+        container._setFeaturedList = setList;
     }
 }
 

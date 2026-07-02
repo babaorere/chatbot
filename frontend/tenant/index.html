@@ -12,7 +12,7 @@
             <div class="sidebar-header">
                 <p class="sidebar-eyebrow">Panel del negocio</p>
                 <h1>Gestión diaria</h1>
-                <p class="tenant-name" id="tenantName">Cargando negocio...</p>
+                <p class="business-name" id="businessName">Cargando negocio...</p>
             </div>
             <nav class="sidebar-nav">
                 <a href="#dashboard" class="nav-link active" data-section="dashboard" data-title="Resumen del día" data-description="Revise el estado general del negocio y entre rápido a sus tareas principales.">
@@ -82,6 +82,13 @@
                             <div class="stat-info">
                                 <span class="stat-value" id="convCount">0</span>
                                 <span class="stat-label">Conversaciones atendidas</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">Tiempo</div>
+                            <div class="stat-info">
+                                <span class="stat-value" id="realDailyAverageMinutes">—</span>
+                                <span class="stat-label">Promedio real confirmado hoy (min)</span>
                             </div>
                         </div>
                         <div class="stat-card">
@@ -208,6 +215,20 @@
                             <label for="profileHumanAvailable" style="margin:0; font-weight:normal;" class="label-with-help">Permitir que el cliente pida atención de una persona
                                 <button type="button" class="help-tip" data-tooltip="Actívelo solo si realmente hay alguien disponible para continuar la atención cuando el cliente lo solicite." aria-label="Ayuda sobre atención humana">?</button>
                             </label>
+                        </div>
+                        <div class="form-group">
+                            <label for="profileEstimatedAttentionMinutes" class="label-with-help">Tiempo estimado para el cliente (min)
+                                <button type="button" class="help-tip" data-tooltip="Indique el tiempo que verá el cliente después de confirmar la compra. Use minutos completos y mantenga un valor realista." aria-label="Ayuda sobre tiempo estimado para el cliente">?</button>
+                            </label>
+                            <input type="number" id="profileEstimatedAttentionMinutes" name="estimated_attention_minutes" min="1" max="1440" step="1">
+                            <p class="field-note">Este valor se muestra al cliente después de confirmar la compra.</p>
+                        </div>
+                        <div class="featured-content-card">
+                            <div class="section-intro section-intro--compact">
+                                <h3>Promociones y más vendidos</h3>
+                                <p>Defina qué productos se muestran primero en Telegram. Si deja una lista vacía, el sistema usa una selección automática de respaldo.</p>
+                            </div>
+                            <div id="featuredContentEditor" class="featured-grid"></div>
                         </div>
                         <div class="form-actions">
                             <p class="save-state" id="profileSaveState">Sin cambios pendientes.</p>

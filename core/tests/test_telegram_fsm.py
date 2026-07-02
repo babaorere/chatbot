@@ -74,14 +74,18 @@ async def test_telegram_fsm_persist_menu_metadata_single_write_shape():
 
     await fsm.persist_menu_metadata(
         version=4,
-        options=["menu:categorias", "menu:stock"],
+        options=["menu:categorias", "menu:promociones", "menu:mas_vendidos"],
         active_menu_id=777,
     )
 
     state, context = await fsm.get_state_and_context()
     assert state == FSMState.IDLE
     assert context["_fsm_version"] == 4
-    assert context["_menu_options"] == ["menu:categorias", "menu:stock"]
+    assert context["_menu_options"] == [
+        "menu:categorias",
+        "menu:promociones",
+        "menu:mas_vendidos",
+    ]
     assert context["_active_menu_id"] == 777
 
 

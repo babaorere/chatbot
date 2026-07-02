@@ -64,6 +64,25 @@ def mock_business_config():
     config.website = "https://elbuentrago.cl"
     config.logo_url = "https://example.com/logo.png"
     config.business_hours = {"lunes": {"open": "10:00", "close": "22:00"}}
+    config.promotions_config = {
+        "enabled": True,
+        "title": "Promociones de la semana",
+        "mode": "manual",
+        "product_ids": [],
+    }
+    config.best_sellers_config = {
+        "enabled": True,
+        "title": "Más vendidos del mes",
+        "mode": "automatic",
+        "product_ids": [],
+    }
+    config.favorites_config = {
+        "enabled": True,
+        "title": "Favoritos",
+        "mode": "manual",
+        "product_ids": [],
+    }
+    config.estimated_attention_minutes = 30
     config.human_agent_available = True
 
     def get_business_hours_display():

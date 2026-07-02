@@ -14,14 +14,19 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
+from sqlalchemy import func
 
 from app.container import ProcessMessageUCDep, get_redis_client
 from application.use_cases.commands import ProcessMessageCommand
 from config.database import SessionLocal
+from models.order import Order, OrderItem
 from models.product import Product
 from services.business_config_service import BusinessConfigService
 from services.category_service import CategoryService
 from services.job_dispatcher import JobDispatcher
+from services.cart_service import CartService
+from services.product_service import ProductService
+from services.user_service import UserService
 from infrastructure.channels.telegram_fsm import (
     TelegramConversationFSM,
     FSMStateStore,
@@ -44,6 +49,7 @@ _memory_fsm_store = FSMStateStore()
 
 # Cerradura local en memoria para concurrencia si Redis no está activo
 _local_locks: set[str] = set()
+_FEATURED_MAX_ITEMS = 10
 
 
 def _elapsed_ms(start: float) -> float:
@@ -194,6 +200,209 @@ def _get_human_agent_available() -> bool:
     except Exception as exc:
         logger.exception("Failed to resolve human agent availability")
         raise RuntimeError("Failed to resolve human agent availability") from exc
+    finally:
+        db.close()
+
+
+def _format_money(value: float) -> str:
+    return f"${value:,.0f}"
+
+
+def _parse_featured_section(config: dict[str, Any] | None) -> dict[str, Any]:
+    data = config or {}
+    return {
+        "enabled": bool(data.get("enabled", False)),
+        "title": str(data.get("title") or "").strip(),
+        "mode": "automatic" if data.get("mode") == "automatic" else "manual",
+        "product_ids": [str(product_id) for product_id in data.get("product_ids", [])],
+    }
+
+
+def _load_products_by_ids(db, product_ids: list[str]) -> list[Product]:
+    if not product_ids:
+        return []
+    rows = db.query(Product).filter(Product.id.in_(product_ids)).all()
+    by_id = {str(product.id): product for product in rows}
+    return [by_id[product_id] for product_id in product_ids if product_id in by_id]
+
+
+def _build_featured_products_text(title: str, products: list[Product]) -> str:
+    if not products:
+        return _build_empty_featured_text(
+            title=title,
+            body="Aún no hay productos para mostrar en esta sección.",
+        )
+
+    lines = [title, ""]
+    for idx, product in enumerate(products, start=1):
+        price = float(product.price) if product.price else 0.0
+        lines.append(
+            f"{idx}. {product.name} - {_format_money(price)}"
+            + (f" | Stock: {product.stock}" if product.stock is not None else "")
+        )
+    lines.append("")
+    lines.append("Usa las categorías para ver el detalle de cada producto.")
+    return "\n".join(lines)
+
+
+def _build_empty_featured_text(title: str, body: str) -> str:
+    return (
+        f"{title}\n\n"
+        f"{body}\n"
+        "Si lo prefieres, revisa las categorías para ver otras opciones."
+    )
+
+
+def _build_empty_cart_text() -> str:
+    return (
+        "Tu carrito está vacío por ahora.\n\n"
+        "Cuando agregues productos, aparecerán aquí para que puedas continuar tu compra."
+    )
+
+
+def _get_promotions_text() -> str:
+    db = SessionLocal()
+    try:
+        cfg = BusinessConfigService(db).get_config()
+        section = _parse_featured_section(cfg.promotions_config)
+        title = section["title"] or "Promociones destacadas del momento:"
+        if not section["enabled"]:
+            return _build_empty_featured_text(
+                title,
+                "Aún no hay promociones publicadas.",
+            )
+
+        products = _load_products_by_ids(db, section["product_ids"])
+        if not products:
+            product_svc = ProductService(db)
+            products = product_svc.list_products(
+                available_only=True, skip=0, limit=_FEATURED_MAX_ITEMS
+            )
+            products = sorted(
+                products,
+                key=lambda product: (
+                    float(product.price) if product.price is not None else 0.0,
+                    -int(product.stock or 0),
+                    product.name,
+                ),
+            )
+        else:
+            products = [p for p in products if p.is_available]
+
+        return _build_featured_products_text(
+            title,
+            products[:_FEATURED_MAX_ITEMS],
+        )
+    except Exception as exc:
+        logger.exception("Failed to build promotions menu text")
+        raise RuntimeError("No pudimos cargar las promociones en este momento.") from exc
+    finally:
+        db.close()
+
+
+def _get_best_sellers_text() -> str:
+    db = SessionLocal()
+    try:
+        cfg = BusinessConfigService(db).get_config()
+        section = _parse_featured_section(cfg.best_sellers_config)
+        title = section["title"] or "Más vendidos del momento:"
+        if not section["enabled"]:
+            return _build_empty_featured_text(
+                title,
+                "Todavía no hay más vendidos para mostrar.",
+            )
+
+        if section["mode"] == "manual" and section["product_ids"]:
+            products = _load_products_by_ids(db, section["product_ids"])
+            products = [p for p in products if p.is_available]
+            return _build_featured_products_text(title, products[:_FEATURED_MAX_ITEMS])
+
+        rows = (
+            db.query(
+                Product.name.label("name"),
+                Product.price.label("price"),
+                func.sum(OrderItem.quantity).label("units_sold"),
+            )
+            .join(OrderItem, OrderItem.product_id == Product.id)
+            .join(Order, Order.id == OrderItem.order_id)
+            .filter(Order.status != "cancelled")
+            .group_by(Product.id, Product.name, Product.price)
+            .order_by(func.sum(OrderItem.quantity).desc(), Product.name.asc())
+            .limit(_FEATURED_MAX_ITEMS)
+            .all()
+        )
+        if not rows:
+            products = _load_products_by_ids(db, section["product_ids"])
+            products = [p for p in products if p.is_available]
+            if products:
+                return _build_featured_products_text(
+                    title, products[:_FEATURED_MAX_ITEMS]
+                )
+            return _build_empty_featured_text(
+                title,
+                "Todavía no hay ventas suficientes para mostrar esta sección.",
+            )
+
+        lines = [title, ""]
+        for idx, row in enumerate(rows, start=1):
+            price = float(row.price) if row.price is not None else 0.0
+            lines.append(
+                f"{idx}. {row.name} - {_format_money(price)} | Vendidos: {int(row.units_sold or 0)}"
+            )
+        return "\n".join(lines)
+    except Exception as exc:
+        logger.exception("Failed to build best sellers menu text")
+        raise RuntimeError("No pudimos cargar los más vendidos en este momento.") from exc
+    finally:
+        db.close()
+
+
+def _get_favorites_text() -> str:
+    db = SessionLocal()
+    try:
+        cfg = BusinessConfigService(db).get_config()
+        section = _parse_featured_section(cfg.favorites_config)
+        title = section["title"] or "Productos favoritos:"
+        if not section["enabled"]:
+            return _build_empty_featured_text(
+                title,
+                "Aún no hay productos favoritos publicados.",
+            )
+
+        products = _load_products_by_ids(db, section["product_ids"])
+        products = [p for p in products if p.is_available]
+        return _build_featured_products_text(title, products[:_FEATURED_MAX_ITEMS])
+    except Exception as exc:
+        logger.exception("Failed to build favorites menu text")
+        raise RuntimeError("No pudimos cargar los favoritos en este momento.") from exc
+    finally:
+        db.close()
+
+
+def _get_cart_text(user_id: str) -> str:
+    db = SessionLocal()
+    try:
+        user = UserService(db).get_or_create(external_id=user_id, platform="telegram")
+        cart = CartService(db).get_or_create_cart(user.id)
+        if not cart.items:
+            return _build_empty_cart_text()
+
+        cart_data = cart.to_dict()
+        lines = ["Tu carrito actual:", ""]
+        total = 0.0
+        for idx, item in enumerate(cart_data["items"], start=1):
+            item_total = float(item["product_price"]) * int(item["quantity"])
+            total += item_total
+            lines.append(
+                f"{idx}. {item['product_name']} x{item['quantity']} - {_format_money(item_total)}"
+            )
+        lines.append("")
+        lines.append(f"Total estimado: {_format_money(total)}")
+        lines.append("Si deseas continuar, vuelve a categorías para agregar más productos.")
+        return "\n".join(lines)
+    except Exception as exc:
+        logger.exception("Failed to build cart summary")
+        raise RuntimeError("No pudimos cargar tu carrito en este momento.") from exc
     finally:
         db.close()
 
@@ -529,12 +738,88 @@ async def _process_telegram_update_core(
                 db.close()
             return
 
+        elif callback_data == "menu:promociones":
+            try:
+                response_text = _get_promotions_text()
+            except Exception:
+                response_text = (
+                    "Promociones destacadas del momento:\n\n"
+                    "No fue posible cargar las promociones en este instante."
+                )
+            await send_menu_message(
+                bot_token=token,
+                chat_id=chat_id,
+                text=response_text,
+                reply_markup=build_main_menu(False),
+                fsm=fsm,
+                trace_id=trace_id,
+                user_id=user_id,
+            )
+            return
+
+        elif callback_data == "menu:mas_vendidos":
+            try:
+                response_text = _get_best_sellers_text()
+            except Exception:
+                response_text = (
+                    "Más vendidos del momento:\n\n"
+                    "No fue posible cargar los productos más vendidos en este instante."
+                )
+            await send_menu_message(
+                bot_token=token,
+                chat_id=chat_id,
+                text=response_text,
+                reply_markup=build_main_menu(False),
+                fsm=fsm,
+                trace_id=trace_id,
+                user_id=user_id,
+            )
+            return
+
+        elif callback_data == "menu:favoritos":
+            try:
+                response_text = _get_favorites_text()
+            except Exception:
+                response_text = (
+                    "Productos favoritos:\n\n"
+                    "No fue posible cargar los productos favoritos en este instante."
+                )
+            await send_menu_message(
+                bot_token=token,
+                chat_id=chat_id,
+                text=response_text,
+                reply_markup=build_main_menu(False),
+                fsm=fsm,
+                trace_id=trace_id,
+                user_id=user_id,
+            )
+            return
+
+        elif callback_data == "menu:carrito":
+            try:
+                response_text = _get_cart_text(user_id)
+            except Exception:
+                response_text = (
+                    "Tu carrito actual:\n\n"
+                    "No fue posible cargar el contenido del carrito en este instante."
+                )
+            await send_menu_message(
+                bot_token=token,
+                chat_id=chat_id,
+                text=response_text,
+                reply_markup=build_main_menu(False),
+                fsm=fsm,
+                trace_id=trace_id,
+                user_id=user_id,
+            )
+            return
+
         elif callback_data == "menu:back_to_main":
             await send_menu_message(
                 bot_token=token,
                 chat_id=chat_id,
                 text="¿En qué puedo ayudarte hoy?",
-                reply_markup=build_main_menu(_get_human_agent_available()),
+                reply_markup=build_main_menu(False),
                 fsm=fsm,
                 trace_id=trace_id,
                 user_id=user_id,
@@ -562,7 +847,7 @@ async def _process_telegram_update_core(
             bot_token=token,
             chat_id=chat_id,
             text=response_text,
-            reply_markup=build_main_menu(_get_human_agent_available())
+            reply_markup=build_main_menu(False)
             if new_state == FSMState.IDLE
             else None,
             fsm=fsm,
@@ -605,7 +890,7 @@ async def _process_telegram_update_core(
                 bot_token=token,
                 chat_id=chat_id,
                 text=welcome_text,
-                reply_markup=build_main_menu(_get_human_agent_available()),
+                reply_markup=build_main_menu(False),
                 fsm=fsm,
                 trace_id=trace_id,
                 user_id=user_id,
@@ -627,7 +912,7 @@ async def _process_telegram_update_core(
                 bot_token=token,
                 chat_id=chat_id,
                 text="Sesión conversacional reiniciada y limpia. Tu carro de compra sigue conservado intacto. ¿En qué puedo ayudarte hoy?",
-                reply_markup=build_main_menu(_get_human_agent_available()),
+                reply_markup=build_main_menu(False),
                 fsm=fsm,
                 trace_id=trace_id,
                 user_id=user_id,
@@ -687,7 +972,7 @@ async def _process_telegram_update_core(
         bot_token=token,
         chat_id=chat_id,
         text=response_text,
-        reply_markup=build_main_menu(_get_human_agent_available())
+        reply_markup=build_main_menu(False)
         if current_state == FSMState.IDLE
         else None,
         fsm=fsm,
