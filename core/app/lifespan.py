@@ -42,6 +42,13 @@ def _seed_business_config(db: Session) -> None:
     logger.info("Business configuration verified/seeded")
 
 
+def _ensure_postgres_extensions(conn: object) -> None:
+    """Instala extensiones requeridas antes de materializar metadata con tipos custom."""
+    conn.execute(text("CREATE EXTENSION IF NOT EXISTS unaccent;"))
+    conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
+    conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+
+
 def _run_migrations(conn: object) -> None:
     """Aplica migraciones DDL en caliente sobre la base de datos."""
     # Seed default 'General' category first
@@ -199,7 +206,7 @@ def _run_migrations(conn: object) -> None:
         )
 
     # FTS and fuzzy search extensions
-    conn.execute(text("CREATE EXTENSION IF NOT EXISTS unaccent;"))
+    _ensure_postgres_extensions(conn)
     conn.execute(
         text("""
         CREATE OR REPLACE FUNCTION immutable_unaccent(text)
@@ -207,8 +214,6 @@ def _run_migrations(conn: object) -> None:
         AS $$ SELECT public.unaccent('public.unaccent', $1) $$;
     """)
     )
-    conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
-    conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
 
     # Check and add embedding column on knowledge_base
     check_emb = conn.execute(
@@ -307,12 +312,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     redis_client = None
 
-    # 1. Base de datos — crea tablas según metadata registrada
-    Base.metadata.create_all(bind=_sync_engine)
-    logger.info("DB tables created/verified")
-
-    # Migraciones DDL en caliente
     try:
+        with _sync_engine.begin() as conn:
+            _ensure_postgres_extensions(conn)
+        # 1. Base de datos — crea tablas según metadata registrada
+        Base.metadata.create_all(bind=_sync_engine)
+        logger.info("DB tables created/verified")
+
+        # Migraciones DDL en caliente
         with _sync_engine.begin() as conn:
             _run_migrations(conn)
     except Exception as e:

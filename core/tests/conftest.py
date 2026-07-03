@@ -35,7 +35,11 @@ def pytest_collection_modifyitems(
 
 @pytest.fixture(scope="session", autouse=True)
 def initialize_test_database() -> None:
-    from app.lifespan import _run_migrations, _seed_business_config
+    from app.lifespan import (
+        _ensure_postgres_extensions,
+        _run_migrations,
+        _seed_business_config,
+    )
     from config.database import Base, SessionLocal, _sync_engine
     from config.settings import settings
 
@@ -56,6 +60,9 @@ def initialize_test_database() -> None:
     from models.category import Category  # noqa: F401
 
     settings.openrouter_api_key = "dummy_key"
+
+    with _sync_engine.begin() as conn:
+        _ensure_postgres_extensions(conn)
 
     Base.metadata.create_all(bind=_sync_engine)
 
