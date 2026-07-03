@@ -95,9 +95,7 @@ class BusinessConfigService:
         normalized["product_ids"] = [str(product_id) for product_id in product_ids]
         normalized["enabled"] = bool(normalized.get("enabled", False))
         normalized["mode"] = (
-            "automatic"
-            if normalized.get("mode") == "automatic"
-            else "manual"
+            "automatic" if normalized.get("mode") == "automatic" else "manual"
         )
         normalized["title"] = str(normalized.get("title", "")).strip()
         return normalized

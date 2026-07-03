@@ -295,7 +295,9 @@ def _get_promotions_text() -> str:
         )
     except Exception as exc:
         logger.exception("Failed to build promotions menu text")
-        raise RuntimeError("No pudimos cargar las promociones en este momento.") from exc
+        raise RuntimeError(
+            "No pudimos cargar las promociones en este momento."
+        ) from exc
     finally:
         db.close()
 
@@ -352,7 +354,9 @@ def _get_best_sellers_text() -> str:
         return "\n".join(lines)
     except Exception as exc:
         logger.exception("Failed to build best sellers menu text")
-        raise RuntimeError("No pudimos cargar los más vendidos en este momento.") from exc
+        raise RuntimeError(
+            "No pudimos cargar los más vendidos en este momento."
+        ) from exc
     finally:
         db.close()
 
@@ -398,7 +402,9 @@ def _get_cart_text(user_id: str) -> str:
             )
         lines.append("")
         lines.append(f"Total estimado: {_format_money(total)}")
-        lines.append("Si deseas continuar, vuelve a categorías para agregar más productos.")
+        lines.append(
+            "Si deseas continuar, vuelve a categorías para agregar más productos."
+        )
         return "\n".join(lines)
     except Exception as exc:
         logger.exception("Failed to build cart summary")
@@ -847,9 +853,7 @@ async def _process_telegram_update_core(
             bot_token=token,
             chat_id=chat_id,
             text=response_text,
-            reply_markup=build_main_menu(False)
-            if new_state == FSMState.IDLE
-            else None,
+            reply_markup=build_main_menu(False) if new_state == FSMState.IDLE else None,
             fsm=fsm,
             trace_id=trace_id,
             user_id=user_id,
@@ -972,9 +976,7 @@ async def _process_telegram_update_core(
         bot_token=token,
         chat_id=chat_id,
         text=response_text,
-        reply_markup=build_main_menu(False)
-        if current_state == FSMState.IDLE
-        else None,
+        reply_markup=build_main_menu(False) if current_state == FSMState.IDLE else None,
         fsm=fsm,
         trace_id=trace_id,
         user_id=user_id,

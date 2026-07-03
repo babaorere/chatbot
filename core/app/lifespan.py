@@ -147,7 +147,9 @@ def _run_migrations(conn: object) -> None:
                 "ALTER TABLE business_config ADD COLUMN estimated_attention_minutes INTEGER NOT NULL DEFAULT 30;"
             )
         )
-        logger.info("Added 'estimated_attention_minutes' column to business_config table")
+        logger.info(
+            "Added 'estimated_attention_minutes' column to business_config table"
+        )
 
     check_confirmed_at = conn.execute(
         text("""
@@ -156,9 +158,7 @@ def _run_migrations(conn: object) -> None:
     """)
     ).first()
     if not check_confirmed_at:
-        conn.execute(
-            text("ALTER TABLE orders ADD COLUMN confirmed_at TIMESTAMP NULL;")
-        )
+        conn.execute(text("ALTER TABLE orders ADD COLUMN confirmed_at TIMESTAMP NULL;"))
         logger.info("Added 'confirmed_at' column to orders table")
 
     # Add is_bot_paused column if missing

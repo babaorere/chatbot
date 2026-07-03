@@ -23,7 +23,9 @@ class AlertService:
         admins = db.query(SystemAdmin).all()
 
         bot_token = settings.telegram_bot_token
-        alert_text = f"🚨 *ALERTA CRÍTICA: {title}*\n\n{details}\n\n🏷️ *Tipo:* `{alert_type}`"
+        alert_text = (
+            f"🚨 *ALERTA CRÍTICA: {title}*\n\n{details}\n\n🏷️ *Tipo:* `{alert_type}`"
+        )
         tasks = []
         notification_targets = 0
 

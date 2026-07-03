@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 def transactional(func: Callable[..., Any]) -> Callable[..., Any]:
     """Envuelve una función para hacer commit o rollback automático si encuentra una sesión SQLAlchemy."""
+
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         db: Session | None = None
         for arg in args:

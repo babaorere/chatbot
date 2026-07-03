@@ -150,7 +150,9 @@ def update_system_admin(
                 raise HTTPException(404, "System admin not found")
             admin.name = data.get("name", admin.name)
             admin.email = data.get("email", admin.email)
-            admin.telegram_chat_id = data.get("telegram_chat_id", admin.telegram_chat_id)
+            admin.telegram_chat_id = data.get(
+                "telegram_chat_id", admin.telegram_chat_id
+            )
             admin.whatsapp_phone = data.get("whatsapp_phone", admin.whatsapp_phone)
             admin.notify_email = data.get("notify_email", admin.notify_email)
             admin.notify_telegram = data.get("notify_telegram", admin.notify_telegram)

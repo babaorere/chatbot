@@ -222,7 +222,9 @@ def _find_presentation_collisions(
 
     for product in products:
         family = _normalize_family(
-            product.get("presentation_family") or product.get("family") or product.get("name")
+            product.get("presentation_family")
+            or product.get("family")
+            or product.get("name")
         )
         presentation = _normalize_presentation(product.get("format"))
         if not presentation:
@@ -271,8 +273,12 @@ def _raise_for_similar_presentations(products: Iterable[dict[str, object]]) -> N
 
 
 def _reset_existing_general_catalog(db) -> None:
-    db.execute(text("DELETE FROM cart_items WHERE product_id IN (SELECT id FROM products);"))
-    db.execute(text("DELETE FROM order_items WHERE product_id IN (SELECT id FROM products);"))
+    db.execute(
+        text("DELETE FROM cart_items WHERE product_id IN (SELECT id FROM products);")
+    )
+    db.execute(
+        text("DELETE FROM order_items WHERE product_id IN (SELECT id FROM products);")
+    )
     db.execute(text("DELETE FROM products;"))
 
 
@@ -294,7 +300,9 @@ def seed_general(reset_existing_products: bool = True) -> None:
             logger.info("Categoría 'General' ya existe.")
 
         if reset_existing_products:
-            logger.info("Limpiando catálogo existente para sembrar productos generales...")
+            logger.info(
+                "Limpiando catálogo existente para sembrar productos generales..."
+            )
             _reset_existing_general_catalog(db)
             db.flush()
 

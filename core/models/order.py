@@ -48,7 +48,9 @@ class Order(Base):
             "total_amount": float(self.total_amount) if self.total_amount else 0.0,
             "delivery_address": self.delivery_address,
             "payment_method": self.payment_method,
-            "confirmed_at": self.confirmed_at.isoformat() if self.confirmed_at else None,
+            "confirmed_at": self.confirmed_at.isoformat()
+            if self.confirmed_at
+            else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "items": [item.to_dict() for item in self.items],

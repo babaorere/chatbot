@@ -165,11 +165,7 @@ class OrderService:
 
     def get_attention_time_metrics(self) -> dict[str, int | None]:
         try:
-            orders = (
-                self.db.query(Order)
-                .filter(Order.confirmed_at.isnot(None))
-                .all()
-            )
+            orders = self.db.query(Order).filter(Order.confirmed_at.isnot(None)).all()
             today = datetime.now().date()
             durations: list[int] = []
             for order in orders:

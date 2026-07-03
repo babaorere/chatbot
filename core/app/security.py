@@ -37,6 +37,7 @@ async def get_admin_api_key(
         )
     return api_key
 
+
 security = HTTPBearer()
 
 

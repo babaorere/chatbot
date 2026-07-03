@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     @classmethod
     def load_docker_secrets(cls, data: dict) -> dict:
         """Carga secretos desde Docker Secrets (/run/secrets) si existen."""
+
         def get_secret(name: str) -> str | None:
             path = f"/run/secrets/{name}"
             if os.path.exists(path):
@@ -25,7 +26,9 @@ class Settings(BaseSettings):
                     with open(path, "r", encoding="utf-8") as f:
                         return f.read().strip()
                 except OSError as exc:
-                    raise ValueError(f"No se pudo leer el secreto Docker '{name}'.") from exc
+                    raise ValueError(
+                        f"No se pudo leer el secreto Docker '{name}'."
+                    ) from exc
             return None
 
         # Reemplazar secretos simples si existen en archivos de secretos
@@ -38,7 +41,11 @@ class Settings(BaseSettings):
         # Ajuste de base de datos
         db_pass = get_secret("db_password")
         if db_pass:
-            db_url = data.get("database_url") or os.environ.get("DATABASE_URL") or "postgresql://shared:shared_secret@127.0.0.1:5433/chatbot"
+            db_url = (
+                data.get("database_url")
+                or os.environ.get("DATABASE_URL")
+                or "postgresql://shared:shared_secret@127.0.0.1:5433/chatbot"
+            )
             if db_url and "@" in db_url and "://" in db_url:
                 try:
                     proto, rest = db_url.split("://", 1)

@@ -144,9 +144,7 @@ async def clear_telegram_reply_markup(
             return True
         raise RuntimeError(f"Telegram API returned failure: {resp.text}")
     except Exception as e:
-        logger.exception(
-            "Failed to clear Telegram reply markup for msg %s", message_id
-        )
+        logger.exception("Failed to clear Telegram reply markup for msg %s", message_id)
         raise RuntimeError(
             f"Failed to clear Telegram reply markup for msg {message_id}"
         ) from e
