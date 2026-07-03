@@ -12,11 +12,10 @@ async def test_alert_service_requires_recipients_or_fails():
     db_mock = MagicMock()
     db_mock.query.return_value.all.return_value = []
     # Mock SystemSettingRepository to return None for chat ids
-    with patch(
-        "services.alert_service.SystemSettingRepository"
-    ) as RepoMock, patch(
-        "services.alert_service.send_telegram_message"
-    ) as send_mock:
+    with (
+        patch("services.alert_service.SystemSettingRepository") as RepoMock,
+        patch("services.alert_service.send_telegram_message") as send_mock,
+    ):
         repo_instance = MagicMock()
         repo_instance.get_value.return_value = None
         RepoMock.return_value = repo_instance
@@ -33,29 +32,30 @@ async def test_alert_service_requires_recipients_or_fails():
 async def test_alert_service_sends_notification_to_all_configured_chat_ids():
     db_mock = MagicMock()
     db_mock.query.return_value.all.return_value = []
-    with patch(
-        "services.alert_service.SystemSettingRepository"
-    ) as RepoMock, patch(
-        "services.alert_service.send_telegram_message", new_callable=AsyncMock
-    ) as send_mock, patch(
-        "services.alert_service.settings"
-    ) as settings_mock:
-
+    with (
+        patch("services.alert_service.SystemSettingRepository") as RepoMock,
+        patch(
+            "services.alert_service.send_telegram_message", new_callable=AsyncMock
+        ) as send_mock,
+        patch("services.alert_service.settings") as settings_mock,
+    ):
         settings_mock.telegram_bot_token = "fake_bot_token"
         repo_instance = MagicMock()
         repo_instance.get_value.return_value = [11111, 22222]
         RepoMock.return_value = repo_instance
 
-        await AlertService.notify_critical_issue(
-            db_mock, "Test Title", "Test Details"
-        )
+        await AlertService.notify_critical_issue(db_mock, "Test Title", "Test Details")
 
         assert send_mock.call_count == 2
         send_mock.assert_any_call(
-            "fake_bot_token", 11111, "🚨 *ALERTA CRÍTICA: Test Title*\n\nTest Details\n\n🏷️ *Tipo:* `error`"
+            "fake_bot_token",
+            11111,
+            "🚨 *ALERTA CRÍTICA: Test Title*\n\nTest Details\n\n🏷️ *Tipo:* `error`",
         )
         send_mock.assert_any_call(
-            "fake_bot_token", 22222, "🚨 *ALERTA CRÍTICA: Test Title*\n\nTest Details\n\n🏷️ *Tipo:* `error`"
+            "fake_bot_token",
+            22222,
+            "🚨 *ALERTA CRÍTICA: Test Title*\n\nTest Details\n\n🏷️ *Tipo:* `error`",
         )
 
 
@@ -73,7 +73,7 @@ async def test_process_message_alerts_on_llm_latency_exceeded():
     # Mock user retrieval and DB execution to bypass RLS setup
     user_mock = MagicMock()
     user_mock.id = 1
-    
+
     # Mock RAG intent classification to skip RAG
     rag_result = MagicMock()
     rag_result.intent = "TRANSACTIONAL"
@@ -85,16 +85,16 @@ async def test_process_message_alerts_on_llm_latency_exceeded():
         session_id="session123",
     )
 
-    with patch.object(
-        ProcessMessageUseCase, "_get_or_create_user", return_value=user_mock
-    ), patch.object(
-        ProcessMessageUseCase, "_ensure_conversation"
-    ), patch(
-        "application.use_cases.process_message.RAGPolicyService"
-    ) as RAGPolicyMock, patch(
-        "time.perf_counter", side_effect=[0.0, 15.0]
+    with (
+        patch.object(
+            ProcessMessageUseCase, "_get_or_create_user", return_value=user_mock
+        ),
+        patch.object(ProcessMessageUseCase, "_ensure_conversation"),
+        patch(
+            "application.use_cases.process_message.RAGPolicyService"
+        ) as RAGPolicyMock,
+        patch("time.perf_counter", side_effect=[0.0, 15.0]),
     ):  # Simulated 15 seconds latency
-
         rag_policy_instance = MagicMock()
         rag_policy_instance.classify.return_value = rag_result
         RAGPolicyMock.return_value = rag_policy_instance
@@ -111,7 +111,9 @@ async def test_process_message_alerts_on_llm_latency_exceeded():
         assert dispatcher_mock.enqueue_job.call_args.args[0] == "job_check_llm_latency"
         assert dispatcher_mock.enqueue_job.call_args.kwargs["duration"] == 15.0
         assert dispatcher_mock.enqueue_job.call_args.kwargs["user_id"] == "user123"
-        assert dispatcher_mock.enqueue_job.call_args.kwargs["session_id"] == "session123"
+        assert (
+            dispatcher_mock.enqueue_job.call_args.kwargs["session_id"] == "session123"
+        )
 
 
 @pytest.mark.asyncio
@@ -127,7 +129,7 @@ async def test_process_message_alerts_on_llm_failure():
 
     user_mock = MagicMock()
     user_mock.id = 1
-    
+
     rag_result = MagicMock()
     rag_result.intent = "TRANSACTIONAL"
 
@@ -138,17 +140,19 @@ async def test_process_message_alerts_on_llm_failure():
         session_id="session123",
     )
 
-    with patch.object(
-        ProcessMessageUseCase, "_get_or_create_user", return_value=user_mock
-    ), patch.object(
-        ProcessMessageUseCase, "_ensure_conversation"
-    ), patch(
-        "application.use_cases.process_message.RAGPolicyService"
-    ) as RAGPolicyMock, patch(
-        "services.alert_service.AlertService.notify_critical_issue",
-        new_callable=AsyncMock,
-    ) as notify_mock:
-
+    with (
+        patch.object(
+            ProcessMessageUseCase, "_get_or_create_user", return_value=user_mock
+        ),
+        patch.object(ProcessMessageUseCase, "_ensure_conversation"),
+        patch(
+            "application.use_cases.process_message.RAGPolicyService"
+        ) as RAGPolicyMock,
+        patch(
+            "services.alert_service.AlertService.notify_critical_issue",
+            new_callable=AsyncMock,
+        ) as notify_mock,
+    ):
         rag_policy_instance = MagicMock()
         rag_policy_instance.classify.return_value = rag_result
         RAGPolicyMock.return_value = rag_policy_instance
@@ -166,8 +170,7 @@ async def test_process_message_alerts_on_llm_failure():
         notify_mock.assert_not_called()
         dispatcher_mock.enqueue_job.assert_called_once()
         assert (
-            dispatcher_mock.enqueue_job.call_args.args[0]
-            == "job_notify_critical_issue"
+            dispatcher_mock.enqueue_job.call_args.args[0] == "job_notify_critical_issue"
         )
         assert (
             dispatcher_mock.enqueue_job.call_args.kwargs["title"]
@@ -198,13 +201,15 @@ async def test_process_message_raises_when_llm_failure_alert_enqueue_fails():
         session_id="session123",
     )
 
-    with patch.object(
-        ProcessMessageUseCase, "_get_or_create_user", return_value=user_mock
-    ), patch.object(
-        ProcessMessageUseCase, "_ensure_conversation"
-    ), patch(
-        "application.use_cases.process_message.RAGPolicyService"
-    ) as RAGPolicyMock:
+    with (
+        patch.object(
+            ProcessMessageUseCase, "_get_or_create_user", return_value=user_mock
+        ),
+        patch.object(ProcessMessageUseCase, "_ensure_conversation"),
+        patch(
+            "application.use_cases.process_message.RAGPolicyService"
+        ) as RAGPolicyMock,
+    ):
         rag_policy_instance = MagicMock()
         rag_policy_instance.classify.return_value = rag_result
         RAGPolicyMock.return_value = rag_policy_instance
@@ -242,14 +247,15 @@ async def test_process_message_alerts_on_llm_latency_requires_arq_queue():
         session_id="session123",
     )
 
-    with patch.object(
-        ProcessMessageUseCase, "_get_or_create_user", return_value=user_mock
-    ), patch.object(
-        ProcessMessageUseCase, "_ensure_conversation"
-    ), patch(
-        "application.use_cases.process_message.RAGPolicyService"
-    ) as RAGPolicyMock, patch(
-        "time.perf_counter", side_effect=[0.0, 15.0]
+    with (
+        patch.object(
+            ProcessMessageUseCase, "_get_or_create_user", return_value=user_mock
+        ),
+        patch.object(ProcessMessageUseCase, "_ensure_conversation"),
+        patch(
+            "application.use_cases.process_message.RAGPolicyService"
+        ) as RAGPolicyMock,
+        patch("time.perf_counter", side_effect=[0.0, 15.0]),
     ):
         rag_policy_instance = MagicMock()
         rag_policy_instance.classify.return_value = rag_result

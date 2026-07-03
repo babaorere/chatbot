@@ -13,14 +13,18 @@ def setup_mocks():
     yield
     app.dependency_overrides.pop(get_process_message_uc, None)
 
+
 @pytest.mark.asyncio
 async def test_webhook_fails_when_redis_lock_cannot_be_acquired():
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         with (
-            patch("controllers.telegram_controller.get_redis_client") as redis_client_mock,
             patch(
-                "controllers.telegram_controller.settings.telegram_bot_token", "fake_token"
+                "controllers.telegram_controller.get_redis_client"
+            ) as redis_client_mock,
+            patch(
+                "controllers.telegram_controller.settings.telegram_bot_token",
+                "fake_token",
             ),
         ):
             redis_instance = MagicMock()
@@ -45,7 +49,9 @@ async def test_webhook_fails_when_redis_lock_cannot_be_acquired():
 async def test_webhook_rejects_invalid_json_payload():
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        with patch("controllers.telegram_controller.settings.telegram_bot_token", "fake_token"):
+        with patch(
+            "controllers.telegram_controller.settings.telegram_bot_token", "fake_token"
+        ):
             response = await client.post(
                 "/telegram/webhook/fake_token",
                 content="{invalid-json",
@@ -59,7 +65,9 @@ async def test_webhook_rejects_invalid_json_payload():
 async def test_webhook_rejects_payload_missing_user_or_chat_ids():
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        with patch("controllers.telegram_controller.settings.telegram_bot_token", "fake_token"):
+        with patch(
+            "controllers.telegram_controller.settings.telegram_bot_token", "fake_token"
+        ):
             response = await client.post(
                 "/telegram/webhook/fake_token",
                 json={
@@ -111,7 +119,9 @@ async def test_webhook_rejects_expired_callback_via_message_id():
         }
 
         transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://test"
+        ) as client:
             response = await client.post("/telegram/webhook/fake_token", json=payload)
         assert response.status_code == 200
 
@@ -122,9 +132,14 @@ async def test_webhook_rejects_expired_callback_via_message_id():
             text="Este menú ha expirado o ya no está activo.",
         )
         dispatcher_instance.enqueue_job.assert_awaited_once()
-        assert dispatcher_instance.enqueue_job.call_args.args[0] == "job_clear_reply_markup"
+        assert (
+            dispatcher_instance.enqueue_job.call_args.args[0]
+            == "job_clear_reply_markup"
+        )
         assert dispatcher_instance.enqueue_job.call_args.kwargs["message_id"] == 8888
-        assert dispatcher_instance.enqueue_job.call_args.kwargs["chat_id"] == "user_capa1"
+        assert (
+            dispatcher_instance.enqueue_job.call_args.kwargs["chat_id"] == "user_capa1"
+        )
 
 
 @pytest.mark.asyncio
@@ -165,7 +180,9 @@ async def test_webhook_rejects_expired_callback_via_version():
         }
 
         transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://test"
+        ) as client:
             response = await client.post("/telegram/webhook/fake_token", json=payload)
         assert response.status_code == 200
 
@@ -175,6 +192,11 @@ async def test_webhook_rejects_expired_callback_via_version():
             text="Este menú ha expirado o ya no está activo.",
         )
         dispatcher_instance.enqueue_job.assert_awaited_once()
-        assert dispatcher_instance.enqueue_job.call_args.args[0] == "job_clear_reply_markup"
+        assert (
+            dispatcher_instance.enqueue_job.call_args.args[0]
+            == "job_clear_reply_markup"
+        )
         assert dispatcher_instance.enqueue_job.call_args.kwargs["message_id"] == 8888
-        assert dispatcher_instance.enqueue_job.call_args.kwargs["chat_id"] == "user_capa2"
+        assert (
+            dispatcher_instance.enqueue_job.call_args.kwargs["chat_id"] == "user_capa2"
+        )

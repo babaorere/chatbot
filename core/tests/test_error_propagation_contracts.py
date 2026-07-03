@@ -23,9 +23,10 @@ async def test_contactar_humano_raises_when_pause_persistence_fails() -> None:
     db_mock = MagicMock()
 
     try:
-        with patch("agents.root_agent.SessionLocal", return_value=db_mock), patch(
-            "agents.root_agent.ConversationService"
-        ) as svc_mock:
+        with (
+            patch("agents.root_agent.SessionLocal", return_value=db_mock),
+            patch("agents.root_agent.ConversationService") as svc_mock,
+        ):
             svc_instance = MagicMock()
             svc_instance.get_by_session_id.side_effect = RuntimeError("db down")
             svc_mock.return_value = svc_instance
@@ -96,14 +97,17 @@ async def test_process_message_raises_when_conversation_creation_fails() -> None
         job_dispatcher=dispatcher_mock,
     )
 
-    with patch.object(
-        ProcessMessageUseCase,
-        "_get_or_create_user",
-        return_value=user_mock,
-    ), patch.object(
-        ProcessMessageUseCase,
-        "_ensure_conversation",
-        side_effect=RuntimeError("conversation broken"),
+    with (
+        patch.object(
+            ProcessMessageUseCase,
+            "_get_or_create_user",
+            return_value=user_mock,
+        ),
+        patch.object(
+            ProcessMessageUseCase,
+            "_ensure_conversation",
+            side_effect=RuntimeError("conversation broken"),
+        ),
     ):
         with pytest.raises(RuntimeError, match="conversation broken"):
             await use_case.execute(
@@ -118,15 +122,21 @@ async def test_process_message_raises_when_conversation_creation_fails() -> None
     dispatcher_mock.enqueue_job.assert_not_awaited()
 
 
-def test_settings_raises_on_unreadable_docker_secret(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("os.path.exists", lambda path: path == "/run/secrets/jwt_secret")
+def test_settings_raises_on_unreadable_docker_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "os.path.exists", lambda path: path == "/run/secrets/jwt_secret"
+    )
 
     def _raising_open(*args, **kwargs):
         raise OSError("permission denied")
 
     monkeypatch.setattr(builtins, "open", _raising_open)
 
-    with pytest.raises(ValueError, match="No se pudo leer el secreto Docker 'jwt_secret'"):
+    with pytest.raises(
+        ValueError, match="No se pudo leer el secreto Docker 'jwt_secret'"
+    ):
         Settings.load_docker_secrets({})
 
 
@@ -134,8 +144,11 @@ def test_settings_raises_on_unreadable_docker_secret(monkeypatch: pytest.MonkeyP
 async def test_lifespan_aborts_when_migrations_fail() -> None:
     app = FastAPI()
 
-    with patch("app.lifespan.Base.metadata.create_all"), patch(
-        "app.lifespan._run_migrations", side_effect=RuntimeError("migration failed")
+    with (
+        patch("app.lifespan.Base.metadata.create_all"),
+        patch(
+            "app.lifespan._run_migrations", side_effect=RuntimeError("migration failed")
+        ),
     ):
         with pytest.raises(RuntimeError, match="migration failed"):
             async with lifespan(app):
@@ -165,8 +178,9 @@ async def test_lifespan_seeds_general_catalog_only_in_development() -> None:
     ):
         repo_mock.return_value.get_config.return_value = config_mock
         seed_db.commit.return_value = None
-        with patch("app.lifespan.settings.app_env", "development"), patch(
-            "app.lifespan.settings.session_backend", "memory"
+        with (
+            patch("app.lifespan.settings.app_env", "development"),
+            patch("app.lifespan.settings.session_backend", "memory"),
         ):
             async with lifespan(app):
                 pass
@@ -191,17 +205,21 @@ async def test_clear_providers_raises_when_http_client_close_fails() -> None:
 def test_get_human_agent_available_raises_when_config_lookup_fails() -> None:
     db_mock = MagicMock()
 
-    with patch(
-        "controllers.telegram_controller._human_agent_cache",
-        {"value": True, "expires_at": 0},
-    ), patch("controllers.telegram_controller.SessionLocal", return_value=db_mock), patch(
-        "controllers.telegram_controller.BusinessConfigService"
-    ) as svc_mock:
+    with (
+        patch(
+            "controllers.telegram_controller._human_agent_cache",
+            {"value": True, "expires_at": 0},
+        ),
+        patch("controllers.telegram_controller.SessionLocal", return_value=db_mock),
+        patch("controllers.telegram_controller.BusinessConfigService") as svc_mock,
+    ):
         svc_instance = MagicMock()
         svc_instance.get_config.side_effect = RuntimeError("db down")
         svc_mock.return_value = svc_instance
 
-        with pytest.raises(RuntimeError, match="Failed to resolve human agent availability"):
+        with pytest.raises(
+            RuntimeError, match="Failed to resolve human agent availability"
+        ):
             _get_human_agent_available()
 
 

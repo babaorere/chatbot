@@ -123,7 +123,9 @@ async def test_telegram_fsm_invalid_context_type_raises_on_transition() -> None:
 
 
 @pytest.mark.asyncio
-async def test_telegram_fsm_invalid_context_type_raises_on_persist_menu_metadata() -> None:
+async def test_telegram_fsm_invalid_context_type_raises_on_persist_menu_metadata() -> (
+    None
+):
     store = FSMStateStore()
     store._store["user-bad-context"] = {
         "state": FSMState.IDLE.value,

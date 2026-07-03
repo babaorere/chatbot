@@ -33,7 +33,8 @@ async def test_telegram_hybrid_menu_flow(mock_use_case):
         with (
             patch("controllers.telegram_controller.get_fsm_store", return_value=store),
             patch(
-                "controllers.telegram_controller.settings.telegram_bot_token", "fake_token"
+                "controllers.telegram_controller.settings.telegram_bot_token",
+                "fake_token",
             ),
             patch(
                 "controllers.telegram_controller.send_telegram_message",
@@ -103,7 +104,9 @@ async def test_telegram_hybrid_menu_flow(mock_use_case):
                 "services.category_service.CategoryService.list_categories",
                 return_value=[mock_cat],
             ):
-                resp2 = await client.post("/telegram/webhook/fake_token", json=payload_option_1)
+                resp2 = await client.post(
+                    "/telegram/webhook/fake_token", json=payload_option_1
+                )
                 assert resp2.status_code == 200
 
             # Debe haber enviado el listado de categorías a Telegram (con versión incrementada a 3)
@@ -137,7 +140,9 @@ async def test_telegram_hybrid_menu_flow(mock_use_case):
                     "text": "2",
                 }
             }
-            resp3 = await client.post("/telegram/webhook/fake_token", json=payload_option_2)
+            resp3 = await client.post(
+                "/telegram/webhook/fake_token", json=payload_option_2
+            )
             assert resp3.status_code == 200
 
             # Debe haber vuelto a enviar el menú principal (con versión incrementada a 4)
@@ -161,8 +166,14 @@ async def test_telegram_hybrid_menu_flow(mock_use_case):
                         },
                     ],
                     [
-                        {"text": "3. 🔥 Más vendidos", "callback_data": "menu:mas_vendidos#4"},
-                        {"text": "4. 🛒 Ver carrito", "callback_data": "menu:carrito#4"},
+                        {
+                            "text": "3. 🔥 Más vendidos",
+                            "callback_data": "menu:mas_vendidos#4",
+                        },
+                        {
+                            "text": "4. 🛒 Ver carrito",
+                            "callback_data": "menu:carrito#4",
+                        },
                     ],
                 ]
             }
@@ -180,7 +191,8 @@ async def test_telegram_hybrid_menu_ignored_if_out_of_range(mock_use_case):
         with (
             patch("controllers.telegram_controller.get_fsm_store", return_value=store),
             patch(
-                "controllers.telegram_controller.settings.telegram_bot_token", "fake_token"
+                "controllers.telegram_controller.settings.telegram_bot_token",
+                "fake_token",
             ),
             patch(
                 "controllers.telegram_controller.send_telegram_message",

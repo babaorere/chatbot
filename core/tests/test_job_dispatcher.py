@@ -10,7 +10,9 @@ from services.job_dispatcher import JobDispatcher
 
 
 @pytest.mark.asyncio
-async def test_job_dispatcher_creates_job_when_arq_enabled(monkeypatch: pytest.MonkeyPatch):
+async def test_job_dispatcher_creates_job_when_arq_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+):
     dispatcher = JobDispatcher()
     previous = settings.arq_enabled
     settings.arq_enabled = True
@@ -64,7 +66,9 @@ async def test_job_dispatcher_raises_when_arq_disabled() -> None:
 
 
 @pytest.mark.asyncio
-async def test_job_dispatcher_propagates_pool_creation_failure(monkeypatch: pytest.MonkeyPatch):
+async def test_job_dispatcher_propagates_pool_creation_failure(
+    monkeypatch: pytest.MonkeyPatch,
+):
     dispatcher = JobDispatcher()
     previous = settings.arq_enabled
     settings.arq_enabled = True

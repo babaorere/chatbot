@@ -215,6 +215,14 @@ _agent_cache: Any | None = None
 _runner_cache: Any | None = None
 
 
+def reset_agent_cache() -> None:
+    """Limpia la caché del Agente y Runner para forzar su recreación en caliente."""
+    global _agent_cache, _runner_cache
+    _agent_cache = None
+    _runner_cache = None
+    logger.info("Agent and Runner cache cleared/reset")
+
+
 def _get_agent() -> Any:
     """Crea o retorna el agente ADK cacheado (singleton por proceso).
 
@@ -228,30 +236,62 @@ def _get_agent() -> Any:
     if _agent_cache is None:
         from google.adk.models.lite_llm import LiteLlm
         from google.adk import Agent
+        from repositories.system_setting_repository import SystemSettingRepository
 
-        model_name = settings.model_name or GADK_MODEL
+        # Consultar la configuración del agente en la base de datos
+        db = SessionLocal()
+        try:
+            repo = SystemSettingRepository(db)
+            db_model_name = repo.get_value("model_name")
+            db_fb1 = repo.get_value("fallback_model_1")
+            db_fb2 = repo.get_value("fallback_model_2")
+            db_api_key = repo.get_value("openrouter_api_key")
+            db_instruction = repo.get_value("agent_instruction")
+        except Exception as e:
+            logger.warning(
+                "Error reading agent settings from DB, using defaults: %s", e
+            )
+            db_model_name = None
+            db_fb1 = None
+            db_fb2 = None
+            db_api_key = None
+            db_instruction = None
+        finally:
+            db.close()
+
+        model_name = db_model_name or settings.model_name or GADK_MODEL
         if "deepseek" in model_name.lower():
-            api_key = settings.deepseek_api_key or os.getenv("DEEPSEEK_API_KEY", "")
+            api_key = (
+                db_api_key
+                or settings.deepseek_api_key
+                or os.getenv("DEEPSEEK_API_KEY", "")
+            )
             os.environ["DEEPSEEK_API_KEY"] = api_key
         else:
-            api_key = settings.openrouter_api_key or os.getenv("OPENROUTER_API_KEY", "")
+            api_key = (
+                db_api_key
+                or settings.openrouter_api_key
+                or os.getenv("OPENROUTER_API_KEY", "")
+            )
 
         fallbacks = []
-        if settings.fallback_model_1:
+        fb1_model = db_fb1 if db_fb1 is not None else settings.fallback_model_1
+        if fb1_model and fb1_model.lower() not in ("none", "ninguno"):
             fb1_key = api_key
-            if "groq" in settings.fallback_model_1.lower():
+            if "groq" in fb1_model.lower():
                 fb1_key = settings.groq_api_key or os.getenv("GROQ_API_KEY", "")
-            elif "deepseek" in settings.fallback_model_1.lower():
+            elif "deepseek" in fb1_model.lower():
                 fb1_key = settings.deepseek_api_key or os.getenv("DEEPSEEK_API_KEY", "")
-            fallbacks.append({"model": settings.fallback_model_1, "api_key": fb1_key})
+            fallbacks.append({"model": fb1_model, "api_key": fb1_key})
 
-        if settings.fallback_model_2:
+        fb2_model = db_fb2 if db_fb2 is not None else settings.fallback_model_2
+        if fb2_model and fb2_model.lower() not in ("none", "ninguno"):
             fb2_key = api_key
-            if "groq" in settings.fallback_model_2.lower():
+            if "groq" in fb2_model.lower():
                 fb2_key = settings.groq_api_key or os.getenv("GROQ_API_KEY", "")
-            elif "deepseek" in settings.fallback_model_2.lower():
+            elif "deepseek" in fb2_model.lower():
                 fb2_key = settings.deepseek_api_key or os.getenv("DEEPSEEK_API_KEY", "")
-            fallbacks.append({"model": settings.fallback_model_2, "api_key": fb2_key})
+            fallbacks.append({"model": fb2_model, "api_key": fb2_key})
 
         model_kwargs: dict[str, Any] = {
             "model": model_name,
@@ -263,11 +303,12 @@ def _get_agent() -> Any:
             model_kwargs["thinking"] = {"type": settings.deepseek_thinking}
 
         model_obj = LiteLlm(**model_kwargs)
+        instruction = db_instruction or GADK_INSTRUCTION
 
         _agent_cache = Agent(
             name=f"{GADK_APP_NAME}_{int(time.time())}",
             model=model_obj,
-            instruction=GADK_INSTRUCTION,
+            instruction=instruction,
             tools=cast("list[Any]", _CHATBOT_TOOLS),
         )
     return _agent_cache

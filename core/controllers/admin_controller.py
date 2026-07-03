@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.security import get_admin_api_key
 from config.database import get_db
+from config.settings import settings
 from models.user import User
 from models.conversation import Conversation
 from models.knowledge_base import KnowledgeBase
@@ -36,7 +37,23 @@ def get_all_settings(
     """Devuelve el conjunto completo de system settings administrables."""
     try:
         repo = SysSettingRepo(db)
-        return repo.get_all_settings()
+        db_settings = repo.get_all_settings()
+
+        # Inyectar defaults de agente si no están en base de datos
+        from agents.constants import GADK_MODEL, GADK_INSTRUCTION
+
+        if "model_name" not in db_settings:
+            db_settings["model_name"] = settings.model_name or GADK_MODEL
+        if "fallback_model_1" not in db_settings:
+            db_settings["fallback_model_1"] = settings.fallback_model_1
+        if "fallback_model_2" not in db_settings:
+            db_settings["fallback_model_2"] = settings.fallback_model_2
+        if "openrouter_api_key" not in db_settings:
+            db_settings["openrouter_api_key"] = settings.openrouter_api_key
+        if "agent_instruction" not in db_settings:
+            db_settings["agent_instruction"] = GADK_INSTRUCTION
+
+        return db_settings
     except Exception as e:
         logger.error("admin.get_all_settings failed: %s", e)
         raise HTTPException(500, "Failed to retrieve settings")
@@ -57,6 +74,19 @@ def update_setting(
                 value=data.get("value"),
                 description=data.get("description"),
             )
+
+        # Si es una setting del agente, resetear la caché en caliente
+        if key in [
+            "model_name",
+            "fallback_model_1",
+            "fallback_model_2",
+            "openrouter_api_key",
+            "agent_instruction",
+        ]:
+            from agents.root_agent import reset_agent_cache
+
+            reset_agent_cache()
+
         return {
             "key": setting.key,
             "value": setting.value,

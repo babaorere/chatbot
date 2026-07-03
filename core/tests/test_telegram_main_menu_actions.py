@@ -68,7 +68,9 @@ async def test_main_menu_promotions_and_cart_callbacks_render_content():
                     "data": "menu:promociones",
                 }
             }
-            response = await client.post("/telegram/webhook/fake_token", json=promotions_payload)
+            response = await client.post(
+                "/telegram/webhook/fake_token", json=promotions_payload
+            )
             assert response.status_code == 200
 
             cart_payload = {
@@ -83,7 +85,9 @@ async def test_main_menu_promotions_and_cart_callbacks_render_content():
                     "data": "menu:carrito",
                 }
             }
-            response = await client.post("/telegram/webhook/fake_token", json=cart_payload)
+            response = await client.post(
+                "/telegram/webhook/fake_token", json=cart_payload
+            )
             assert response.status_code == 200
 
     texts = [call.kwargs["text"] for call in mock_send.call_args_list]

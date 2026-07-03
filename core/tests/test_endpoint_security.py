@@ -94,14 +94,10 @@ async def test_get_current_user_from_jwt_invalid_signature_raises_401():
     payload = {"sub": "123", "exp": 9999999999}
 
     header_b64 = (
-        base64.urlsafe_b64encode(json.dumps(header).encode())
-        .decode()
-        .rstrip("=")
+        base64.urlsafe_b64encode(json.dumps(header).encode()).decode().rstrip("=")
     )
     payload_b64 = (
-        base64.urlsafe_b64encode(json.dumps(payload).encode())
-        .decode()
-        .rstrip("=")
+        base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
     )
     # Token with arbitrary/invalid signature
     token = f"{header_b64}.{payload_b64}.invalidsignaturehere"
@@ -131,14 +127,10 @@ async def test_get_current_user_from_jwt_expired_token_raises_401():
     payload = {"sub": "123", "exp": int(time.time()) - 10}  # Expired 10s ago
 
     header_b64 = (
-        base64.urlsafe_b64encode(json.dumps(header).encode())
-        .decode()
-        .rstrip("=")
+        base64.urlsafe_b64encode(json.dumps(header).encode()).decode().rstrip("=")
     )
     payload_b64 = (
-        base64.urlsafe_b64encode(json.dumps(payload).encode())
-        .decode()
-        .rstrip("=")
+        base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
     )
     msg = f"{header_b64}.{payload_b64}".encode("utf-8")
     sig = hmac.new(secret.encode("utf-8"), msg, hashlib.sha256).digest()
@@ -171,14 +163,10 @@ async def test_get_current_user_from_jwt_valid_token_returns_payload():
     payload = {"sub": "123", "exp": int(time.time()) + 3600}
 
     header_b64 = (
-        base64.urlsafe_b64encode(json.dumps(header).encode())
-        .decode()
-        .rstrip("=")
+        base64.urlsafe_b64encode(json.dumps(header).encode()).decode().rstrip("=")
     )
     payload_b64 = (
-        base64.urlsafe_b64encode(json.dumps(payload).encode())
-        .decode()
-        .rstrip("=")
+        base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
     )
     msg = f"{header_b64}.{payload_b64}".encode("utf-8")
     sig = hmac.new(secret.encode("utf-8"), msg, hashlib.sha256).digest()

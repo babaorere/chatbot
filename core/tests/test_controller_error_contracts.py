@@ -47,9 +47,10 @@ def test_add_to_cart_hides_internal_error_details() -> None:
     db_mock = MagicMock()
     data = MagicMock(user_id="u1", platform="telegram", product_id="p1", quantity=1)
 
-    with patch("controllers.order_controller.UserService") as user_svc_mock, patch(
-        "controllers.order_controller.CartService"
-    ) as cart_svc_mock:
+    with (
+        patch("controllers.order_controller.UserService") as user_svc_mock,
+        patch("controllers.order_controller.CartService") as cart_svc_mock,
+    ):
         user_instance = MagicMock()
         user_instance.get_or_create.side_effect = RuntimeError("db exploded")
         user_svc_mock.return_value = user_instance

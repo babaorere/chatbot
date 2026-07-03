@@ -15,7 +15,6 @@
             </div>
             <nav class="sidebar-nav">
                 <a href="#dashboard" class="nav-link active" data-section="dashboard">📊 Dashboard</a>
-                <a href="#tenants" class="nav-link" data-section="tenants">🏢 Negocio</a>
                 <a href="#agent" class="nav-link" data-section="agent">🤖 Agente IA</a>
                 <a href="#settings" class="nav-link" data-section="settings">⚙️ Configuración</a>
                 <a href="#admins" class="nav-link" data-section="admins">👥 Administradores</a>
@@ -34,11 +33,11 @@
                 <section class="overview-panel">
                     <div>
                         <p class="eyebrow">Control central</p>
-                        <h3>Gestiona el negocio, el agente IA y los parámetros del sistema desde un solo lugar.</h3>
+                        <h3>Gestiona el agente IA y los parámetros del sistema desde un solo lugar.</h3>
                         <p class="overview-copy">Las acciones de mayor impacto están arriba. Los detalles y ajustes finos quedan agrupados debajo para que la navegación sea directa.</p>
                     </div>
                     <div class="overview-actions">
-                        <button class="btn btn-primary" id="addTenantBtnTop" type="button">+ Nuevo Tenant</button>
+                        <button class="btn btn-primary" id="goToSettingsBtnTop" type="button">Configuración del Sistema</button>
                         <button class="btn btn-secondary" id="goToAgentBtn" type="button">Configurar Agente</button>
                     </div>
                 </section>
@@ -47,78 +46,91 @@
                 <section id="dashboard" class="section active">
                     <div class="stats-grid">
                         <div class="stat-card">
-                            <div class="stat-icon">🏢</div>
+                            <div class="stat-icon">🤖</div>
                             <div class="stat-info">
-                                <span class="stat-value" id="tenantCount">0</span>
-                                <span class="stat-label" id="tenantCountLabel">Negocio</span>
+                                <span class="stat-value" id="activeAgentStatus">Activo</span>
+                                <span class="stat-label">Agente Principal</span>
                             </div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-icon">✅</div>
+                            <div class="stat-icon">⚙️</div>
                             <div class="stat-info">
-                                <span class="stat-value" id="activeTenantCount">0</span>
-                                <span class="stat-label" id="activeTenantCountLabel">Activo</span>
+                                <span class="stat-value" id="systemSettingsCount">0</span>
+                                <span class="stat-label">Parámetros Globales</span>
                             </div>
                         </div>
                     </div>
-                </section>
-
-                <!-- Business Section -->
-                <section id="tenants" class="section">
-                    <div class="section-header">
-                        <h3 class="section-title-with-help">Negocio
-                            <button type="button" class="help-tip" data-tooltip="La plataforma opera con un solo negocio y un único agente configurado de forma centralizada." aria-label="Ayuda sobre negocio">?</button>
-                        </h3>
-                    </div>
-                    <div class="table-container">
-                        <table class="data-table" id="tenantsTable">
-                            <thead>
-                                <tr>
-                                    <th>Estado</th>
-                                    <th>Detalle</th>
-                                    <th>Notas</th>
-                                    <th>Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody id="tenantsBody"></tbody>
-                        </table>
-                    </div>
+                    <div id="dashboardOverview" class="overview-copy" style="margin-top: 1rem;"></div>
                 </section>
 
                 <!-- Agent Configuration Section -->
                 <section id="agent" class="section">
                     <div class="section-header">
                         <h3 class="section-title-with-help">Configuración del Agente IA
-                            <button type="button" class="help-tip" data-tooltip="Aquí defines cómo responde la IA del negocio: modelo, instrucciones y credenciales del proveedor." aria-label="Ayuda sobre agente IA">?</button>
+                            <button type="button" class="help-tip" data-tooltip="Aquí defines cómo responde la IA: modelo principal, modelos de respaldo y la instrucción base." aria-label="Ayuda sobre agente IA">?</button>
                         </h3>
                     </div>
-                    <div class="form-card">
+                    <form class="form-card" id="agentConfigForm" onsubmit="return false;">
+                        <p id="agentNotice" class="overview-copy" style="margin-bottom: 1rem;">La configuración del agente define los LLM principales y de respaldo así como el prompt del sistema.</p>
+                        
                         <div class="form-group">
-                            <label for="agentTenant" class="label-with-help">Negocio
-                                <button type="button" class="help-tip" data-tooltip="El negocio es único. La configuración se aplica de forma centralizada." aria-label="Ayuda sobre negocio">?</button>
-                            </label>
-                            <select id="agentTenant"></select>
-                        </div>
-                        <div class="form-group">
-                            <label for="agentModel" class="label-with-help">Modelo LLM
+                            <label for="agentModel" class="label-with-help">Modelo LLM Principal
                                 <button type="button" class="help-tip" data-tooltip="Es el motor de IA que usará el asistente. Si no sabes cuál elegir, mantén el valor recomendado." aria-label="Ayuda sobre modelo LLM">?</button>
                             </label>
-                            <input type="text" id="agentModel" placeholder="openrouter/nvidia/nemotron-3-super-120b-a12b:free">
+                            <select id="agentModel" style="width:100%; padding:0.75rem 1rem; border-radius:8px; border:1px solid #3a3a5c; background:#0f0f1a; color:#e2e8f0; font-size:1rem; outline:none; cursor:pointer;">
+                                <option value="nvidia_nim/google/gemma-4-31b-it">NVIDIA NIM - gemma-4-31b-it</option>
+                                <option value="deepseek/deepseek-v4-flash">DeepSeek - deepseek-v4-flash</option>
+                                <option value="openrouter/nvidia/nemotron-3-super-120b-a12b:free">NVIDIA NIM - nemotron-3-super-120b:free</option>
+                                <option value="openrouter/google/gemini-2.5-flash">Google - gemini-2.5-flash</option>
+                                <option value="groq/llama-3.1-8b-instant">Groq - llama-3.1-8b-instant</option>
+                                <option value="groq/llama3-8b-8192">Groq - llama3-8b-8192</option>
+                            </select>
                         </div>
+
                         <div class="form-group">
-                            <label for="agentApiKey" class="label-with-help">API Key (OpenRouter)
-                                <button type="button" class="help-tip" data-tooltip="Clave privada para conectar el negocio con el proveedor de IA. No debe compartirse con clientes ni personal no autorizado." aria-label="Ayuda sobre API key">?</button>
+                            <label for="agentFallback1" class="label-with-help">Modelo LLM de Respaldo 1 (Fallback 1)
+                                <button type="button" class="help-tip" data-tooltip="Primer modelo al que se recurre si el principal no responde o da error." aria-label="Ayuda sobre fallback 1">?</button>
                             </label>
-                            <input type="password" id="agentApiKey" placeholder="<OPENROUTER_API_KEY>">
+                            <select id="agentFallback1" style="width:100%; padding:0.75rem 1rem; border-radius:8px; border:1px solid #3a3a5c; background:#0f0f1a; color:#e2e8f0; font-size:1rem; outline:none; cursor:pointer;">
+                                <option value="none">Ninguno (Deshabilitado)</option>
+                                <option value="openrouter/nvidia/nemotron-3-super-120b-a12b:free">NVIDIA NIM - nemotron-3-super-120b:free</option>
+                                <option value="deepseek/deepseek-v4-flash">DeepSeek - deepseek-v4-flash</option>
+                                <option value="openrouter/google/gemini-2.5-flash">Google - gemini-2.5-flash</option>
+                                <option value="groq/llama-3.1-8b-instant">Groq - llama-3.1-8b-instant</option>
+                                <option value="groq/llama3-8b-8192">Groq - llama3-8b-8192</option>
+                                <option value="nvidia_nim/google/gemma-4-31b-it">NVIDIA NIM - gemma-4-31b-it</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="agentFallback2" class="label-with-help">Modelo LLM de Respaldo 2 (Fallback 2)
+                                <button type="button" class="help-tip" data-tooltip="Segundo modelo de respaldo si falla el principal y el primer fallback." aria-label="Ayuda sobre fallback 2">?</button>
+                            </label>
+                            <select id="agentFallback2" style="width:100%; padding:0.75rem 1rem; border-radius:8px; border:1px solid #3a3a5c; background:#0f0f1a; color:#e2e8f0; font-size:1rem; outline:none; cursor:pointer;">
+                                <option value="none">Ninguno (Deshabilitado)</option>
+                                <option value="groq/llama3-8b-8192">Groq - llama3-8b-8192</option>
+                                <option value="deepseek/deepseek-v4-flash">DeepSeek - deepseek-v4-flash</option>
+                                <option value="openrouter/nvidia/nemotron-3-super-120b-a12b:free">NVIDIA NIM - nemotron-3-super-120b:free</option>
+                                <option value="openrouter/google/gemini-2.5-flash">Google - gemini-2.5-flash</option>
+                                <option value="groq/llama-3.1-8b-instant">Groq - llama-3.1-8b-instant</option>
+                                <option value="nvidia_nim/google/gemma-4-31b-it">NVIDIA NIM - gemma-4-31b-it</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="agentApiKey" class="label-with-help">API Key del Proveedor (Opcional)
+                                <button type="button" class="help-tip" data-tooltip="Clave privada para conectar el negocio con el proveedor de IA. Si se deja en blanco, usará la configurada en el servidor." aria-label="Ayuda sobre API key">?</button>
+                            </label>
+                            <input type="password" id="agentApiKey" autocomplete="current-password" placeholder="Usar configurada en servidor">
                         </div>
                         <div class="form-group">
                             <label for="agentInstruction" class="label-with-help">Instrucción del Agente (System Prompt)
                                 <button type="button" class="help-tip" data-tooltip="Es la guía principal del asistente: tono, reglas del negocio, límites y comportamiento esperado." aria-label="Ayuda sobre instrucciones del agente">?</button>
                             </label>
-                            <textarea id="agentInstruction" rows="10"></textarea>
+                            <textarea id="agentInstruction" rows="10" style="width:100%; box-sizing:border-box; padding:0.75rem 1rem; border-radius:8px; border:1px solid #3a3a5c; background:#0f0f1a; color:#e2e8f0; font-size:1rem; outline:none; font-family:inherit;"></textarea>
                         </div>
-                        <button class="btn btn-primary" id="saveAgentBtn">Guardar Configuración</button>
-                    </div>
+                        <button class="btn btn-primary" id="saveAgentBtn" type="button">Guardar Configuración</button>
+                    </form>
                 </section>
 
                 <!-- Settings Section -->
@@ -183,6 +195,6 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="js/app.js"></script>
+    <script src="js/app.js?v=20260702-6"></script>
 </body>
 </html>

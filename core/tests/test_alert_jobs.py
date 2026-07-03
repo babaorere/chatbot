@@ -11,10 +11,13 @@ from jobs.alerts import job_check_llm_latency, job_notify_critical_issue
 async def test_job_notify_critical_issue_uses_worker_db_session() -> None:
     db_mock = MagicMock()
 
-    with patch("jobs.alerts.SessionLocal", return_value=db_mock), patch(
-        "jobs.alerts.AlertService.notify_critical_issue",
-        new_callable=AsyncMock,
-    ) as notify_mock:
+    with (
+        patch("jobs.alerts.SessionLocal", return_value=db_mock),
+        patch(
+            "jobs.alerts.AlertService.notify_critical_issue",
+            new_callable=AsyncMock,
+        ) as notify_mock,
+    ):
         await job_notify_critical_issue(
             {},
             title="Test",
@@ -38,10 +41,13 @@ async def test_job_notify_critical_issue_uses_worker_db_session() -> None:
 async def test_job_check_llm_latency_uses_worker_db_session() -> None:
     db_mock = MagicMock()
 
-    with patch("jobs.alerts.SessionLocal", return_value=db_mock), patch(
-        "jobs.alerts.AlertService.check_llm_latency",
-        new_callable=AsyncMock,
-    ) as latency_mock:
+    with (
+        patch("jobs.alerts.SessionLocal", return_value=db_mock),
+        patch(
+            "jobs.alerts.AlertService.check_llm_latency",
+            new_callable=AsyncMock,
+        ) as latency_mock,
+    ):
         await job_check_llm_latency(
             {},
             duration=12.5,

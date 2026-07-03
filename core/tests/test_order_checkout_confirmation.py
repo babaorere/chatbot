@@ -15,13 +15,14 @@ def test_checkout_returns_customer_message_with_estimated_minutes() -> None:
         "total_amount": 20480.0,
     }
 
-    with patch("controllers.order_controller.UserService") as user_svc_mock, patch(
-        "controllers.order_controller.OrderService"
-    ) as order_svc_mock, patch(
-        "controllers.order_controller.BusinessConfigService"
-    ) as config_svc_mock, patch(
-        "controllers.order_controller.safe_transaction",
-        return_value=nullcontext(),
+    with (
+        patch("controllers.order_controller.UserService") as user_svc_mock,
+        patch("controllers.order_controller.OrderService") as order_svc_mock,
+        patch("controllers.order_controller.BusinessConfigService") as config_svc_mock,
+        patch(
+            "controllers.order_controller.safe_transaction",
+            return_value=nullcontext(),
+        ),
     ):
         user_instance = MagicMock()
         user_instance.get_or_create.return_value = user_mock

@@ -1,8 +1,12 @@
 const API_BASE = 'http://localhost:8001';
+const API_KEY_STORAGE = 'admin_api_key';
 
 class AdminApp {
     constructor() {
-        this.init();
+        this.apiKey = sessionStorage.getItem(API_KEY_STORAGE) || '';
+        if (this.apiKey) {
+            this.init();
+        }
     }
 
     async init() {
@@ -10,6 +14,7 @@ class AdminApp {
         this.setupModals();
         this.setupQuickActions();
         await this.loadDashboard();
+        await this.loadAgentConfig();
         await this.loadSettings();
         await this.loadAdmins();
     }
@@ -18,13 +23,95 @@ class AdminApp {
         const url = `${API_BASE}${endpoint}`;
         const res = await fetch(url, {
             ...options,
-            headers: { 'Content-Type': 'application/json', ...options.headers },
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Admin-API-Key': this.apiKey,
+                ...options.headers,
+            },
         });
+        if (res.status === 403) {
+            sessionStorage.removeItem(API_KEY_STORAGE);
+            this.apiKey = '';
+            this.showLoginScreen('Clave inválida o expirada. Ingrese la Admin API Key.');
+            throw new Error('HTTP 403');
+        }
         if (!res.ok) {
             const error = await res.json().catch(() => ({ error: 'Error desconocido' }));
             throw new Error(error.error || `HTTP ${res.status}`);
         }
         return res.json();
+    }
+
+    showLoginScreen(message = 'Ingrese la Admin API Key para acceder al panel.') {
+        let overlay = document.getElementById('loginOverlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'loginOverlay';
+            overlay.style.cssText = [
+                'position:fixed', 'inset:0', 'background:rgba(10,10,20,0.92)',
+                'display:flex', 'align-items:center', 'justify-content:center',
+                'z-index:9999', 'backdrop-filter:blur(8px)',
+            ].join(';');
+            overlay.innerHTML = `
+                <div style="background:#1a1a2e;border:1px solid #3a3a5c;border-radius:16px;padding:2.5rem;width:min(400px,90vw);box-shadow:0 25px 60px rgba(0,0,0,0.6);">
+                    <h2 style="margin:0 0 0.5rem;color:#e2e8f0;font-size:1.4rem;">&#128272; Admin Portal</h2>
+                    <p id="loginMsg" style="margin:0 0 1.5rem;color:#94a3b8;font-size:0.9rem;">${message}</p>
+                    <form id="loginForm">
+                        <input type="text" name="username" autocomplete="username"
+                            style="display:none;" aria-hidden="true" tabindex="-1"
+                            value="admin">
+                        <div style="position:relative;margin-bottom:1rem;">
+                            <input id="loginKeyInput" type="password" name="password"
+                                autocomplete="current-password"
+                                placeholder="Admin API Key"
+                                style="width:100%;box-sizing:border-box;padding:0.75rem 3rem 0.75rem 1rem;
+                                       border-radius:8px;border:1px solid #3a3a5c;background:#0f0f1a;
+                                       color:#e2e8f0;font-size:1rem;outline:none;"
+                            >
+                            <button type="button" id="toggleKeyVisibility"
+                                title="Mostrar / ocultar clave"
+                                style="position:absolute;right:0.75rem;top:50%;transform:translateY(-50%);
+                                       background:none;border:none;cursor:pointer;color:#94a3b8;
+                                       font-size:1.1rem;line-height:1;padding:0;">&#128065;</button>
+                        </div>
+                        <button type="submit" id="loginSubmitBtn"
+                            style="width:100%;padding:0.8rem;border:none;border-radius:8px;
+                                   background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;
+                                   font-size:1rem;font-weight:600;cursor:pointer;">
+                            Acceder
+                        </button>
+                    </form>
+                </div>`;
+            document.body.appendChild(overlay);
+
+            const doLogin = (e) => {
+                if (e) e.preventDefault();
+                const key = document.getElementById('loginKeyInput').value.trim();
+                if (!key) return;
+                this.apiKey = key;
+                sessionStorage.setItem(API_KEY_STORAGE, key);
+                overlay.remove();
+                this.init();
+            };
+            document.getElementById('loginForm').addEventListener('submit', doLogin);
+            document.getElementById('loginKeyInput').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); doLogin(e); }
+            });
+            document.getElementById('toggleKeyVisibility').addEventListener('click', () => {
+                const inp = document.getElementById('loginKeyInput');
+                const btn = document.getElementById('toggleKeyVisibility');
+                if (inp.type === 'password') {
+                    inp.type = 'text';
+                    btn.innerHTML = '&#128683;';
+                } else {
+                    inp.type = 'password';
+                    btn.innerHTML = '&#128065;';
+                }
+            });
+        } else {
+            document.getElementById('loginMsg').textContent = message;
+        }
+        document.getElementById('loginKeyInput')?.focus();
     }
 
     setupNavigation() {
@@ -44,47 +131,155 @@ class AdminApp {
     }
 
     setupModals() {
-        document.getElementById('modalClose').addEventListener('click', () => {
-            document.getElementById('modal').classList.remove('active');
-        });
+        const modalClose = document.getElementById('modalClose');
+        if (modalClose) {
+            modalClose.addEventListener('click', () => {
+                document.getElementById('modal')?.classList.remove('active');
+            });
+        }
 
-        document.getElementById('addAdminBtn').addEventListener('click', () => {
-            this.showAdminModal();
-        });
+        const addAdminBtn = document.getElementById('addAdminBtn');
+        if (addAdminBtn) {
+            addAdminBtn.addEventListener('click', () => {
+                this.showAdminModal();
+            });
+        }
     }
 
     setupQuickActions() {
-        return;
+        const goToSettingsBtnTop = document.getElementById('goToSettingsBtnTop');
+        if (goToSettingsBtnTop) {
+            goToSettingsBtnTop.addEventListener('click', () => {
+                document.querySelector('.nav-link[data-section="settings"]')?.click();
+            });
+        }
+
+        const goToAgentBtn = document.getElementById('goToAgentBtn');
+        if (goToAgentBtn) {
+            goToAgentBtn.addEventListener('click', () => {
+                document.querySelector('.nav-link[data-section="agent"]')?.click();
+            });
+        }
     }
 
     async loadDashboard() {
         try {
             const settings = await this.fetch('/admin/settings');
-            document.getElementById('tenantCount').textContent = '1';
-            document.getElementById('activeTenantCount').textContent = '1';
-            document.getElementById('tenantCountLabel').textContent = 'Negocio';
-            document.getElementById('activeTenantCountLabel').textContent = 'Activo';
-            document.getElementById('dashboardOverview').textContent = `Negocio configurado con ${Object.keys(settings).length} parámetros globales.`;
+            
+            // Mostrar nombre abreviado del modelo en el badge
+            const mainModel = settings.model_name || 'Desconocido';
+            const modelShort = mainModel.split('/').pop() || mainModel;
+            document.getElementById('activeAgentStatus').textContent = modelShort;
+            
+            const settingsCount = Object.keys(settings).length;
+            document.getElementById('systemSettingsCount').textContent = String(settingsCount);
+            
+            document.getElementById('dashboardOverview').innerHTML = `
+                El sistema opera actualmente en modo <strong>single-tenant</strong> y <strong>multi-usuario</strong>.<br>
+                El motor de IA principal está configurado como <code>${mainModel}</code>.
+            `;
         } catch (err) {
             console.error('Dashboard load failed:', err);
         }
     }
 
-    async loadTenants() {
-        const tbody = document.getElementById('tenantsBody');
-        if (tbody) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="5" class="empty-state">El modo multi-negocio está deshabilitado. La administración ahora es de un solo negocio.</td>
-                </tr>
-            `;
-        }
-    }
-
     async loadAgentConfig() {
-        const notice = document.getElementById('agentNotice');
-        if (notice) {
-            notice.textContent = 'La configuración del agente se administra desde los parámetros globales del negocio.';
+        try {
+            const settings = await this.fetch('/admin/settings');
+            
+            const mainModel = settings.model_name || '';
+            const fb1 = settings.fallback_model_1 || 'none';
+            const fb2 = settings.fallback_model_2 || 'none';
+            const inst = settings.agent_instruction || '';
+            
+            const modelSelect = document.getElementById('agentModel');
+            const fb1Select = document.getElementById('agentFallback1');
+            const fb2Select = document.getElementById('agentFallback2');
+            const instTextarea = document.getElementById('agentInstruction');
+            const apiKeyInput = document.getElementById('agentApiKey');
+
+            // Asegurar que las opciones actuales existan en los dropdowns
+            const ensureOptionExists = (selectEl, val) => {
+                if (!val || val === 'none') return;
+                let exists = false;
+                for (let i = 0; i < selectEl.options.length; i++) {
+                    if (selectEl.options[i].value === val) {
+                        exists = true;
+                        break;
+                    }
+                }
+                if (!exists) {
+                    const opt = document.createElement('option');
+                    opt.value = val;
+                    opt.textContent = `Personalizado - ${val}`;
+                    selectEl.appendChild(opt);
+                }
+            };
+
+            if (modelSelect) ensureOptionExists(modelSelect, mainModel);
+            if (fb1Select) ensureOptionExists(fb1Select, fb1);
+            if (fb2Select) ensureOptionExists(fb2Select, fb2);
+
+            if (modelSelect) modelSelect.value = mainModel;
+            if (fb1Select) fb1Select.value = fb1;
+            if (fb2Select) fb2Select.value = fb2;
+            if (instTextarea) instTextarea.value = inst;
+            if (apiKeyInput) apiKeyInput.value = ''; // Se deja en blanco en UI por seguridad
+
+            // Enlazar botón de guardar una sola vez
+            if (!this.agentConfigSetupDone) {
+                const saveBtn = document.getElementById('saveAgentBtn');
+                if (saveBtn) {
+                    saveBtn.onclick = async () => {
+                        try {
+                            const newModel = modelSelect.value;
+                            const newFb1 = fb1Select.value;
+                            const newFb2 = fb2Select.value;
+                            const newInst = instTextarea.value;
+                            const newApiKey = apiKeyInput.value.trim();
+
+                            saveBtn.disabled = true;
+                            saveBtn.textContent = 'Guardando...';
+
+                            await this.fetch('/admin/settings/model_name', {
+                                method: 'PUT',
+                                body: JSON.stringify({ value: newModel })
+                            });
+                            await this.fetch('/admin/settings/fallback_model_1', {
+                                method: 'PUT',
+                                body: JSON.stringify({ value: newFb1 })
+                            });
+                            await this.fetch('/admin/settings/fallback_model_2', {
+                                method: 'PUT',
+                                body: JSON.stringify({ value: newFb2 })
+                            });
+                            await this.fetch('/admin/settings/agent_instruction', {
+                                method: 'PUT',
+                                body: JSON.stringify({ value: newInst })
+                            });
+
+                            if (newApiKey) {
+                                await this.fetch('/admin/settings/openrouter_api_key', {
+                                    method: 'PUT',
+                                    body: JSON.stringify({ value: newApiKey })
+                                });
+                            }
+
+                            this.showToast('Configuración del Agente guardada con éxito', 'success');
+                            await this.loadDashboard();
+                            await this.loadSettings();
+                        } catch (err) {
+                            this.showToast(err.message, 'error');
+                        } finally {
+                            saveBtn.disabled = false;
+                            saveBtn.textContent = 'Guardar Configuración';
+                        }
+                    };
+                }
+                this.agentConfigSetupDone = true;
+            }
+        } catch (err) {
+            console.error('Agent config load failed:', err);
         }
     }
 
@@ -337,4 +532,16 @@ class AdminApp {
     }
 }
 
-const app = new AdminApp();
+function bootstrapAdminApp() {
+    const storedKey = sessionStorage.getItem(API_KEY_STORAGE);
+    window.app = new AdminApp();
+    if (!storedKey) {
+        window.app.showLoginScreen();
+    }
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootstrapAdminApp, { once: true });
+} else {
+    bootstrapAdminApp();
+}
