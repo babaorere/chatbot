@@ -56,7 +56,9 @@ class TenantAuthService:
         if len(password) < 12:
             raise ValueError("La contrasena debe tener al menos 12 caracteres.")
         if password.strip() != password:
-            raise ValueError("La contrasena no puede comenzar ni terminar con espacios.")
+            raise ValueError(
+                "La contrasena no puede comenzar ni terminar con espacios."
+            )
         checks = [
             any(ch.islower() for ch in password),
             any(ch.isupper() for ch in password),

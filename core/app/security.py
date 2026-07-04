@@ -141,9 +141,7 @@ def create_access_token(
     }
 
     header_b64 = _encode_b64url(json.dumps(header, separators=(",", ":")).encode())
-    payload_b64 = _encode_b64url(
-        json.dumps(payload, separators=(",", ":")).encode()
-    )
+    payload_b64 = _encode_b64url(json.dumps(payload, separators=(",", ":")).encode())
     msg = f"{header_b64}.{payload_b64}".encode("utf-8")
     signature = hmac.new(_require_jwt_secret(), msg, hashlib.sha256).digest()
     signature_b64 = _encode_b64url(signature)
@@ -193,9 +191,7 @@ def get_current_tenant_user(
         )
 
     user = (
-        db.query(TenantPortalUser)
-        .filter(TenantPortalUser.id == int(subject))
-        .first()
+        db.query(TenantPortalUser).filter(TenantPortalUser.id == int(subject)).first()
     )
     if not user or user.disabled_at is not None or user.status != "active":
         raise HTTPException(
