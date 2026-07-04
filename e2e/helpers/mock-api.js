@@ -40,6 +40,20 @@ async function mockAdminApi(page) {
       maintenance_mode: false,
       default_model: "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
     },
+    tenantUsers: [
+      {
+        id: 1,
+        email: "owner@centro.cl",
+        full_name: "Owner Centro",
+        role: "owner",
+        status: "active",
+        mfa_enabled: false,
+        last_login_at: null,
+        created_at: "2026-07-03T10:00:00",
+      },
+    ],
+    tenantInvites: [],
+    systemAdmins: [],
   };
 
   await page.route("http://localhost:8001/**", async (route) => {
@@ -103,6 +117,54 @@ async function mockAdminApi(page) {
       return jsonResponse(route, state.settings);
     }
 
+    if (path === "/admin/tenant-access/users" && method === "GET") {
+      return jsonResponse(route, state.tenantUsers);
+    }
+
+    if (path === "/admin/tenant-access/invites" && method === "GET") {
+      return jsonResponse(route, state.tenantInvites);
+    }
+
+    if (path === "/admin/tenant-access/invites" && method === "POST") {
+      const data = JSON.parse(request.postData() || "{}");
+      const invite = {
+        id: `invite-${state.tenantInvites.length + 1}`,
+        email: data.email,
+        full_name: data.full_name,
+        role: data.role || "manager",
+        expires_at: "2026-07-03T18:00:00",
+        created_at: "2026-07-03T12:00:00",
+        used_at: null,
+        revoked_at: null,
+        invite_url: "/tenant/?invite=mock-temporal-token",
+      };
+      state.tenantInvites.unshift(invite);
+      return jsonResponse(route, invite, 201);
+    }
+
+    const revokeInviteMatch = path.match(/^\/admin\/tenant-access\/invites\/([^/]+)\/revoke$/);
+    if (revokeInviteMatch && method === "POST") {
+      state.tenantInvites = state.tenantInvites.map((item) =>
+        item.id === revokeInviteMatch[1]
+          ? { ...item, revoked_at: "2026-07-03T12:30:00" }
+          : item
+      );
+      const invite = state.tenantInvites.find((item) => item.id === revokeInviteMatch[1]);
+      return jsonResponse(route, invite || { status: "missing" });
+    }
+
+    const disableTenantUserMatch = path.match(/^\/admin\/tenant-access\/users\/([^/]+)\/disable$/);
+    if (disableTenantUserMatch && method === "POST") {
+      const data = JSON.parse(request.postData() || "{}");
+      state.tenantUsers = state.tenantUsers.map((item) =>
+        String(item.id) === disableTenantUserMatch[1]
+          ? { ...item, status: data.disabled ? "disabled" : "active" }
+          : item
+      );
+      const user = state.tenantUsers.find((item) => String(item.id) === disableTenantUserMatch[1]);
+      return jsonResponse(route, user || { status: "missing" });
+    }
+
     const settingsMatch = path.match(/^\/admin\/settings\/(.+)$/);
     if (settingsMatch && method === "PUT") {
       const key = decodeURIComponent(settingsMatch[1]);
@@ -115,6 +177,46 @@ async function mockAdminApi(page) {
       });
     }
 
+    if (path === "/admin/system-admins" && method === "GET") {
+      return jsonResponse(route, state.systemAdmins);
+    }
+
+    if (path === "/admin/system-admins" && method === "POST") {
+      const data = JSON.parse(request.postData() || "{}");
+      const admin = {
+        id: state.systemAdmins.length + 1,
+        name: data.name,
+        email: data.email,
+        telegram_chat_id: data.telegram_chat_id,
+        whatsapp_phone: data.whatsapp_phone,
+        notify_email: data.notify_email || false,
+        notify_telegram: data.notify_telegram || false,
+        notify_whatsapp: data.notify_whatsapp || false,
+        alert_types: data.alert_types || [],
+      };
+      state.systemAdmins.push(admin);
+      return jsonResponse(route, admin, 201);
+    }
+
+    const adminMatch = path.match(/^\/admin\/system-admins\/([^/]+)$/);
+    if (adminMatch && method === "PUT") {
+      const adminId = parseInt(adminMatch[1]);
+      const data = JSON.parse(request.postData() || "{}");
+      state.systemAdmins = state.systemAdmins.map((item) =>
+        item.id === adminId
+          ? { ...item, ...data }
+          : item
+      );
+      const admin = state.systemAdmins.find((item) => item.id === adminId);
+      return jsonResponse(route, admin || { status: "missing" });
+    }
+
+    if (adminMatch && method === "DELETE") {
+      const adminId = parseInt(adminMatch[1]);
+      state.systemAdmins = state.systemAdmins.filter((item) => item.id !== adminId);
+      return jsonResponse(route, { status: "success", message: "System admin deleted" });
+    }
+
     return jsonResponse(route, { error: `Unhandled admin mock for ${method} ${path}` }, 500);
   });
 
@@ -123,6 +225,16 @@ async function mockAdminApi(page) {
 
 async function mockTenantApi(page) {
   const state = {
+    currentUser: {
+      id: 1,
+      email: "owner@centro.cl",
+      full_name: "Owner Centro",
+      role: "owner",
+      status: "active",
+      mfa_enabled: false,
+      last_login_at: null,
+      created_at: "2026-07-03T10:00:00",
+    },
     profile: {
       name: "Botilleria Centro",
       email: "contacto@centro.cl",
@@ -197,24 +309,54 @@ async function mockTenantApi(page) {
     const path = url.pathname;
     const method = request.method();
 
-    if (path === "/tenants/me/users/count" && method === "GET") {
+    if (path === "/tenant-auth/me" && method === "GET") {
+      return jsonResponse(route, { user: state.currentUser });
+    }
+    if (path === "/tenant-auth/login" && method === "POST") {
+      return jsonResponse(route, { user: state.currentUser });
+    }
+    if (path === "/tenant-auth/refresh" && method === "POST") {
+      return jsonResponse(route, { user: state.currentUser });
+    }
+    if (path === "/tenant-auth/logout" && method === "POST") {
+      return jsonResponse(route, { status: "ok" });
+    }
+    if (path === "/tenant-auth/invites/claim" && method === "POST") {
+      return jsonResponse(route, {
+        user: state.currentUser,
+        invite: {
+          id: "invite-1",
+          email: state.currentUser.email,
+          role: state.currentUser.role,
+          created_at: "2026-07-03T12:00:00",
+          expires_at: "2026-07-03T18:00:00",
+          used_at: "2026-07-03T12:05:00",
+          revoked_at: null,
+        },
+      });
+    }
+
+    if (path === "/business/me/users/count" && method === "GET") {
       return jsonResponse(route, { count: state.counts.users });
     }
-    if (path === "/tenants/me/conversations/count" && method === "GET") {
+    if (path === "/business/me/conversations/count" && method === "GET") {
       return jsonResponse(route, { count: state.counts.conversations });
     }
-    if (path === "/tenants/me/profile" && method === "GET") {
+    if (path === "/business/me/attention-time" && method === "GET") {
+      return jsonResponse(route, { estimated_attention_minutes: 30, real_daily_average_minutes: 24 });
+    }
+    if (path === "/business/me/profile" && method === "GET") {
       return jsonResponse(route, state.profile);
     }
-    if (path === "/tenants/me/profile" && method === "PUT") {
+    if (path === "/business/me/profile" && method === "PUT") {
       const data = JSON.parse(request.postData() || "{}");
       state.profile = { ...state.profile, ...data };
       return jsonResponse(route, state.profile);
     }
-    if (path === "/tenants/me/products" && method === "GET") {
+    if (path === "/business/me/products" && method === "GET") {
       return jsonResponse(route, state.products);
     }
-    if (path === "/tenants/me/products" && method === "POST") {
+    if (path === "/business/me/products" && method === "POST") {
       const data = JSON.parse(request.postData() || "{}");
       const product = {
         id: `prod-${state.products.length + 1}`,
@@ -225,7 +367,7 @@ async function mockTenantApi(page) {
       state.products.push(product);
       return jsonResponse(route, product, 201);
     }
-    const productMatch = path.match(/^\/tenants\/me\/products\/([^/]+)$/);
+    const productMatch = path.match(/^\/business\/me\/products\/([^/]+)$/);
     if (productMatch && method === "PUT") {
       const data = JSON.parse(request.postData() || "{}");
       state.products = state.products.map((item) =>
@@ -237,13 +379,13 @@ async function mockTenantApi(page) {
       state.products = state.products.filter((item) => item.id !== productMatch[1]);
       return jsonResponse(route, { status: "deleted" });
     }
-    if (path === "/tenants/me/products/export" && method === "GET") {
+    if (path === "/business/me/products/export" && method === "GET") {
       return emptyExcel(route, "productos.xlsx");
     }
-    if (path === "/tenants/me/products/export/template" && method === "GET") {
+    if (path === "/business/me/products/export/template" && method === "GET") {
       return emptyExcel(route, "plantilla_productos.xlsx");
     }
-    if (path === "/tenants/me/products/import" && method === "POST") {
+    if (path === "/business/me/products/import" && method === "POST") {
       return jsonResponse(route, {
         status: "ok",
         rows_processed: 1,
@@ -253,16 +395,16 @@ async function mockTenantApi(page) {
       });
     }
 
-    if (path === "/tenants/me/kb" && method === "GET") {
+    if (path === "/business/me/kb" && method === "GET") {
       return jsonResponse(route, state.kbEntries);
     }
-    if (path === "/tenants/me/kb" && method === "POST") {
+    if (path === "/business/me/kb" && method === "POST") {
       const data = JSON.parse(request.postData() || "{}");
       const entry = { id: `kb-${state.kbEntries.length + 1}`, is_active: true, ...data };
       state.kbEntries.push(entry);
       return jsonResponse(route, entry, 201);
     }
-    const kbMatch = path.match(/^\/tenants\/me\/kb\/([^/]+)$/);
+    const kbMatch = path.match(/^\/business\/me\/kb\/([^/]+)$/);
     if (kbMatch && method === "PUT") {
       const data = JSON.parse(request.postData() || "{}");
       state.kbEntries = state.kbEntries.map((item) =>
@@ -274,7 +416,7 @@ async function mockTenantApi(page) {
       state.kbEntries = state.kbEntries.filter((item) => item.id !== kbMatch[1]);
       return jsonResponse(route, { status: "deleted" });
     }
-    if (path === "/tenants/me/kb/search" && method === "POST") {
+    if (path === "/business/me/kb/search" && method === "POST") {
       return jsonResponse(route, { query: "horario", results: state.kbEntries, count: state.kbEntries.length });
     }
 
@@ -308,8 +450,17 @@ async function mockTenantApi(page) {
       return jsonResponse(route, { status: "success" });
     }
 
-    if (path === "/tenants/me/channels" && method === "GET") {
+    if (path === "/business/me/channels" && method === "GET") {
       return jsonResponse(route, state.channels);
+    }
+
+    if (path === "/chat" && method === "POST") {
+      const data = JSON.parse(request.postData() || "{}");
+      return jsonResponse(route, {
+        session_id: data.session_id || "mock-session",
+        user_id: data.user_id || "mock-user",
+        response: `Respuesta simulada del agente para: "${data.message}"`
+      });
     }
 
     return jsonResponse(route, { error: `Unhandled tenant mock for ${method} ${path}` }, 500);

@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from openpyxl import load_workbook
 from sqlalchemy.orm import Session
 
+from app.security import get_current_tenant_user
 from config.database import get_db
 from controllers.telegram_controller import prime_human_agent_cache
 from dtos import (
@@ -24,7 +25,11 @@ from services.product_service import FIELD_NAMES
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/business/me", tags=["business"])
+router = APIRouter(
+    prefix="/business/me",
+    tags=["business"],
+    dependencies=[Depends(get_current_tenant_user)],
+)
 
 
 @router.get("/profile", response_model=BusinessConfigResponse)

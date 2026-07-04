@@ -16,6 +16,8 @@ from controllers import (
     business_config_router,
     business_router,
     admin_router,
+    tenant_access_admin_router,
+    tenant_auth_router,
     telegram_router,
     order_router,
     category_router,
@@ -57,6 +59,8 @@ app.include_router(session_router)
 app.include_router(business_config_router)
 app.include_router(business_router)
 app.include_router(admin_router)
+app.include_router(tenant_access_admin_router)
+app.include_router(tenant_auth_router)
 app.include_router(telegram_router)
 app.include_router(order_router)
 app.include_router(category_router)

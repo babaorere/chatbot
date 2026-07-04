@@ -6,6 +6,30 @@ x-logging: &default-logging
     compress: "true"
 
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: chatbot_redis
+    restart: unless-stopped
+    stop_grace_period: 10s
+    command: ["redis-server", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - chatbot_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 192M
+        reservations:
+          memory: 64M
+
   db:
     build:
       context: .
@@ -52,7 +76,7 @@ services:
     ports:
       - "8001:8000"
     environment:
-      - REDIS_URL=${REDIS_URL}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - DATABASE_URL=postgresql://${DB_USER:-shared}:${DB_PASSWORD:-shared_secret}@db:5432/${DB_NAME:-chatbot}
       - ARQ_ENABLED=true
       - ADK_DISABLE_JSON_SCHEMA_FOR_FUNC_DECL=true
@@ -64,6 +88,14 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     logging: *default-logging
     secrets:
       - jwt_secret
@@ -89,7 +121,7 @@ services:
     env_file:
       - .env
     environment:
-      - REDIS_URL=${REDIS_URL}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - DATABASE_URL=postgresql://${DB_USER:-shared}:${DB_PASSWORD:-shared_secret}@db:5432/${DB_NAME:-chatbot}
       - ARQ_ENABLED=true
     command: ["arq", "workers.arq_worker.WorkerSettings"]
@@ -100,8 +132,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       api:
-        condition: service_started
+        condition: service_healthy
     logging: *default-logging
     secrets:
       - jwt_secret
@@ -139,7 +173,8 @@ services:
       - ./data/certbot/conf:/etc/letsencrypt
       - ./data/certbot/www:/var/www/certbot
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     networks:
       chatbot_net:
         aliases:
@@ -190,6 +225,7 @@ services:
 
 volumes:
   db_data:
+  redis_data:
   nginx_cache:
   nginx_run:
 

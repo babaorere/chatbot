@@ -9,6 +9,12 @@ from .config_response import (
 )
 from .user_response import UserResponse
 from .conversation_response import ConversationResponse
+from .tenant_auth_response import (
+    TenantBootstrapResponse,
+    TenantInviteResponse,
+    TenantPortalUserResponse,
+    TenantSessionResponse,
+)
 
 __all__ = [
     "ChatResponse",
@@ -21,4 +27,8 @@ __all__ = [
     "CategoryCountResponse",
     "UserResponse",
     "ConversationResponse",
+    "TenantPortalUserResponse",
+    "TenantInviteResponse",
+    "TenantSessionResponse",
+    "TenantBootstrapResponse",
 ]

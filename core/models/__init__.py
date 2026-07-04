@@ -8,6 +8,7 @@ from .business_config import BusinessConfig
 from .order import Order, OrderItem
 from .cart import Cart, CartItem
 from .system_admin import SystemAdmin
+from .tenant_auth import TenantPortalInvite, TenantPortalSession, TenantPortalUser
 
 __all__ = [
     "User",
@@ -22,4 +23,7 @@ __all__ = [
     "Cart",
     "CartItem",
     "SystemAdmin",
+    "TenantPortalUser",
+    "TenantPortalInvite",
+    "TenantPortalSession",
 ]

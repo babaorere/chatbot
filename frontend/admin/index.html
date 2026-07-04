@@ -17,6 +17,7 @@
                 <a href="#dashboard" class="nav-link active" data-section="dashboard">📊 Dashboard</a>
                 <a href="#agent" class="nav-link" data-section="agent">🤖 Agente IA</a>
                 <a href="#settings" class="nav-link" data-section="settings">⚙️ Configuración</a>
+                <a href="#tenantAccess" class="nav-link" data-section="tenantAccess">🔐 Acceso Tenant</a>
                 <a href="#admins" class="nav-link" data-section="admins">👥 Administradores</a>
             </nav>
         </aside>
@@ -26,6 +27,7 @@
                 <h2 id="pageTitle">Dashboard</h2>
                 <div class="top-bar-actions">
                     <span class="status-badge">Admin</span>
+                    <button class="btn btn-secondary" id="adminLogoutBtn" type="button" style="padding: 4px 10px; font-size: 0.85rem; margin-left: 10px;">Cerrar sesión</button>
                 </div>
             </header>
 
@@ -39,6 +41,7 @@
                     <div class="overview-actions">
                         <button class="btn btn-primary" id="goToSettingsBtnTop" type="button">Configuración del Sistema</button>
                         <button class="btn btn-secondary" id="goToAgentBtn" type="button">Configurar Agente</button>
+                        <button class="btn btn-secondary" id="goToTenantAccessBtn" type="button">Gestionar Accesos</button>
                     </div>
                 </section>
 
@@ -140,6 +143,9 @@
                             <button type="button" class="help-tip" data-tooltip="Son parámetros globales de la plataforma. Cambiarlos afecta al negocio completo." aria-label="Ayuda sobre configuración del sistema">?</button>
                         </h3>
                     </div>
+                    <div class="table-toolbar" style="margin-bottom:1rem;">
+                        <input type="text" id="settingsFilterInput" placeholder="🔍 Filtrar setting por clave o valor..." style="width:100%; max-width:400px; padding:0.6rem 1rem; border-radius:8px; border:1px solid #3a3a5c; background:#1a1a2e; color:#e2e8f0; outline:none;">
+                    </div>
                     <div class="table-container">
                         <table class="data-table" id="settingsTable">
                             <thead>
@@ -155,6 +161,62 @@
                     </div>
                 </section>
 
+                <section id="tenantAccess" class="section">
+                    <div class="section-header">
+                        <h3 class="section-title-with-help">Acceso al Panel Tenant
+                            <button type="button" class="help-tip" data-tooltip="Emite invitaciones temporales de 6 horas y revisa quién tiene acceso activo al panel del negocio." aria-label="Ayuda sobre acceso tenant">?</button>
+                        </h3>
+                        <button class="btn btn-primary" id="addTenantInviteBtn">+ Nueva Invitación</button>
+                    </div>
+
+                    <div class="form-card" style="margin-bottom:1.5rem;">
+                        <p class="overview-copy" style="margin:0;">Flujo activo: invitación temporal de 6 horas, creación inicial de contraseña y sesión por cookies seguras. Las invitaciones viejas del mismo correo se revocan al emitir una nueva.</p>
+                    </div>
+
+                    <div class="section-header">
+                        <h3>Invitaciones recientes</h3>
+                    </div>
+                    <div class="table-toolbar" style="margin-bottom:1rem;">
+                        <input type="text" id="tenantInvitesFilterInput" placeholder="🔍 Filtrar invitación por email o rol..." style="width:100%; max-width:400px; padding:0.6rem 1rem; border-radius:8px; border:1px solid #3a3a5c; background:#1a1a2e; color:#e2e8f0; outline:none;">
+                    </div>
+                    <div class="table-container" style="margin-bottom:1.5rem;">
+                        <table class="data-table" id="tenantInvitesTable">
+                            <thead>
+                                <tr>
+                                    <th>Email</th>
+                                    <th>Rol</th>
+                                    <th>Expira</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tenantInvitesBody"></tbody>
+                        </table>
+                    </div>
+
+                    <div class="section-header">
+                        <h3>Usuarios tenant</h3>
+                    </div>
+                    <div class="table-toolbar" style="margin-bottom:1rem;">
+                        <input type="text" id="tenantUsersFilterInput" placeholder="🔍 Filtrar usuario por nombre o email..." style="width:100%; max-width:400px; padding:0.6rem 1rem; border-radius:8px; border:1px solid #3a3a5c; background:#1a1a2e; color:#e2e8f0; outline:none;">
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="tenantUsersTable">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Email</th>
+                                    <th>Rol</th>
+                                    <th>Estado</th>
+                                    <th>Último acceso</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tenantUsersBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
                 <!-- Admins Section -->
                 <section id="admins" class="section">
                     <div class="section-header">
@@ -162,6 +224,9 @@
                             <button type="button" class="help-tip" data-tooltip="Gestiona los administradores que reciben notificaciones del sistema ante eventos críticos." aria-label="Ayuda sobre administradores">?</button>
                         </h3>
                         <button class="btn btn-primary" id="addAdminBtn">+ Nuevo Administrador</button>
+                    </div>
+                    <div class="table-toolbar" style="margin-bottom:1rem;">
+                        <input type="text" id="adminsFilterInput" placeholder="🔍 Filtrar administrador por nombre o contacto..." style="width:100%; max-width:400px; padding:0.6rem 1rem; border-radius:8px; border:1px solid #3a3a5c; background:#1a1a2e; color:#e2e8f0; outline:none;">
                     </div>
                     <div class="table-container">
                         <table class="data-table" id="adminsTable">
@@ -195,6 +260,6 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="js/app.js?v=20260702-6"></script>
+    <script src="js/app.js?v=20260703-tenant-auth-1"></script>
 </body>
 </html>

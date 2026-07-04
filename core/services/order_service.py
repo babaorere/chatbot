@@ -13,6 +13,15 @@ logger = logging.getLogger(__name__)
 
 
 class OrderService:
+    ALLOWED_TRANSITIONS: dict[str, set[str]] = {
+        "pending": {"confirmed", "cancelled"},
+        "confirmed": {"preparing", "cancelled"},
+        "preparing": {"ready", "cancelled"},
+        "ready": {"delivered"},
+        "delivered": set(),
+        "cancelled": set(),
+    }
+
     def __init__(self, db: Session) -> None:
         self.db = db
         self.cart_svc = CartService(db)
@@ -137,6 +146,14 @@ class OrderService:
             order = self.get_order(order_id)
             if not order:
                 raise ValueError("Order not found")
+
+            # Validate state transition
+            allowed = self.ALLOWED_TRANSITIONS.get(order.status, set())
+            if status not in allowed:
+                raise ValueError(
+                    f"Invalid transition from '{order.status}' to '{status}'. "
+                    f"Allowed: {sorted(allowed) if allowed else 'none (terminal state)'}"
+                )
 
             # If transitioning to cancelled from pending/confirmed, restore stock
             if status == "cancelled" and order.status in ("pending", "confirmed"):

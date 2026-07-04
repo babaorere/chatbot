@@ -17,7 +17,7 @@ test.describe("tenant frontend", () => {
     await page.goto("/frontend/tenant/index.html");
 
     await expect(page).toHaveTitle(/Panel del negocio/);
-    await expect(page.locator("#tenantName")).toHaveText("Botilleria Centro");
+    await expect(page.locator("#businessName")).toHaveText("Botilleria Centro");
     await expect(page.locator("#userCount")).toHaveText("42");
     await expect(page.locator("#convCount")).toHaveText("128");
     await expect(page.locator("#productCount")).toHaveText("1");
@@ -64,5 +64,59 @@ test.describe("tenant frontend", () => {
     await page.locator("#kbSearchInput").fill("horario");
     await page.getByRole("button", { name: /^Buscar$/i }).click();
     await expect(page.locator("#toastContainer")).toContainText("resultados encontrados");
+  });
+
+  test("Phase 2: table search filtering and bulk operations bar work as expected", async ({ page }) => {
+    await mockTenantApi(page);
+    await page.goto("/frontend/tenant/index.html");
+
+    // Check Products real-time filter and bulk selection bar
+    await page.locator('.nav-link[data-section="products"]').click();
+    await expect(page.locator("#productsBody tr")).toHaveCount(1);
+    await page.locator("#productsFilterInput").fill("Pisco");
+    await expect(page.locator("#productsBody tr:visible")).toHaveCount(1);
+    await page.locator("#productsFilterInput").fill("NoExisteProducto");
+    await expect(page.locator("#productsBody tr:visible")).toHaveCount(0);
+    await page.locator("#productsFilterInput").fill("");
+    await expect(page.locator("#productsBody tr:visible")).toHaveCount(1);
+
+    await page.locator("#selectAllProducts").check();
+    await expect(page.locator("#productsBulkBar")).toBeVisible();
+    await expect(page.locator("#productsBulkCount")).toContainText("1 sel.");
+    await page.locator("#selectAllProducts").uncheck();
+    await expect(page.locator("#productsBulkBar")).toBeHidden();
+  });
+
+  test("Phase 3: visual metrics charts and interactive AI agent simulator work as expected", async ({ page }) => {
+    await mockTenantApi(page);
+    await page.goto("/frontend/tenant/index.html");
+
+    // Verify visual charts are rendered
+    await expect(page.locator("#chartCategoryDistribution")).toContainText("Piscos");
+    await expect(page.locator("#chartAvailability")).toContainText("Disponibles: 1 (100%)");
+    await expect(page.locator("#chartKbCoverage")).toContainText("Respuestas Activas");
+
+    // Test Interactive AI Agent Preview
+    await page.locator('.nav-link[data-section="preview"]').click();
+    await expect(page.locator("#previewAgentName")).toHaveText("Asistente Virtual del Negocio");
+    await expect(page.locator("#previewMessages")).toContainText("¿En qué le puedo ayudar hoy?");
+
+    await page.locator("#previewInput").fill("¿Tiene pisco?");
+    await page.getByRole("button", { name: /^Enviar$/i }).click();
+    await expect(page.locator("#previewMessages")).toContainText("Respuesta simulada del agente para: \"¿Tiene pisco?\"");
+
+    await page.locator("#clearPreviewBtn").click();
+    await expect(page.locator("#previewMessages")).not.toContainText("Respuesta simulada");
+  });
+
+  test("Phase 4: visual charts display empty fallback message when catalog or kb is empty", async ({ page }) => {
+    const state = await mockTenantApi(page);
+    state.products = [];
+    state.kbEntries = [];
+
+    await page.goto("/frontend/tenant/index.html");
+    await expect(page.locator("#chartCategoryDistribution")).toContainText("No hay productos para graficar");
+    await expect(page.locator("#chartAvailability")).toContainText("No hay productos para evaluar disponibilidad");
+    await expect(page.locator("#chartKbCoverage")).toContainText("Aún no hay respuestas guardadas en la base de conocimiento");
   });
 });

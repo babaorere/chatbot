@@ -39,6 +39,10 @@
                     <span class="nav-kicker">Contacto</span>
                     <span class="nav-label">Canales de atención</span>
                 </a>
+                <a href="#preview" class="nav-link" data-section="preview" data-title="Simulador del Agente IA" data-description="Pruebe en vivo cómo responderá el asistente a sus clientes con la información y productos actuales de su catálogo.">
+                    <span class="nav-kicker">Prueba en vivo</span>
+                    <span class="nav-label">Simulador IA</span>
+                </a>
             </nav>
         </aside>
 
@@ -50,7 +54,9 @@
                     <p class="page-description" id="pageDescription">Revise el estado general del negocio y entre rápido a sus tareas principales.</p>
                 </div>
                 <div class="top-bar-actions">
+                    <span class="status-badge" id="tenantUserBadge">Sin sesión</span>
                     <span class="status-badge" id="statusBadge">Negocio activo</span>
+                    <button type="button" class="btn btn-secondary" id="logoutBtn">Cerrar sesión</button>
                 </div>
             </header>
 
@@ -139,6 +145,43 @@
                                 <li>Estamos revisando el estado del negocio.</li>
                             </ul>
                         </article>
+                    </div>
+
+                    <div class="section-header" style="margin-top:2.5rem; margin-bottom:1rem;">
+                        <h3 class="section-title-with-help">Métricas Visuales y Estado Operacional
+                            <button type="button" class="help-tip" data-tooltip="Indicadores gráficos en tiempo real sobre la composición de su catálogo, disponibilidad de inventario y cobertura de temas en la base de conocimiento." aria-label="Ayuda sobre métricas visuales">?</button>
+                        </h3>
+                    </div>
+                    <div class="charts-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:1.5rem; margin-bottom:1.5rem;">
+                        <div class="chart-card" style="background:#131323; padding:1.5rem; border-radius:12px; border:1px solid #2a2a4a; display:flex; flex-direction:column; justify-content:space-between;">
+                            <div>
+                                <h4 style="margin:0 0 0.4rem 0; font-size:1.05rem; color:#f1f5f9;">Distribución del Catálogo</h4>
+                                <p style="margin:0 0 1rem 0; font-size:0.85rem; color:#94a3b8;">Porcentaje de productos por grupo del negocio</p>
+                                <div id="chartCategoryDistribution" style="display:flex; flex-direction:column; gap:0.8rem;">
+                                    <p class="text-muted" style="font-size:0.85rem;">Cargando datos del catálogo...</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="chart-card" style="background:#131323; padding:1.5rem; border-radius:12px; border:1px solid #2a2a4a; display:flex; flex-direction:column; justify-content:space-between;">
+                            <div>
+                                <h4 style="margin:0 0 0.4rem 0; font-size:1.05rem; color:#f1f5f9;">Disponibilidad en Catálogo</h4>
+                                <p style="margin:0 0 1rem 0; font-size:0.85rem; color:#94a3b8;">Relación de productos disponibles vs. no disponibles</p>
+                                <div id="chartAvailability" style="display:flex; flex-direction:column; gap:1rem;">
+                                    <p class="text-muted" style="font-size:0.85rem;">Cargando estado de disponibilidad...</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="chart-card" style="background:#131323; padding:1.5rem; border-radius:12px; border:1px solid #2a2a4a; display:flex; flex-direction:column; justify-content:space-between;">
+                            <div>
+                                <h4 style="margin:0 0 0.4rem 0; font-size:1.05rem; color:#f1f5f9;">Información Útil (KB)</h4>
+                                <p style="margin:0 0 1rem 0; font-size:0.85rem; color:#94a3b8;">Estado y temas cubiertos para consulta rápida</p>
+                                <div id="chartKbCoverage" style="display:flex; flex-direction:column; gap:0.8rem;">
+                                    <p class="text-muted" style="font-size:0.85rem;">Cargando respuestas...</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </section>
 
@@ -259,10 +302,22 @@
                     <div class="context-note">
                         <strong>Consejo práctico:</strong> si tiene muchos productos, descargue la plantilla, complétela una sola vez y luego use "Cargar Excel" para ahorrar tiempo.
                     </div>
+                    <div class="table-toolbar" style="display:flex; gap:1rem; align-items:center; margin-bottom:1rem; flex-wrap:wrap; justify-content:space-between;">
+                        <div style="flex:1; min-width:260px;">
+                            <input type="text" id="productsFilterInput" placeholder="🔍 Filtrar productos por nombre, categoría o formato..." style="width:100%; padding:0.6rem 1rem; border-radius:8px; border:1px solid #3a3a5c; background:#1a1a2e; color:#e2e8f0; outline:none;">
+                        </div>
+                        <div id="productsBulkBar" style="display:none; gap:0.5rem; align-items:center; background:#1e1e30; padding:0.4rem 0.8rem; border-radius:8px; border:1px solid #4f46e5;">
+                            <span id="productsBulkCount" style="font-size:0.85rem; color:#a5b4fc; font-weight:600; margin-right:0.5rem;">0 sel.</span>
+                            <button class="btn btn-secondary" id="bulkActivateProductsBtn" type="button" style="padding:0.4rem 0.8rem; font-size:0.8rem;">Activar</button>
+                            <button class="btn btn-secondary" id="bulkDeactivateProductsBtn" type="button" style="padding:0.4rem 0.8rem; font-size:0.8rem;">Desactivar</button>
+                            <button class="btn btn-danger" id="bulkDeleteProductsBtn" type="button" style="padding:0.4rem 0.8rem; font-size:0.8rem; background:#ef4444; color:#fff;">Eliminar</button>
+                        </div>
+                    </div>
                     <div class="table-container">
                         <table class="data-table" id="productsTable">
                             <thead>
                                 <tr>
+                                    <th style="width:36px;"><input type="checkbox" id="selectAllProducts" title="Seleccionar todos"></th>
                                     <th>Nombre</th>
                                     <th>Categoría</th>
                                     <th>Formato</th>
@@ -287,6 +342,9 @@
                             <button type="button" class="help-tip" data-tooltip="Use grupos para ordenar sus productos. Por ejemplo: Vinos, Cervezas, Piscos o Promociones." aria-label="Ayuda sobre categorías">?</button>
                         </h3>
                         <button class="btn btn-primary" id="addCategoryBtn">Agregar grupo</button>
+                    </div>
+                    <div class="table-toolbar" style="margin-bottom:1rem;">
+                        <input type="text" id="categoriesFilterInput" placeholder="🔍 Filtrar grupos por nombre o referencia..." style="width:100%; max-width:400px; padding:0.6rem 1rem; border-radius:8px; border:1px solid #3a3a5c; background:#1a1a2e; color:#e2e8f0; outline:none;">
                     </div>
                     <div class="table-container">
                         <table class="data-table" id="categoriesTable">
@@ -318,10 +376,22 @@
                         <button class="btn btn-secondary" id="kbSearchBtn">Buscar</button>
                     </div>
                     <p class="search-feedback" id="kbSearchFeedback">Puede buscar por tema, título o parte del texto guardado.</p>
+                    <div class="table-toolbar" style="display:flex; gap:1rem; align-items:center; margin-bottom:1rem; flex-wrap:wrap; justify-content:space-between;">
+                        <div style="flex:1; min-width:260px;">
+                            <input type="text" id="kbFilterInput" placeholder="🔍 Filtrar lista de respuestas por categoría, título o texto..." style="width:100%; padding:0.6rem 1rem; border-radius:8px; border:1px solid #3a3a5c; background:#1a1a2e; color:#e2e8f0; outline:none;">
+                        </div>
+                        <div id="kbBulkBar" style="display:none; gap:0.5rem; align-items:center; background:#1e1e30; padding:0.4rem 0.8rem; border-radius:8px; border:1px solid #4f46e5;">
+                            <span id="kbBulkCount" style="font-size:0.85rem; color:#a5b4fc; font-weight:600; margin-right:0.5rem;">0 sel.</span>
+                            <button class="btn btn-secondary" id="bulkActivateKbBtn" type="button" style="padding:0.4rem 0.8rem; font-size:0.8rem;">Activar</button>
+                            <button class="btn btn-secondary" id="bulkDeactivateKbBtn" type="button" style="padding:0.4rem 0.8rem; font-size:0.8rem;">Desactivar</button>
+                            <button class="btn btn-danger" id="bulkDeleteKbBtn" type="button" style="padding:0.4rem 0.8rem; font-size:0.8rem; background:#ef4444; color:#fff;">Eliminar</button>
+                        </div>
+                    </div>
                     <div class="table-container">
                         <table class="data-table" id="kbTable">
                             <thead>
                                 <tr>
+                                    <th style="width:36px;"><input type="checkbox" id="selectAllKb" title="Seleccionar todos"></th>
                                     <th>Categoría</th>
                                     <th>Título</th>
                                     <th>Contenido</th>
@@ -346,6 +416,40 @@
                     </div>
                     <div class="channels-grid" id="channelsList"></div>
                 </section>
+
+                <section id="preview" class="section">
+                    <div class="section-intro">
+                        <h3>Simulador Inteligente (Visor en Vivo)</h3>
+                        <p>Interactúe con el asistente tal como lo haría un cliente por Telegram, WhatsApp o Web. El agente consultará en tiempo real el stock, precios y respuestas guardadas de su negocio.</p>
+                    </div>
+                    <div class="preview-container" style="max-width:700px; margin:0 auto; background:#131323; border:1px solid #3a3a5c; border-radius:16px; overflow:hidden; display:flex; flex-direction:column; height:550px; box-shadow:0 10px 30px rgba(0,0,0,0.5);">
+                        <div style="background:#1e1e30; padding:1rem 1.5rem; border-bottom:1px solid #3a3a5c; display:flex; justify-content:space-between; align-items:center;">
+                            <div style="display:flex; align-items:center; gap:0.8rem;">
+                                <div style="width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg, #6366f1, #06b6d4); display:flex; align-items:center; justify-content:center; font-weight:bold; color:#fff;">IA</div>
+                                <div>
+                                    <h4 style="margin:0; font-size:1rem; color:#f1f5f9;" id="previewAgentName">Asistente Virtual del Negocio</h4>
+                                    <span style="font-size:0.75rem; color:#10b981;">● En línea · Conectado al catálogo</span>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-secondary" id="clearPreviewBtn" style="font-size:0.75rem; padding:0.3rem 0.6rem;">Reiniciar chat</button>
+                        </div>
+
+                        <div id="previewMessages" style="flex:1; padding:1.5rem; overflow-y:auto; display:flex; flex-direction:column; gap:1rem; background:#0a0a14;">
+                            <div class="chat-msg chat-msg--bot" style="align-self:flex-start; max-width:80%; background:#1e1e30; color:#e2e8f0; padding:0.8rem 1.2rem; border-radius:12px 12px 12px 0; border:1px solid #2a2a4a; font-size:0.9rem; line-height:1.4;">
+                                ¡Hola! Soy el asistente de prueba de su negocio. ¿En qué le puedo ayudar hoy? Puede preguntarme por productos, precios, horarios o stock.
+                            </div>
+                        </div>
+
+                        <div id="previewTyping" style="display:none; padding:0.5rem 1.5rem; background:#0a0a14; color:#94a3b8; font-size:0.8rem; font-style:italic;">
+                            El agente está consultando el catálogo...
+                        </div>
+
+                        <form id="previewForm" style="display:flex; gap:0.5rem; padding:1rem; background:#1e1e30; border-top:1px solid #3a3a5c;">
+                            <input type="text" id="previewInput" placeholder="Escriba una pregunta de prueba (ej: ¿tienen whisky en stock?)..." autocomplete="off" style="flex:1; padding:0.7rem 1rem; border-radius:8px; border:1px solid #3a3a5c; background:#131323; color:#f1f5f9; outline:none; font-size:0.9rem;">
+                            <button type="submit" class="btn btn-primary" id="previewSendBtn" style="padding:0.7rem 1.5rem; font-weight:600;">Enviar</button>
+                        </form>
+                    </div>
+                </section>
             </div>
         </main>
     </div>
@@ -364,6 +468,6 @@
     <!-- Toast -->
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="js/app.js"></script>
+    <script src="js/app.js?v=20260703-tenant-auth-1"></script>
 </body>
 </html>

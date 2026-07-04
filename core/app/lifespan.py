@@ -27,7 +27,13 @@ from config.redis import create_redis_client
 from config.settings import settings
 from controllers.telegram_controller import prime_human_agent_cache
 from infrastructure.llm.adk_provider import ADKLLMProvider
-from models import category as _category_module, SystemAdmin  # noqa: F401 – registers models in Base
+from models import (  # noqa: F401 – registers models in Base
+    category as _category_module,
+    SystemAdmin,
+    TenantPortalInvite,
+    TenantPortalSession,
+    TenantPortalUser,
+)
 from repositories.business_config_repository import BusinessConfigRepository
 from scripts.seed_general_products import seed_general
 from services.session_service_factory import create_session_service

@@ -16,6 +16,7 @@ _TEST_DATABASE_URL = (
 if _TEST_DATABASE_URL:
     os.environ["DATABASE_URL"] = _TEST_DATABASE_URL
 os.environ.setdefault("OPENROUTER_API_KEY", "dummy_key")
+os.environ.setdefault("JWT_SECRET", "test-jwt-secret")
 
 
 def pytest_collection_modifyitems(
@@ -55,11 +56,15 @@ def initialize_test_database() -> None:
         OrderItem,
         Product,
         SystemSetting,
+        TenantPortalInvite,
+        TenantPortalSession,
+        TenantPortalUser,
         User,
     )
     from models.category import Category  # noqa: F401
 
     settings.openrouter_api_key = "dummy_key"
+    settings.jwt_secret = "test-jwt-secret"
 
     with _sync_engine.begin() as conn:
         _ensure_postgres_extensions(conn)
@@ -83,7 +88,7 @@ def db_session(initialize_test_database: None):
     # Clean up tables before run to avoid conflicts (include categories, preserving General)
     db.execute(
         text(
-            "TRUNCATE TABLE order_items, orders, cart_items, carts, messages, conversations, products, users CASCADE;"
+            "TRUNCATE TABLE tenant_portal_sessions, tenant_portal_invites, tenant_portal_users, order_items, orders, cart_items, carts, messages, conversations, products, users CASCADE;"
         )
     )
     db.execute(text("DELETE FROM categories WHERE is_system = false;"))
@@ -94,7 +99,7 @@ def db_session(initialize_test_database: None):
         # Clean up tables after run
         db.execute(
             text(
-                "TRUNCATE TABLE order_items, orders, cart_items, carts, messages, conversations, products, users CASCADE;"
+                "TRUNCATE TABLE tenant_portal_sessions, tenant_portal_invites, tenant_portal_users, order_items, orders, cart_items, carts, messages, conversations, products, users CASCADE;"
             )
         )
         db.execute(text("DELETE FROM categories WHERE is_system = false;"))

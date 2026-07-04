@@ -115,6 +115,11 @@ class Settings(BaseSettings):
     admin_api_key: str = ""
     jwt_secret: str = ""
     allowed_origins: str = "http://localhost:8083"
+    tenant_invite_ttl_hours: int = 6
+    tenant_access_token_ttl_minutes: int = 15
+    tenant_refresh_token_ttl_days: int = 14
+    tenant_access_cookie_name: str = "tenant_access_token"
+    tenant_refresh_cookie_name: str = "tenant_refresh_token"
 
     @model_validator(mode="after")
     def validate_production_cors(self) -> "Settings":
@@ -137,6 +142,11 @@ class Settings(BaseSettings):
     def use_redis_sessions(self) -> bool:
         """Indica si el backend de sesiones efectivo debe usar Redis."""
         return self.session_backend.lower() == "redis"
+
+    @property
+    def secure_cookies(self) -> bool:
+        """Activa cookies seguras cuando la app no corre en localhost de desarrollo."""
+        return self.is_production
 
 
 @lru_cache(maxsize=1)

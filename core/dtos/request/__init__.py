@@ -8,6 +8,13 @@ from .config_request import (
     KBSearchRequest,
 )
 from .user_request import UserCreateRequest
+from .tenant_auth_request import (
+    TenantInviteClaimRequest,
+    TenantInviteCreateRequest,
+    TenantLoginRequest,
+    TenantPasswordChangeRequest,
+    TenantUserDisableRequest,
+)
 
 __all__ = [
     "ChatRequest",
@@ -18,4 +25,9 @@ __all__ = [
     "KBEntryUpdateRequest",
     "KBSearchRequest",
     "UserCreateRequest",
+    "TenantInviteCreateRequest",
+    "TenantInviteClaimRequest",
+    "TenantLoginRequest",
+    "TenantUserDisableRequest",
+    "TenantPasswordChangeRequest",
 ]

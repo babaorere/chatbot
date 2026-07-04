@@ -2,21 +2,17 @@ const { test, expect } = require("@playwright/test");
 const { mockAdminApi, mockTenantApi } = require("./helpers/mock-api");
 
 test.describe("smoke and hostile frontend paths", () => {
-  test("admin tolerates backend failure on initial tenants load without crashing the shell", async ({ page }) => {
+  test("admin tolerates backend failure on initial settings load without crashing the shell", async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem("admin_api_key", "mock-admin-api-key");
+    });
     await page.route("http://localhost:8001/**", async (route) => {
       const url = new URL(route.request().url());
-      if (url.pathname === "/admin/tenants") {
+      if (url.pathname === "/admin/settings") {
         return route.fulfill({
           status: 500,
           contentType: "application/json",
           body: JSON.stringify({ error: "backend down" }),
-        });
-      }
-      if (url.pathname === "/admin/settings") {
-        return route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({ maintenance_mode: false }),
         });
       }
       return route.fulfill({
@@ -30,7 +26,7 @@ test.describe("smoke and hostile frontend paths", () => {
 
     await expect(page.locator("h1")).toContainText("Admin");
     await expect(page.locator("#pageTitle")).toContainText("Dashboard");
-    await expect(page.locator("#tenantCount")).toHaveText("0");
+    await expect(page.locator("#systemSettingsCount")).toHaveText("0");
   });
 
   test("tenant bootstrap works from prompt and category creation flow stays functional", async ({ page }) => {
@@ -43,15 +39,15 @@ test.describe("smoke and hostile frontend paths", () => {
 
     await page.goto("/frontend/tenant/index.html");
 
-    await expect(page.locator("#tenantName")).toHaveText("Botilleria Centro");
+    await expect(page.locator("#businessName")).toHaveText("Botilleria Centro");
     await expect(page.locator("#categoriesBody tr")).toHaveCount(2);
 
-    await page.getByRole("link", { name: /categorías/i }).click();
-    await page.getByRole("button", { name: /\+ Nueva Categoría/i }).click();
+    await page.locator('.sidebar-nav .nav-link[data-section="categories"]').click();
+    await page.locator("#addCategoryBtn").click();
     await page.locator("#catName").fill("Whiskies");
-    await page.getByRole("button", { name: /^Guardar$/i }).click();
+    await page.getByRole("button", { name: /Guardar grupo/i }).click();
 
-    await expect(page.locator("#toastContainer")).toContainText("Categoría guardada");
+    await expect(page.locator("#toastContainer")).toContainText("Grupo guardado");
     expect(state.categories.some((item) => item.name === "Whiskies")).toBeTruthy();
   });
 
@@ -65,10 +61,10 @@ test.describe("smoke and hostile frontend paths", () => {
     await mockTenantApi(page);
 
     await page.goto("/frontend/tenant/index.html");
-    await page.getByRole("link", { name: /productos/i }).click();
+    await page.locator('.sidebar-nav .nav-link[data-section="products"]').click();
 
     await page.locator("#exportProductsBtn").click();
-    await expect(page.locator("#toastContainer")).toContainText("Exportación completada");
+    await expect(page.locator("#toastContainer")).toContainText("Catálogo descargado");
 
     await page.locator("#exportTemplateBtn").click();
     await expect(page.locator("#toastContainer")).toContainText("Plantilla descargada");
@@ -80,13 +76,16 @@ test.describe("smoke and hostile frontend paths", () => {
       buffer: Buffer.from("fake-xlsx"),
     });
 
-    await expect(page.locator("#toastContainer")).toContainText("Importación completada");
+    await expect(page.locator("#toastContainer")).toContainText("Carga completada");
   });
 
   test("shared smoke: both frontends render their main shell and navigation", async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem("admin_api_key", "mock-admin-api-key");
+    });
     await mockAdminApi(page);
     await page.goto("/frontend/admin/index.html");
-    await expect(page.locator(".sidebar-nav .nav-link")).toHaveCount(4);
+    await expect(page.locator(".sidebar-nav .nav-link")).toHaveCount(5);
 
     const other = await page.context().newPage();
     await other.addInitScript(() => {
@@ -94,7 +93,31 @@ test.describe("smoke and hostile frontend paths", () => {
     });
     await mockTenantApi(other);
     await other.goto("/frontend/tenant/index.html");
-    await expect(other.locator(".sidebar-nav .nav-link")).toHaveCount(6);
+    await expect(other.locator(".sidebar-nav .nav-link")).toHaveCount(7);
     await other.close();
+  });
+
+  test("both frontends handle rate limiting 429 with user-friendly toast and logout confirmation", async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem("admin_api_key", "mock-admin-api-key");
+      window.confirm = () => true;
+    });
+    await mockAdminApi(page);
+
+    await page.route("http://localhost:8001/admin/settings", async (route) => {
+      return route.fulfill({
+        status: 429,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Too many requests" }),
+      });
+    });
+
+    await page.goto("/frontend/admin/index.html");
+    await expect(page.locator("#toastContainer")).toContainText("límite de solicitudes");
+
+    await page.unroute("http://localhost:8001/admin/settings");
+    await page.goto("/frontend/admin/index.html");
+    await page.locator("#adminLogoutBtn").click();
+    await expect(page.locator("#loginOverlay")).toBeVisible();
   });
 });

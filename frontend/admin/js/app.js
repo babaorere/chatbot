@@ -13,9 +13,20 @@ class AdminApp {
         this.setupNavigation();
         this.setupModals();
         this.setupQuickActions();
+        this.setupLogout();
+        this.setupTableFilter('settingsFilterInput', 'settingsBody');
+        this.setupTableFilter('tenantInvitesFilterInput', 'tenantInvitesBody');
+        this.setupTableFilter('tenantUsersFilterInput', 'tenantUsersBody');
+        this.setupTableFilter('adminsFilterInput', 'adminsBody');
+        window.addEventListener('offline', () => this.showOfflineBanner());
+        window.addEventListener('online', () => this.showOnlineBanner());
+        if (!navigator.onLine) {
+            this.showOfflineBanner();
+        }
         await this.loadDashboard();
         await this.loadAgentConfig();
         await this.loadSettings();
+        await this.loadTenantAccess();
         await this.loadAdmins();
     }
 
@@ -29,6 +40,11 @@ class AdminApp {
                 ...options.headers,
             },
         });
+        if (res.status === 429) {
+            const msg = 'Has superado el límite de solicitudes. Por favor, espera unos segundos antes de reintentar.';
+            this.showToast(msg, 'error');
+            throw new Error(msg);
+        }
         if (res.status === 403) {
             sessionStorage.removeItem(API_KEY_STORAGE);
             this.apiKey = '';
@@ -160,6 +176,45 @@ class AdminApp {
                 document.querySelector('.nav-link[data-section="agent"]')?.click();
             });
         }
+
+        const goToTenantAccessBtn = document.getElementById('goToTenantAccessBtn');
+        if (goToTenantAccessBtn) {
+            goToTenantAccessBtn.addEventListener('click', () => {
+                document.querySelector('.nav-link[data-section="tenantAccess"]')?.click();
+            });
+        }
+    }
+
+    setupLogout() {
+        const logoutBtn = document.getElementById('adminLogoutBtn');
+        if (!logoutBtn) return;
+        logoutBtn.addEventListener('click', () => {
+            if (!confirm('¿Seguro que desea salir del panel de administración general?')) return;
+            sessionStorage.removeItem(API_KEY_STORAGE);
+            this.apiKey = '';
+            this.showLoginScreen('La sesión administrativa se cerró correctamente.');
+        });
+    }
+
+    setupTableFilter(inputId, tbodyId) {
+        const input = document.getElementById(inputId);
+        const tbody = document.getElementById(tbodyId);
+        if (!input || !tbody) return;
+        input.addEventListener('input', () => {
+            this.applyTableFilter(inputId, tbodyId);
+        });
+    }
+
+    applyTableFilter(inputId, tbodyId) {
+        const input = document.getElementById(inputId);
+        const tbody = document.getElementById(tbodyId);
+        if (!input || !tbody) return;
+        const query = (input.value || '').toLowerCase().trim();
+        Array.from(tbody.querySelectorAll('tr')).forEach(row => {
+            if (row.querySelector('.empty-state') || row.querySelector('.text-muted')) return;
+            const text = row.textContent.toLowerCase();
+            row.style.display = (!query || text.includes(query)) ? '' : 'none';
+        });
     }
 
     async loadDashboard() {
@@ -305,6 +360,7 @@ class AdminApp {
         } catch (err) {
             console.error('Settings load failed:', err);
         }
+        this.applyTableFilter('settingsFilterInput', 'settingsBody');
     }
 
     editSetting(key) {
@@ -402,6 +458,189 @@ class AdminApp {
             });
         } catch (err) {
             console.error('Admins load failed:', err);
+        }
+        this.applyTableFilter('adminsFilterInput', 'adminsBody');
+    }
+
+    async loadTenantAccess() {
+        try {
+            const [invites, users] = await Promise.all([
+                this.fetch('/admin/tenant-access/invites'),
+                this.fetch('/admin/tenant-access/users'),
+            ]);
+
+            const invitesBody = document.getElementById('tenantInvitesBody');
+            if (invitesBody) {
+                invitesBody.innerHTML = '';
+                if (invites.length === 0) {
+                    invitesBody.innerHTML = '<tr><td colspan="5" class="empty-state">Todavía no hay invitaciones emitidas.</td></tr>';
+                }
+                invites.forEach((invite) => {
+                    const tr = document.createElement('tr');
+                    const status = invite.revoked_at
+                        ? 'Revocada'
+                        : invite.used_at
+                            ? 'Usada'
+                            : 'Pendiente';
+                    const action = !invite.revoked_at && !invite.used_at
+                        ? `<button class="btn btn-sm btn-danger" onclick="app.revokeTenantInvite('${invite.id}')">Revocar</button>`
+                        : '<span class="status-pill unavailable">Cerrada</span>';
+                    tr.innerHTML = `
+                        <td>${invite.email}</td>
+                        <td><code>${invite.role}</code></td>
+                        <td>${this.formatDateTime(invite.expires_at)}</td>
+                        <td>${status}</td>
+                        <td class="table-actions">
+                            ${invite.invite_url ? `<button class="btn btn-sm btn-secondary" onclick="app.copyInviteLink('${invite.invite_url}')">Copiar link</button>` : ''}
+                            ${action}
+                        </td>
+                    `;
+                    invitesBody.appendChild(tr);
+                });
+            }
+
+            const usersBody = document.getElementById('tenantUsersBody');
+            if (usersBody) {
+                usersBody.innerHTML = '';
+                if (users.length === 0) {
+                    usersBody.innerHTML = '<tr><td colspan="6" class="empty-state">Aún no hay usuarios tenant activos.</td></tr>';
+                }
+                users.forEach((user) => {
+                    const tr = document.createElement('tr');
+                    const canDisable = user.status === 'active';
+                    tr.innerHTML = `
+                        <td><strong>${user.full_name}</strong></td>
+                        <td>${user.email}</td>
+                        <td><code>${user.role}</code></td>
+                        <td>${user.status}</td>
+                        <td>${user.last_login_at ? this.formatDateTime(user.last_login_at) : 'Nunca'}</td>
+                        <td class="table-actions">
+                            ${canDisable
+                                ? `<button class="btn btn-sm btn-danger" onclick="app.disableTenantUser(${user.id})">Desactivar</button>`
+                                : `<button class="btn btn-sm btn-secondary" onclick="app.enableTenantUser(${user.id})">Reactivar</button>`}
+                        </td>
+                    `;
+                    usersBody.appendChild(tr);
+                });
+            }
+
+            const addTenantInviteBtn = document.getElementById('addTenantInviteBtn');
+            if (addTenantInviteBtn && !this.tenantInviteSetupDone) {
+                addTenantInviteBtn.addEventListener('click', () => this.showTenantInviteModal());
+                this.tenantInviteSetupDone = true;
+            }
+        } catch (err) {
+            console.error('Tenant access load failed:', err);
+        }
+        this.applyTableFilter('tenantInvitesFilterInput', 'tenantInvitesBody');
+        this.applyTableFilter('tenantUsersFilterInput', 'tenantUsersBody');
+    }
+
+    formatDateTime(value) {
+        if (!value) return '—';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value;
+        return date.toLocaleString('es-CL');
+    }
+
+    copyInviteLink(relativeUrl) {
+        const absoluteUrl = new URL(relativeUrl, window.location.origin).toString();
+        navigator.clipboard.writeText(absoluteUrl)
+            .then(() => this.showToast('Link de invitación copiado', 'success'))
+            .catch(() => this.showToast(absoluteUrl, 'success'));
+    }
+
+    showTenantInviteModal() {
+        const modal = document.getElementById('modal');
+        const title = document.getElementById('modalTitle');
+        const body = document.getElementById('modalBody');
+
+        title.textContent = 'Nueva invitación tenant';
+        body.innerHTML = `
+            <form id="tenantInviteForm">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="tenantInviteEmail" required placeholder="equipo@negocio.cl">
+                </div>
+                <div class="form-group">
+                    <label>Nombre sugerido</label>
+                    <input type="text" id="tenantInviteName" placeholder="Nombre del usuario">
+                </div>
+                <div class="form-group">
+                    <label>Rol</label>
+                    <select id="tenantInviteRole">
+                        <option value="owner">owner</option>
+                        <option value="manager" selected>manager</option>
+                        <option value="staff">staff</option>
+                    </select>
+                </div>
+                <p class="overview-copy" style="margin-bottom:1rem;">La invitación dura 6 horas y solo puede usarse una vez. Al canjearla, el usuario define su contraseña permanente.</p>
+                <button type="submit" class="btn btn-primary">Emitir invitación</button>
+            </form>
+        `;
+
+        document.getElementById('tenantInviteForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            try {
+                const invite = await this.fetch('/admin/tenant-access/invites', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        email: document.getElementById('tenantInviteEmail').value,
+                        full_name: document.getElementById('tenantInviteName').value || null,
+                        role: document.getElementById('tenantInviteRole').value,
+                    }),
+                });
+                this.showToast('Invitación emitida', 'success');
+                modal.classList.remove('active');
+                if (invite.invite_url) {
+                    this.copyInviteLink(invite.invite_url);
+                }
+                await this.loadTenantAccess();
+            } catch (err) {
+                this.showToast(err.message, 'error');
+            }
+        });
+
+        modal.classList.add('active');
+    }
+
+    async revokeTenantInvite(inviteId) {
+        if (!confirm('¿Revocar esta invitación? El link dejará de servir de inmediato.')) return;
+        try {
+            await this.fetch(`/admin/tenant-access/invites/${inviteId}/revoke`, {
+                method: 'POST',
+            });
+            this.showToast('Invitación revocada', 'success');
+            await this.loadTenantAccess();
+        } catch (err) {
+            this.showToast(err.message, 'error');
+        }
+    }
+
+    async disableTenantUser(userId) {
+        if (!confirm('¿Desactivar este usuario tenant y cerrar sus sesiones?')) return;
+        try {
+            await this.fetch(`/admin/tenant-access/users/${userId}/disable`, {
+                method: 'POST',
+                body: JSON.stringify({ disabled: true }),
+            });
+            this.showToast('Usuario desactivado', 'success');
+            await this.loadTenantAccess();
+        } catch (err) {
+            this.showToast(err.message, 'error');
+        }
+    }
+
+    async enableTenantUser(userId) {
+        try {
+            await this.fetch(`/admin/tenant-access/users/${userId}/disable`, {
+                method: 'POST',
+                body: JSON.stringify({ disabled: false }),
+            });
+            this.showToast('Usuario reactivado', 'success');
+            await this.loadTenantAccess();
+        } catch (err) {
+            this.showToast(err.message, 'error');
         }
     }
 
@@ -529,6 +768,25 @@ class AdminApp {
         } catch (err) {
             this.showToast(err.message, 'error');
         }
+    }
+
+    showOfflineBanner() {
+        let banner = document.getElementById('offlineBanner');
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.id = 'offlineBanner';
+            banner.style.cssText = 'position:fixed; top:0; left:0; width:100%; background:#e53e3e; color:#fff; text-align:center; padding:0.5rem; font-weight:bold; z-index:10000; box-shadow:0 2px 10px rgba(0,0,0,0.3); font-size:0.9rem;';
+            banner.textContent = '⚠️ Sin conexión a internet. Algunas funciones pueden no estar disponibles.';
+            document.body.appendChild(banner);
+        }
+    }
+
+    showOnlineBanner() {
+        const banner = document.getElementById('offlineBanner');
+        if (banner) {
+            banner.remove();
+        }
+        this.showToast('Conexión restablecida.', 'success');
     }
 }
 

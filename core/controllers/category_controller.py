@@ -6,13 +6,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
-from app.security import get_admin_api_key
+from app.security import require_tenant_or_admin_access
 from config.database import get_db, safe_transaction
 from services.category_service import CategoryService
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/categories", tags=["categories"])
+router = APIRouter(
+    prefix="/categories",
+    tags=["categories"],
+    dependencies=[Depends(require_tenant_or_admin_access)],
+)
 
 
 class CategoryCreateRequest(BaseModel):
@@ -43,7 +47,6 @@ def list_categories(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
 def create_category(
     data: CategoryCreateRequest,
     db: Session = Depends(get_db),
-    _admin_key: str = Depends(get_admin_api_key),
 ) -> dict[str, Any]:
     """Crea una nueva categoría de productos protegida por la API key administrativa."""
     try:
@@ -63,7 +66,6 @@ def update_category(
     name: str,
     data: CategoryUpdateRequest,
     db: Session = Depends(get_db),
-    _admin_key: str = Depends(get_admin_api_key),
 ) -> dict[str, Any]:
     """Renombra una categoría existente dentro de una transacción segura."""
     try:
@@ -82,7 +84,6 @@ def update_category(
 def delete_category(
     name: str,
     db: Session = Depends(get_db),
-    _admin_key: str = Depends(get_admin_api_key),
 ) -> dict[str, Any]:
     """Elimina una categoría existente protegida por la API key administrativa."""
     try:

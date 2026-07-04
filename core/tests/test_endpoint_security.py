@@ -4,6 +4,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.security import get_admin_api_key
+from controllers.business_controller import router as business_router
 from controllers.business_config_controller import router as business_config_router
 from controllers.category_controller import router as category_router
 from controllers.session_controller import router as session_router
@@ -12,6 +13,7 @@ from controllers.session_controller import router as session_router
 def _get_route(path: str, method: str):
     for route in (
         list(business_config_router.routes)
+        + list(business_router.routes)
         + list(session_router.routes)
         + list(category_router.routes)
     ):
@@ -42,12 +44,20 @@ def test_session_history_route_includes_admin_dependency():
     assert "get_admin_api_key" in dependency_names
 
 
-def test_create_category_route_includes_admin_dependency():
+def test_create_category_route_includes_tenant_or_admin_dependency():
     route = _get_route("/categories", "POST")
 
     dependency_names = _dependency_names(route)
 
-    assert "get_admin_api_key" in dependency_names
+    assert "require_tenant_or_admin_access" in dependency_names
+
+
+def test_business_profile_route_requires_tenant_session():
+    route = _get_route("/business/me/profile", "GET")
+
+    dependency_names = _dependency_names(route)
+
+    assert "get_current_tenant_user" in dependency_names
 
 
 @pytest.mark.asyncio
