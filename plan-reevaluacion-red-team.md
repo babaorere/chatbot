@@ -45,11 +45,24 @@ El red team corre en paralelo cuando las pruebas no compiten por el mismo estado
 
 Objetivo: probar que el webhook siempre libera al cliente antes de trabajos lentos.
 
+Estado: completado.
+
+Evidencia:
+- 20 webhooks sinteticos `/start` enviados con usuarios distintos.
+- Todos respondieron HTTP 200.
+- Tiempo externo `curl`: minimo aproximado `2.36ms`, maximo aproximado `5.26ms`.
+- `webhook_response_ready`: count=20, p50=`0.74ms`, p95=`1.28ms`, p99=`1.44ms`, max=`1.48ms`.
+- `background_started_after_webhook`: count=20, p50=`1.18ms`, p95=`1.89ms`, p99=`1.91ms`, max=`1.92ms`.
+- `sendMessage`: count=20, p50=`1475.64ms`, p95=`1635.21ms`, p99=`2728.90ms`, max=`3002.32ms`.
+- `webhook_to_background_finished`: count=20, p50=`1486.43ms`, p95=`1638.90ms`, p99=`2733.11ms`, max=`3006.66ms`.
+- No faltaron traces con `webhook_response_ready`.
+- El tramo lento fue `sendMessage` externo en background; no bloqueo la respuesta inmediata del webhook.
+
 Pruebas:
-- Enviar 20 webhooks `/start` sinteticos con usuarios distintos.
-- Medir `webhook_response_ready`, `background_started_after_webhook`, `webhook_to_background_finished`.
-- Separar latencia de API local, Redis lock, DB, FSM, Telegram API externa y LLM.
-- Confirmar que errores de `sendMessage` no cambian el tiempo de respuesta del webhook.
+- [x] Enviar 20 webhooks `/start` sinteticos con usuarios distintos.
+- [x] Medir `webhook_response_ready`, `background_started_after_webhook`, `webhook_to_background_finished`.
+- [x] Separar latencia de API local, Redis lock, DB, FSM, Telegram API externa y LLM.
+- [x] Confirmar que errores de `sendMessage` no cambian el tiempo de respuesta del webhook.
 
 Criterio de fallo:
 - `webhook_response_ready` p95 mayor a 50ms en runtime local sin carga externa pesada.
