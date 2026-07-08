@@ -345,7 +345,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         prime_human_agent_cache(
             BusinessConfigRepository(seed_db).get_config().human_agent_available
         )
-        if not settings.is_production:
+        if not settings.is_production or settings.reset_demo_catalog_on_start:
             seed_general(reset_existing_products=True)
         seed_db.commit()
 

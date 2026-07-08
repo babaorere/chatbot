@@ -80,6 +80,7 @@ services:
       - DATABASE_URL=postgresql://${DB_USER:-shared}:${DB_PASSWORD:-shared_secret}@db:5432/${DB_NAME:-chatbot}
       - ARQ_ENABLED=true
       - ADK_DISABLE_JSON_SCHEMA_FOR_FUNC_DECL=true
+      - RESET_DEMO_CATALOG_ON_START=true
     volumes:
       - ./core:/app
       - ./nginx.conf:/nginx.conf:ro

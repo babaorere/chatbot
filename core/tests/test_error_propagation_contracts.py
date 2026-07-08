@@ -189,6 +189,40 @@ async def test_lifespan_seeds_general_catalog_only_in_development() -> None:
 
 
 @pytest.mark.asyncio
+async def test_lifespan_seeds_general_catalog_when_demo_reset_flag_is_enabled() -> None:
+    app = FastAPI()
+    seed_session_cm = MagicMock()
+    seed_db = MagicMock()
+    seed_session_cm.__enter__.return_value = seed_db
+    seed_session_cm.__exit__.return_value = None
+
+    config_mock = MagicMock(human_agent_available=True)
+
+    with (
+        patch("app.lifespan.Base.metadata.create_all"),
+        patch("app.lifespan._run_migrations"),
+        patch("app.lifespan.SessionLocal", return_value=seed_session_cm),
+        patch("app.lifespan.BusinessConfigRepository") as repo_mock,
+        patch("app.lifespan.create_session_service", return_value=MagicMock()),
+        patch("app.lifespan.ADKLLMProvider", return_value=MagicMock()),
+        patch("app.lifespan.set_llm_provider"),
+        patch("app.container.get_http_client", return_value=MagicMock()),
+        patch("app.lifespan.seed_general") as seed_general_mock,
+    ):
+        repo_mock.return_value.get_config.return_value = config_mock
+        seed_db.commit.return_value = None
+        with (
+            patch("app.lifespan.settings.app_env", "production"),
+            patch("app.lifespan.settings.reset_demo_catalog_on_start", True),
+            patch("app.lifespan.settings.session_backend", "memory"),
+        ):
+            async with lifespan(app):
+                pass
+
+    seed_general_mock.assert_called_once_with(reset_existing_products=True)
+
+
+@pytest.mark.asyncio
 async def test_clear_providers_raises_when_http_client_close_fails() -> None:
     http_client_mock = MagicMock()
     http_client_mock.aclose = AsyncMock(side_effect=RuntimeError("close failed"))

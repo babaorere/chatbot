@@ -105,6 +105,7 @@ class Settings(BaseSettings):
     business_city: str = "Santiago"
     business_website: str = ""
     business_hours: str = ""
+    reset_demo_catalog_on_start: bool = False
 
     # ── App ──────────────────────────────────────────────────────
     app_env: str = "development"
