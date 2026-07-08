@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import re
 import sys
 from dataclasses import dataclass, field
@@ -137,6 +138,16 @@ def _format_ms(value: float | None) -> str:
     return f"{value:.2f}ms"
 
 
+def _percentile(sorted_values: list[float], percentile: float) -> float:
+    if not sorted_values:
+        raise ValueError("percentile requires at least one value")
+    if len(sorted_values) == 1:
+        return sorted_values[0]
+    index = math.ceil(len(sorted_values) * percentile) - 1
+    index = max(0, min(index, len(sorted_values) - 1))
+    return sorted_values[index]
+
+
 def format_summary(summary: TraceSummary) -> str:
     slowest = summary.slowest_event()
     slowest_text = (
@@ -166,12 +177,37 @@ def format_summary(summary: TraceSummary) -> str:
     )
 
 
-def analyze_stream(stream: TextIO) -> list[str]:
+def format_aggregate_summaries(summaries: dict[str, TraceSummary]) -> list[str]:
+    stage_values: dict[str, list[float]] = {}
+    for summary in summaries.values():
+        for event in summary.events:
+            if event.elapsed_ms is None:
+                continue
+            stage_values.setdefault(event.label, []).append(event.elapsed_ms)
+
+    lines: list[str] = []
+    for label, values in sorted(stage_values.items()):
+        sorted_values = sorted(values)
+        count = len(sorted_values)
+        lines.append(
+            f"aggregate={label} count={count} "
+            f"p50={_format_ms(_percentile(sorted_values, 0.50))} "
+            f"p95={_format_ms(_percentile(sorted_values, 0.95))} "
+            f"p99={_format_ms(_percentile(sorted_values, 0.99))} "
+            f"max={_format_ms(sorted_values[-1])}"
+        )
+    return lines
+
+
+def analyze_stream(stream: TextIO, *, include_aggregate: bool = False) -> list[str]:
     summaries = summarize_lines(stream)
-    return [
+    lines = [
         format_summary(summary)
         for _, summary in sorted(summaries.items(), key=lambda item: item[0])
     ]
+    if include_aggregate:
+        lines.extend(format_aggregate_summaries(summaries))
+    return lines
 
 
 def _open_input(path: str | None) -> TextIO:
@@ -190,11 +226,16 @@ def main(argv: list[str] | None = None) -> int:
         default="-",
         help="Log file path. Use '-' or omit to read stdin.",
     )
+    parser.add_argument(
+        "--aggregate",
+        action="store_true",
+        help="Append p50/p95/p99/max latency summaries grouped by stage.",
+    )
     args = parser.parse_args(argv)
 
     stream = _open_input(args.logfile)
     try:
-        for line in analyze_stream(stream):
+        for line in analyze_stream(stream, include_aggregate=args.aggregate):
             print(line)
     finally:
         if stream is not sys.stdin:

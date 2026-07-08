@@ -67,3 +67,25 @@ def test_analyze_stream_outputs_one_summary_per_trace() -> None:
         "sendMessage=- answerCallbackQuery=55.00ms "
         "slowest=api:answerCallbackQuery:55.00ms cache=v1 age=6.70s"
     ]
+
+
+def test_analyze_stream_with_aggregate_outputs_percentiles_by_stage() -> None:
+    stream = StringIO(
+        "\n".join(
+            [
+                "INFO [telegram_timing] trace=tg:1:1 stage=webhook_response_ready elapsed_ms=1.00 user=1",
+                "INFO [telegram_timing] trace=tg:2:2 stage=webhook_response_ready elapsed_ms=2.00 user=2",
+                "INFO [telegram_timing] trace=tg:3:3 stage=webhook_response_ready elapsed_ms=3.00 user=3",
+                "INFO [telegram_api_timing] trace=tg:1:1 method=sendMessage elapsed_ms=100.00 status=200 ok=True",
+                "INFO [telegram_api_timing] trace=tg:2:2 method=sendMessage elapsed_ms=200.00 status=200 ok=True",
+                "INFO [telegram_api_timing] trace=tg:3:3 method=sendMessage elapsed_ms=300.00 status=200 ok=True",
+            ]
+        )
+    )
+
+    output = analyze_stream(stream, include_aggregate=True)
+
+    assert output[-2:] == [
+        "aggregate=api:sendMessage count=3 p50=200.00ms p95=300.00ms p99=300.00ms max=300.00ms",
+        "aggregate=timing:webhook_response_ready count=3 p50=2.00ms p95=3.00ms p99=3.00ms max=3.00ms",
+    ]

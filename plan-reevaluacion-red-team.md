@@ -34,6 +34,7 @@ Este documento es el plan operativo vigente. Si una prueba contradice una premis
 - El prime de catalogo ahora se ejecuta explicitamente en `lifespan` despues del seed demo.
 - El hook local ejecutaba `pytest` dentro del contenedor `chatbot_api` contra la DB runtime `chatbot`; los tests truncaban `products`.
 - `core/tests/conftest.py` ahora deriva automaticamente una DB aislada `chatbot_test` fuera de GitHub Actions cuando no se define `TEST_DATABASE_URL`, evitando destruir datos runtime durante validaciones locales.
+- `core/scripts/analyze_telegram_latency.py` ahora acepta `--aggregate` para reportar p50/p95/p99/max por stage sin perder el detalle por trace.
 
 ## Regla de red team
 
@@ -204,12 +205,26 @@ Criterio de fallo:
 
 Objetivo: asegurar que los logs permiten diagnosticar latencia sin leer codigo.
 
+Estado: completado.
+
+Evidencia:
+- `core/scripts/analyze_telegram_latency.py --aggregate` se ejecuto sobre logs reales del contenedor `api`.
+- El analizador produjo `56` lineas por trace y `28` lineas agregadas por stage.
+- Los traces reconstruyen `webhook_ack`, `background_total`, `callback_validated`, `menu_stack_snapshot`, `sendMessage`, `answerCallbackQuery`, slowest stage y cache.
+- Ejemplo de trace reconstruido: `trace=tg:720004211:920004211 webhook_ack=12.84ms background_total=1985.55ms callback_validated=14.51ms menu_stack_snapshot=0.00ms sendMessage=1945.24ms answerCallbackQuery=1364.96ms slowest=timing:webhook_to_background_finished:1985.55ms cache=v1 age=1912.69s`.
+- `webhook_response_ready`: count=53, p50=`4.47ms`, p95=`13.59ms`, p99=`14.32ms`, max=`14.32ms`.
+- `sendMessage`: count=44, p50=`1557.23ms`, p95=`2936.94ms`, p99=`3320.00ms`, max=`3320.00ms`.
+- `answerCallbackQuery`: count=12, p50=`1850.22ms`, p95=`2639.07ms`, p99=`2639.07ms`, max=`2639.07ms`.
+- `reply_markup_clear_dropped`: count=8, p50=`0.02ms`, p95=`0.07ms`, p99=`0.07ms`, max=`0.07ms`.
+- `catalog_cache_refreshed_after_commit`: count=2, p50=`5.25ms`, p95=`8.35ms`, p99=`8.35ms`, max=`8.35ms`.
+- El slow path agregado esta en background externo/LLM/API Telegram; no en `webhook_response_ready`.
+
 Pruebas:
-- Pasar logs reales por `core/scripts/analyze_telegram_latency.py`.
-- Confirmar agrupacion por trace.
-- Confirmar slowest stage.
-- Confirmar cache version y age.
-- Confirmar visibilidad de `sendMessage` y `answerCallbackQuery`.
+- [x] Pasar logs reales por `core/scripts/analyze_telegram_latency.py`.
+- [x] Confirmar agrupacion por trace.
+- [x] Confirmar slowest stage.
+- [x] Confirmar cache version y age.
+- [x] Confirmar visibilidad de `sendMessage` y `answerCallbackQuery`.
 
 Criterio de fallo:
 - Un trace no permite reconstruir llamada, ack, background y salida externa.
