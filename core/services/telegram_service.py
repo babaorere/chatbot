@@ -166,7 +166,7 @@ async def clear_telegram_reply_markup(
         payload = {
             "chat_id": chat_id,
             "message_id": message_id,
-            "reply_markup": None,
+            "reply_markup": {"inline_keyboard": []},
         }
         client = get_http_client()
         resp = await client.post(url, json=payload)

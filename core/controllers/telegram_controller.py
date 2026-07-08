@@ -758,8 +758,6 @@ def prime_human_agent_cache(value: bool, ttl_seconds: int = 300) -> None:
         "value": value,
         "expires_at": time.time() + ttl_seconds,
     }
-    # Cargar también la caché del catálogo al arrancar o refrescar
-    prime_catalog_cache()
 
 
 def _get_human_agent_available() -> bool:

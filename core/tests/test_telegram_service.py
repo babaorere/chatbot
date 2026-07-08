@@ -40,6 +40,23 @@ async def test_clear_telegram_reply_markup_raises_when_api_reports_failure() -> 
 
 
 @pytest.mark.asyncio
+async def test_clear_telegram_reply_markup_sends_empty_inline_keyboard() -> None:
+    client_mock = AsyncMock()
+    response_mock = MagicMock()
+    response_mock.status_code = 200
+    response_mock.json.return_value = {"ok": True}
+    client_mock.post.return_value = response_mock
+
+    with patch("services.telegram_service.get_http_client", return_value=client_mock):
+        result = await clear_telegram_reply_markup("bot-token", 123, 456)
+
+    assert result is True
+    assert client_mock.post.call_args.kwargs["json"]["reply_markup"] == {
+        "inline_keyboard": []
+    }
+
+
+@pytest.mark.asyncio
 async def test_answer_telegram_callback_query_raises_when_api_reports_failure() -> None:
     client_mock = AsyncMock()
     response_mock = MagicMock()

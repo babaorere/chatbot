@@ -25,7 +25,7 @@ from app.container import clear_providers, set_llm_provider, set_redis_client
 from config.database import Base, SessionLocal, _sync_engine
 from config.redis import create_redis_client
 from config.settings import settings
-from controllers.telegram_controller import prime_human_agent_cache
+from controllers.telegram_controller import prime_catalog_cache, prime_human_agent_cache
 from infrastructure.llm.adk_provider import ADKLLMProvider
 from models import (  # noqa: F401 – registers models in Base
     category as _category_module,
@@ -348,6 +348,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if not settings.is_production or settings.reset_demo_catalog_on_start:
             seed_general(reset_existing_products=True)
         seed_db.commit()
+    prime_catalog_cache()
 
     # 3. Session service
     session_service = create_session_service(config=settings)

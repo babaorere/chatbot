@@ -76,7 +76,7 @@ services:
     ports:
       - "8001:8000"
     environment:
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - REDIS_URL=redis://redis:6379/0
       - DATABASE_URL=postgresql://${DB_USER:-shared}:${DB_PASSWORD:-shared_secret}@db:5432/${DB_NAME:-chatbot}
       - ARQ_ENABLED=true
       - ADK_DISABLE_JSON_SCHEMA_FOR_FUNC_DECL=true
@@ -122,7 +122,7 @@ services:
     env_file:
       - .env
     environment:
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - REDIS_URL=redis://redis:6379/0
       - DATABASE_URL=postgresql://${DB_USER:-shared}:${DB_PASSWORD:-shared_secret}@db:5432/${DB_NAME:-chatbot}
       - ARQ_ENABLED=true
     command: ["arq", "workers.arq_worker.WorkerSettings"]

@@ -3,12 +3,29 @@ import httpx
 from unittest.mock import patch, AsyncMock, MagicMock
 from main import app
 from app.container import get_process_message_uc
+from controllers import telegram_controller
+from controllers.telegram_controller import prime_human_agent_cache
 from infrastructure.channels.telegram_fsm import (
     FSMState,
     FSMStateStore,
     TelegramConversationFSM,
 )
-from controllers.telegram_controller import prime_human_agent_cache
+
+
+def _prime_general_catalog_snapshot() -> None:
+    telegram_controller._catalog_snapshot = telegram_controller.CatalogSnapshot(
+        categories=({"name": "General", "slug": "general", "is_system": True},),
+        products_by_category={},
+        products_by_id={},
+        version=1,
+    )
+    telegram_controller._categories_cache = list(
+        telegram_controller._catalog_snapshot.categories
+    )
+    telegram_controller._products_by_category_cache = {}
+    telegram_controller._static_menu_prerender_snapshot = (
+        telegram_controller.StaticMenuPrerenderSnapshot()
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -30,6 +47,7 @@ async def test_telegram_hybrid_menu_flow(mock_use_case):
     user_id = "5391760292"
     fsm = TelegramConversationFSM(user_id, store)
     prime_human_agent_cache(True)
+    _prime_general_catalog_snapshot()
 
     # 1. Parcheamos el envío a Telegram y la persistencia del FSM
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
@@ -103,12 +121,6 @@ async def test_telegram_hybrid_menu_flow(mock_use_case):
                 }
             }
 
-            # Parchear listado de categorías en base de datos para simular retorno
-            from controllers.telegram_controller import _categories_cache, _products_by_category_cache
-            _categories_cache.clear()
-            _categories_cache.append({"name": "General", "slug": "general", "is_system": True})
-            _products_by_category_cache.clear()
-            
             resp2 = await client.post(
                 "/telegram/webhook/fake_token", json=payload_option_1
             )
