@@ -67,6 +67,10 @@ _memory_fsm_store = FSMStateStore()
 # Cerradura local en memoria para concurrencia si Redis no está activo
 _local_locks: set[str] = set()
 _FEATURED_MAX_ITEMS = 10
+_REPLY_MARKUP_CLEANUP_CONCURRENCY = 2
+_CATALOG_REMOTE_VERSION_CHECK_INTERVAL_SECONDS = 2.0
+_CATALOG_REMOTE_VERSION_KEY_SUFFIX = "catalog:snapshot_version"
+_reply_markup_cleanup_semaphore = asyncio.Semaphore(_REPLY_MARKUP_CLEANUP_CONCURRENCY)
 
 # Caché en memoria para tablas pequeñas (Catálogo)
 _categories_cache: list[dict[str, Any]] = []
@@ -85,6 +89,12 @@ class CatalogSnapshot:
 
 
 _catalog_snapshot = CatalogSnapshot()
+_catalog_distributed_version_seen = 0
+_catalog_remote_version_checked_at = 0.0
+
+
+def _catalog_remote_version_key() -> str:
+    return f"{settings.redis_namespace}:{_CATALOG_REMOTE_VERSION_KEY_SUFFIX}"
 
 
 def prime_catalog_cache() -> None:
@@ -159,14 +169,21 @@ def prime_catalog_cache() -> None:
 
 def refresh_catalog_cache_after_commit(reason: str) -> None:
     """Refresca el snapshot de catálogo luego de una mutación confirmada."""
+    global _catalog_distributed_version_seen
     started_at = time.perf_counter()
     try:
         prime_catalog_cache()
+        remote_version = _bump_distributed_catalog_version(reason)
+        if remote_version is not None:
+            _catalog_distributed_version_seen = remote_version
         _log_timing(
             trace_id="catalog-cache-refresh",
             stage="catalog_cache_refreshed_after_commit",
             started_at=started_at,
-            extra=f"reason={reason} version={_catalog_snapshot.version}",
+            extra=(
+                f"reason={reason} version={_catalog_snapshot.version} "
+                f"remote_version={remote_version or '-'}"
+            ),
         )
     except Exception as exc:
         logger.exception(
@@ -176,6 +193,85 @@ def refresh_catalog_cache_after_commit(reason: str) -> None:
         raise RuntimeError(
             f"Failed to refresh catalog cache after committed mutation: {reason}"
         ) from exc
+
+
+def _bump_distributed_catalog_version(reason: str) -> int | None:
+    """Publica una nueva versión de catálogo para otros workers, si Redis está activo."""
+    if get_redis_client() is None:
+        return None
+
+    try:
+        from redis import Redis
+
+        client = Redis.from_url(
+            settings.redis_url,
+            encoding="utf-8",
+            decode_responses=True,
+            socket_timeout=settings.redis_socket_timeout_seconds,
+            socket_connect_timeout=settings.redis_socket_connect_timeout_seconds,
+        )
+        try:
+            version = int(client.incr(_catalog_remote_version_key()))
+        finally:
+            client.close()
+    except Exception as exc:
+        logger.exception(
+            "Distributed catalog version bump failed [reason=%s]",
+            reason,
+        )
+        raise RuntimeError(
+            f"Failed to publish distributed catalog cache version: {reason}"
+        ) from exc
+
+    logger.info(
+        "[telegram_cache] distributed_version_bumped key=%s version=%d reason=%s",
+        _catalog_remote_version_key(),
+        version,
+        reason,
+    )
+    return version
+
+
+async def _refresh_catalog_cache_if_remote_version_changed(
+    *,
+    trace_id: str,
+    user_id: str | None = None,
+) -> None:
+    """Refresca el snapshot local si otro worker publicó una versión más nueva."""
+    global _catalog_distributed_version_seen, _catalog_remote_version_checked_at
+
+    redis_client = get_redis_client()
+    if redis_client is None:
+        return
+
+    now = time.time()
+    if (
+        now - _catalog_remote_version_checked_at
+        < _CATALOG_REMOTE_VERSION_CHECK_INTERVAL_SECONDS
+    ):
+        return
+    _catalog_remote_version_checked_at = now
+
+    started_at = time.perf_counter()
+    raw_version = await redis_client.get(_catalog_remote_version_key())
+    remote_version = int(raw_version) if raw_version is not None else 0
+    if remote_version > _catalog_distributed_version_seen:
+        await asyncio.to_thread(prime_catalog_cache)
+        _catalog_distributed_version_seen = remote_version
+        stage = "catalog_cache_remote_refreshed"
+    else:
+        stage = "catalog_cache_remote_checked"
+
+    _log_timing(
+        trace_id=trace_id,
+        stage=stage,
+        started_at=started_at,
+        user_id=user_id,
+        extra=(
+            f"remote_version={remote_version} "
+            f"seen_version={_catalog_distributed_version_seen}"
+        ),
+    )
 
 
 def _elapsed_ms(start: float) -> float:
@@ -262,6 +358,55 @@ def _create_logged_task(
 
     task.add_done_callback(_log_task_result)
     return task
+
+
+async def _prewarm_idle_client_cache(
+    *,
+    trace_id: str,
+    user_id: str | None = None,
+    reason: str,
+) -> None:
+    """Precalienta datos no transaccionales mientras el cliente lee el menú."""
+    started_at = time.perf_counter()
+    try:
+        if _catalog_snapshot.version == 0:
+            await asyncio.to_thread(prime_catalog_cache)
+
+        menu_flow = _create_menu_flow()
+        menu_flow.render_main_menu()
+        menu_flow.render_categories_menu(current_stack=[MAIN_MENU_SCOPE])
+        _log_timing(
+            trace_id=trace_id,
+            stage="idle_prewarm_done",
+            started_at=started_at,
+            user_id=user_id,
+            extra=f"reason={reason} catalog_version={_catalog_snapshot.version}",
+        )
+    except Exception:
+        logger.exception(
+            "[telegram_task] trace=%s stage=idle_prewarm failed user=%s reason=%s",
+            trace_id,
+            user_id or "-",
+            reason,
+        )
+
+
+def _schedule_idle_prewarm(
+    *,
+    trace_id: str,
+    user_id: str | None,
+    reason: str,
+) -> None:
+    _create_logged_task(
+        _prewarm_idle_client_cache(
+            trace_id=trace_id,
+            user_id=user_id,
+            reason=reason,
+        ),
+        trace_id=trace_id,
+        stage="idle_prewarm",
+        user_id=user_id,
+    )
 
 
 def get_fsm_store() -> FSMStateStore:
@@ -908,6 +1053,24 @@ async def _defer_clear_reply_markup(
 ) -> None:
     """Programa la limpieza del teclado inline con job durable."""
     started_at = time.perf_counter()
+    if _reply_markup_cleanup_semaphore.locked():
+        logger.warning(
+            "[telegram_task] trace=%s stage=reply_markup_clear_dropped user=%s message_id=%s reason=semaphore_saturated",
+            trace_id or "-",
+            user_id or "-",
+            message_id,
+        )
+        if trace_id:
+            _log_timing(
+                trace_id=trace_id,
+                stage="reply_markup_clear_dropped",
+                started_at=started_at,
+                user_id=user_id,
+                extra=f"message_id={message_id} reason=semaphore_saturated",
+            )
+        return
+
+    await _reply_markup_cleanup_semaphore.acquire()
     event_id = str(uuid.uuid4())
     try:
         await JobDispatcher().enqueue_job(
@@ -937,6 +1100,8 @@ async def _defer_clear_reply_markup(
         raise RuntimeError(
             "ARQ must be available for reply markup cleanup dispatch."
         ) from exc
+    finally:
+        _reply_markup_cleanup_semaphore.release()
 
 
 async def _process_telegram_update_core(
@@ -961,6 +1126,10 @@ async def _process_telegram_update_core(
     )
     fsm = TelegramConversationFSM(user_id=user_id, state_store=get_fsm_store())
 
+    await _refresh_catalog_cache_if_remote_version_changed(
+        trace_id=trace_id,
+        user_id=user_id,
+    )
     menu_flow = _create_menu_flow()
     purchase_flow = _create_purchase_flow()
     input_router = TelegramInputRouter()
@@ -1487,6 +1656,11 @@ async def _process_telegram_update_core(
                 trace_id=trace_id,
                 reason="start_command",
             )
+            _schedule_idle_prewarm(
+                trace_id=trace_id,
+                user_id=user_id,
+                reason="start_command",
+            )
             _log_timing(
                 trace_id=trace_id,
                 stage="start_command_responded",
@@ -1512,6 +1686,11 @@ async def _process_telegram_update_core(
             await _clear_latest_conversation_session(
                 user_id=user_id,
                 trace_id=trace_id,
+                reason=f"reset_command:{cmd_text}",
+            )
+            _schedule_idle_prewarm(
+                trace_id=trace_id,
+                user_id=user_id,
                 reason=f"reset_command:{cmd_text}",
             )
             _log_timing(

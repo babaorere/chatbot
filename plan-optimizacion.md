@@ -154,74 +154,79 @@ async def get_runtime_snapshot(self) -> TelegramFSMRuntimeSnapshot:
 - [ ] Tests:
   - [x] snapshot carga metadata de menu.
   - [x] snapshot rechaza stack corrupto.
-  - [ ] callback valido por `active_menu_id`
-  - [ ] callback valido por version
-  - [ ] callback expirado
-  - [ ] seleccion numerica legacy
-  - [ ] `menu:back`
-- [ ] Validar que bajan tiempos de:
+  - [x] callback valido por `active_menu_id`
+  - [x] callback valido por version
+  - [x] callback expirado
+  - [x] seleccion numerica legacy
+  - [x] `menu:back`
+- [x] Exponer en el analizador de logs:
+  - `callback_validated`
+  - `menu_stack_loaded_from_snapshot`
+- [ ] Validar con conversacion real que bajan tiempos de:
   - `callback_validated`
   - `menu_stack_loaded_from_snapshot`
 
 ### 3. Invalidacion distribuida si hay mas de un worker
 
-- [ ] Confirmar runtime real:
+- [x] Confirmar runtime real:
   - un proceso unico: no hace falta Redis pub/sub todavia
   - multiples workers uvicorn/gunicorn/container replicas: necesario
-- [ ] Si hay multiples procesos, implementar version distribuida.
-- [ ] Opcion minima recomendada:
-  - Redis key: `chatbot:catalog:snapshot_version`
+- [x] Evidencia runtime: `core/Dockerfile` produccion usa `uvicorn --workers 2`; `docker-compose.prod.yml` documenta FastAPI con workers.
+- [x] Si hay multiples procesos, implementar version distribuida.
+- [x] Opcion minima implementada:
+  - Redis key: `<redis_namespace>:catalog:snapshot_version`
   - En cada mutacion admin:
     - refrescar snapshot local
     - incrementar version Redis
   - En cada webhook:
     - leer version Redis con TTL local corto o cada N segundos
     - si version remota > version local, refrescar snapshot local
-- [ ] Evitar pub/sub inicialmente si no es necesario.
-- [ ] No bloquear webhook en Redis si Redis esta caido salvo que el sistema ya dependa de Redis para sesiones.
-- [ ] Si Redis es obligatorio en produccion, fallar explicitamente ante error.
+- [x] Evitar pub/sub inicialmente si no es necesario.
+- [x] No bloquear cada webhook en Redis: chequeo local con intervalo corto.
+- [x] Si Redis esta activo y falla publicar version tras mutacion, fallar explicitamente.
 - [ ] Tests:
-  - version remota mayor dispara refresh
-  - version remota igual no refresca
-  - fallo Redis se propaga o se maneja segun contrato de runtime
+  - [x] mutacion confirmada incrementa version distribuida.
+  - [x] version remota mayor dispara refresh
+  - [x] version remota igual no refresca
+  - [ ] fallo Redis se propaga o se maneja segun contrato de runtime
 
 ### 4. Prewarm durante tiempos idle del cliente
 
-- [ ] En `/start` y menu principal, disparar tareas no criticas despues de enviar respuesta.
-- [ ] Prewarm permitido:
+- [x] En `/start` y comandos de reset, disparar tareas no criticas despues de enviar respuesta.
+- [x] Prewarm permitido implementado:
   - refrescar catalog snapshot si `version=0`
+  - construir markup de menu principal
   - construir markup de categorias
-  - construir detalle de categorias mas usadas
-  - precargar business config estable
-- [ ] No prewarm de:
+  - precargar business config estable queda para el paso 7
+- [x] No prewarm de:
   - carrito
   - pedidos
   - stock final transaccional
   - checkout
-- [ ] Usar tareas no bloqueantes con logging de excepcion.
-- [ ] Si el prewarm afecta correctness, no hacerlo en background.
+- [x] Usar tareas no bloqueantes con logging de excepcion.
+- [x] Si el prewarm afecta correctness, no hacerlo en background.
 - [ ] Tests:
-  - `/start` responde aunque prewarm falle si es puramente optimizacion
-  - fallo de prewarm queda logueado
-  - no cambia FSM ni carrito
+  - [x] `/start` responde aunque prewarm falle si es puramente optimizacion
+  - [x] fallo de prewarm queda logueado
+  - [x] no cambia FSM ni carrito
 
 ### 5. Limitar concurrencia no critica con semaforos
 
-- [ ] Identificar tareas no criticas:
+- [x] Identificar tareas no criticas:
   - cleanup de reply markup
   - prewarm
   - metricas/analisis
-- [ ] Crear semaforo por tipo de tarea si hay riesgo de acumulacion.
-- [ ] No usar semaforo para bloquear respuesta principal.
-- [ ] Si no se puede adquirir semaforo:
+- [x] Crear semaforo para cleanup cosmetico de reply markup.
+- [x] No usar semaforo para bloquear respuesta principal.
+- [x] Si no se puede adquirir semaforo:
   - para tareas cosmeticas: registrar y saltar
   - para tareas de correctness: no saltar; usar ARQ o fallar
-- [ ] No introducir locks globales que bloqueen todos los usuarios.
-- [ ] Mantener lock por usuario para preservar orden de conversacion.
+- [x] No introducir locks globales que bloqueen todos los usuarios.
+- [x] Mantener lock por usuario para preservar orden de conversacion.
 - [ ] Tests:
-  - dos usuarios distintos no se bloquean entre si
-  - dos updates del mismo usuario mantienen orden o rechazan duplicado
-  - tareas cosmeticas pueden dropearse sin romper UX contractual
+  - [ ] dos usuarios distintos no se bloquean entre si
+  - [ ] dos updates del mismo usuario mantienen orden o rechazan duplicado
+  - [x] tareas cosmeticas pueden dropearse sin romper UX contractual
 
 ### 6. Mover limpieza cosmetica completamente a ARQ cuando Redis este disponible
 

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import pytest
 from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock
 
 from controllers import (
     business_config_controller,
     business_controller,
     category_controller,
 )
+from controllers import telegram_controller
 
 
 def _product_data() -> MagicMock:
@@ -102,3 +105,69 @@ def test_create_category_refreshes_catalog_cache_after_commit() -> None:
 
     assert result["status"] == "success"
     refresh_mock.assert_called_once_with("category_created")
+
+
+def test_refresh_catalog_cache_after_commit_bumps_distributed_version() -> None:
+    redis_client = MagicMock()
+    sync_redis = MagicMock()
+    sync_redis.incr.return_value = 12
+
+    with (
+        patch(
+            "controllers.telegram_controller.get_redis_client",
+            return_value=redis_client,
+        ),
+        patch("controllers.telegram_controller.prime_catalog_cache") as prime_mock,
+        patch("redis.Redis.from_url", return_value=sync_redis) as redis_from_url,
+    ):
+        telegram_controller.refresh_catalog_cache_after_commit("test_mutation")
+
+    prime_mock.assert_called_once()
+    redis_from_url.assert_called_once()
+    sync_redis.incr.assert_called_once()
+    assert telegram_controller._catalog_distributed_version_seen == 12
+
+
+@pytest.mark.asyncio
+async def test_remote_catalog_version_refreshes_local_snapshot() -> None:
+    redis_client = MagicMock()
+    redis_client.get = AsyncMock(return_value="20")
+    telegram_controller._catalog_distributed_version_seen = 19
+    telegram_controller._catalog_remote_version_checked_at = 0.0
+
+    with (
+        patch(
+            "controllers.telegram_controller.get_redis_client",
+            return_value=redis_client,
+        ),
+        patch("controllers.telegram_controller.prime_catalog_cache") as prime_mock,
+    ):
+        await telegram_controller._refresh_catalog_cache_if_remote_version_changed(
+            trace_id="tg:test:1",
+            user_id="test",
+        )
+
+    prime_mock.assert_called_once()
+    assert telegram_controller._catalog_distributed_version_seen == 20
+
+
+@pytest.mark.asyncio
+async def test_remote_catalog_version_equal_does_not_refresh_local_snapshot() -> None:
+    redis_client = MagicMock()
+    redis_client.get = AsyncMock(return_value="20")
+    telegram_controller._catalog_distributed_version_seen = 20
+    telegram_controller._catalog_remote_version_checked_at = 0.0
+
+    with (
+        patch(
+            "controllers.telegram_controller.get_redis_client",
+            return_value=redis_client,
+        ),
+        patch("controllers.telegram_controller.prime_catalog_cache") as prime_mock,
+    ):
+        await telegram_controller._refresh_catalog_cache_if_remote_version_changed(
+            trace_id="tg:test:2",
+            user_id="test",
+        )
+
+    prime_mock.assert_not_called()

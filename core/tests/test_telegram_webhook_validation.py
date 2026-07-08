@@ -1,9 +1,15 @@
 import pytest
 import httpx
+import time
 from unittest.mock import patch, AsyncMock, MagicMock
 from main import app
 from app.container import get_process_message_uc
-from infrastructure.channels.telegram_fsm import TelegramConversationFSM, FSMStateStore
+from infrastructure.channels.telegram_fsm import (
+    ExpectedInput,
+    FSMState,
+    TelegramConversationFSM,
+    FSMStateStore,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -206,3 +212,128 @@ async def test_webhook_rejects_expired_callback_via_version():
         assert (
             dispatcher_instance.enqueue_job.call_args.kwargs["chat_id"] == "user_capa2"
         )
+
+
+@pytest.mark.asyncio
+async def test_webhook_accepts_valid_callback_via_active_menu_id() -> None:
+    store = FSMStateStore()
+    user_id = "71001"
+    fsm = TelegramConversationFSM(user_id, store)
+    await fsm.persist_menu_metadata(
+        version=4,
+        options=["menu:promociones"],
+        active_menu_id=222,
+        menu_scope="menu:main",
+        menu_stack=["menu:main"],
+        expected_input=ExpectedInput.MENU_SELECTION,
+        allow_numeric_input=True,
+    )
+
+    with (
+        patch("controllers.telegram_controller.get_fsm_store", return_value=store),
+        patch(
+            "controllers.telegram_controller.settings.telegram_bot_token",
+            "fake_token",
+        ),
+        patch(
+            "controllers.telegram_controller.send_telegram_message",
+            new_callable=AsyncMock,
+        ) as mock_send,
+        patch(
+            "controllers.telegram_controller.answer_telegram_callback_query",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "controllers.telegram_controller._defer_clear_reply_markup",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "controllers.telegram_controller._get_promotions_text",
+            return_value=("Promos cacheadas", []),
+        ),
+    ):
+        mock_send.return_value = 333
+        payload = {
+            "callback_query": {
+                "id": "query_valid_active",
+                "from": {"id": int(user_id)},
+                "message": {
+                    "message_id": 222,
+                    "chat": {"id": int(user_id)},
+                    "date": int(time.time()),
+                },
+                "data": "menu:promociones#999",
+            }
+        }
+
+        transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://test"
+        ) as client:
+            response = await client.post("/telegram/webhook/fake_token", json=payload)
+
+    assert response.status_code == 200
+    mock_send.assert_awaited()
+    assert mock_send.await_args.kwargs["text"] == "Promos cacheadas"
+
+
+@pytest.mark.asyncio
+async def test_webhook_accepts_valid_callback_via_fsm_version() -> None:
+    store = FSMStateStore()
+    user_id = "71002"
+    fsm = TelegramConversationFSM(user_id, store)
+    await fsm.set_state(
+        FSMState.IN_MENU,
+        {
+            "_fsm_version": 7,
+            "_menu_stack": ["menu:main"],
+            "_allow_numeric_input": True,
+        },
+    )
+
+    with (
+        patch("controllers.telegram_controller.get_fsm_store", return_value=store),
+        patch(
+            "controllers.telegram_controller.settings.telegram_bot_token",
+            "fake_token",
+        ),
+        patch(
+            "controllers.telegram_controller.send_telegram_message",
+            new_callable=AsyncMock,
+        ) as mock_send,
+        patch(
+            "controllers.telegram_controller.answer_telegram_callback_query",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "controllers.telegram_controller._defer_clear_reply_markup",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "controllers.telegram_controller._get_promotions_text",
+            return_value=("Promos por version", []),
+        ),
+    ):
+        mock_send.return_value = 444
+        payload = {
+            "callback_query": {
+                "id": "query_valid_version",
+                "from": {"id": int(user_id)},
+                "message": {
+                    "message_id": 999,
+                    "chat": {"id": int(user_id)},
+                    "date": int(time.time()),
+                },
+                "data": "menu:promociones#7",
+            }
+        }
+
+        transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://test"
+        ) as client:
+            response = await client.post("/telegram/webhook/fake_token", json=payload)
+
+    assert response.status_code == 200
+    mock_send.assert_awaited()
+    assert mock_send.await_args.kwargs["text"] == "Promos por version"

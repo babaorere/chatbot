@@ -144,6 +144,8 @@ def format_summary(summary: TraceSummary) -> str:
     )
     webhook_ack = summary.elapsed_for("timing:webhook_response_ready")
     background_total = summary.elapsed_for("timing:webhook_to_background_finished")
+    callback_validated = summary.elapsed_for("timing:callback_validated")
+    menu_stack = summary.elapsed_for("timing:menu_stack_loaded_from_snapshot")
     send_message = summary.elapsed_for("api:sendMessage")
     answer_callback = summary.elapsed_for("api:answerCallbackQuery")
     cache = (
@@ -155,6 +157,8 @@ def format_summary(summary: TraceSummary) -> str:
         f"trace={summary.trace} "
         f"webhook_ack={_format_ms(webhook_ack)} "
         f"background_total={_format_ms(background_total)} "
+        f"callback_validated={_format_ms(callback_validated)} "
+        f"menu_stack_snapshot={_format_ms(menu_stack)} "
         f"sendMessage={_format_ms(send_message)} "
         f"answerCallbackQuery={_format_ms(answer_callback)} "
         f"slowest={slowest_text} "
