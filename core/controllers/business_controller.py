@@ -4,13 +4,19 @@ import io
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from openpyxl import load_workbook
 from sqlalchemy.orm import Session
 
 from app.security import get_current_tenant_user
 from config.database import get_db
+from config.value_limits import (
+    PAGINATION_LIMIT_MAX,
+    PAGINATION_LIMIT_MIN,
+    PAGINATION_SKIP_MAX,
+    PAGINATION_SKIP_MIN,
+)
 from controllers.telegram_controller import (
     prime_human_agent_cache,
     refresh_catalog_cache_after_commit,
@@ -105,8 +111,8 @@ def get_attention_time(db: Session = Depends(get_db)) -> dict[str, int | None]:
 def list_products(
     category: str | None = None,
     available_only: bool = False,
-    skip: int = 0,
-    limit: int = 50,
+    skip: int = Query(default=0, ge=PAGINATION_SKIP_MIN, le=PAGINATION_SKIP_MAX),
+    limit: int = Query(default=50, ge=PAGINATION_LIMIT_MIN, le=PAGINATION_LIMIT_MAX),
     db: Session = Depends(get_db),
 ) -> list[ProductResponse]:
     try:

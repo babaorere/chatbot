@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.security import get_admin_api_key
 from config.database import get_db
+from config.value_limits import PAGINATION_LIMIT_MAX, PAGINATION_LIMIT_MIN
 from dtos.request import TenantInviteCreateRequest, TenantUserDisableRequest
 from dtos.response import TenantInviteResponse, TenantPortalUserResponse
 from services.tenant_auth_service import TenantAuthService
@@ -22,7 +23,7 @@ router = APIRouter(
 
 @router.get("/users", response_model=list[TenantPortalUserResponse])
 def list_tenant_users(
-    limit: int = 100,
+    limit: int = Query(default=100, ge=PAGINATION_LIMIT_MIN, le=PAGINATION_LIMIT_MAX),
     db: Session = Depends(get_db),
 ) -> list[TenantPortalUserResponse]:
     try:
@@ -36,7 +37,7 @@ def list_tenant_users(
 
 @router.get("/invites", response_model=list[TenantInviteResponse])
 def list_tenant_invites(
-    limit: int = 50,
+    limit: int = Query(default=50, ge=PAGINATION_LIMIT_MIN, le=PAGINATION_LIMIT_MAX),
     db: Session = Depends(get_db),
 ) -> list[TenantInviteResponse]:
     try:

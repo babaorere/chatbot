@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.security import get_admin_api_key
 from config.database import get_db
+from config.value_limits import (
+    PAGINATION_LIMIT_MAX,
+    PAGINATION_LIMIT_MIN,
+    PAGINATION_SKIP_MAX,
+    PAGINATION_SKIP_MIN,
+)
 from services import UserService
 from dtos.request import UserCreateRequest
 from dtos.response import UserResponse
@@ -75,8 +81,8 @@ def get_user(
 
 @router.get("", response_model=list[UserResponse])
 def list_users(
-    skip: int = 0,
-    limit: int = 50,
+    skip: int = Query(default=0, ge=PAGINATION_SKIP_MIN, le=PAGINATION_SKIP_MAX),
+    limit: int = Query(default=50, ge=PAGINATION_LIMIT_MIN, le=PAGINATION_LIMIT_MAX),
     db: Session = Depends(get_db),
     fastapi_request: Request = None,
 ) -> list[UserResponse]:

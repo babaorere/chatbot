@@ -4,13 +4,19 @@ import io
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from openpyxl import load_workbook
 from sqlalchemy.orm import Session
 
 from app.security import get_admin_api_key
 from config.database import get_db
+from config.value_limits import (
+    PAGINATION_LIMIT_MAX,
+    PAGINATION_LIMIT_MIN,
+    PAGINATION_SKIP_MAX,
+    PAGINATION_SKIP_MIN,
+)
 from controllers.telegram_controller import (
     prime_business_config_cache,
     prime_human_agent_cache,
@@ -115,8 +121,8 @@ def update_profile(
 def list_products(
     category: str | None = None,
     available_only: bool = False,
-    skip: int = 0,
-    limit: int = 50,
+    skip: int = Query(default=0, ge=PAGINATION_SKIP_MIN, le=PAGINATION_SKIP_MAX),
+    limit: int = Query(default=50, ge=PAGINATION_LIMIT_MIN, le=PAGINATION_LIMIT_MAX),
     db: Session = Depends(get_db),
 ) -> list[ProductResponse]:
     """Lista productos del catálogo con filtros administrativos y paginación."""
@@ -329,8 +335,8 @@ def import_products(
 def list_kb_entries(
     category: str | None = None,
     active_only: bool = True,
-    skip: int = 0,
-    limit: int = 50,
+    skip: int = Query(default=0, ge=PAGINATION_SKIP_MIN, le=PAGINATION_SKIP_MAX),
+    limit: int = Query(default=50, ge=PAGINATION_LIMIT_MIN, le=PAGINATION_LIMIT_MAX),
     db: Session = Depends(get_db),
 ) -> list[KBEntryResponse]:
     """Lista entradas de knowledge base con filtros administrativos y paginación."""
