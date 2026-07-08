@@ -39,7 +39,9 @@ def __getattr__(name: str) -> Any:
     try:
         module_name, attr_name = _LAZY_IMPORTS[name]
     except KeyError as exc:
-        raise AttributeError(f"module 'repositories' has no attribute {name!r}") from exc
+        raise AttributeError(
+            f"module 'repositories' has no attribute {name!r}"
+        ) from exc
 
     module = import_module(module_name)
     value = getattr(module, attr_name)

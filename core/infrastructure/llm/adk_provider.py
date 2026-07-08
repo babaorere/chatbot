@@ -217,10 +217,7 @@ class ADKLLMProvider:
         else:
             text = message
 
-        text = (
-            f"{text}\n\n"
-            "REGLA FINAL DE IDIOMA: responde exclusivamente en español."
-        )
+        text = f"{text}\n\nREGLA FINAL DE IDIOMA: responde exclusivamente en español."
 
         return types.Content(
             role="user",
