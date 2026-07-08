@@ -11,7 +11,10 @@ from sqlalchemy.orm import Session
 
 from app.security import get_admin_api_key
 from config.database import get_db
-from controllers.telegram_controller import prime_human_agent_cache
+from controllers.telegram_controller import (
+    prime_human_agent_cache,
+    refresh_catalog_cache_after_commit,
+)
 from services import (
     BusinessConfigService,
     KBService,
@@ -153,6 +156,7 @@ def create_product(
                 unit_of_measure=data.unit_of_measure,
                 format=data.format,
             )
+        refresh_catalog_cache_after_commit("business_config_product_created")
         return ProductResponse.model_validate(product)
     except Exception as e:
         logger.error("create_product failed: %s", e)
@@ -185,6 +189,7 @@ def update_product(
                 unit_of_measure=data.unit_of_measure,
                 format=data.format,
             )
+        refresh_catalog_cache_after_commit("business_config_product_updated")
         return ProductResponse.model_validate(product)
     except Exception as e:
         logger.error("update_product failed: %s", e)
@@ -203,6 +208,7 @@ def delete_product(
             deleted = product_svc.delete_product(uuid.UUID(product_id))
         if not deleted:
             raise HTTPException(404, "Product not found")
+        refresh_catalog_cache_after_commit("business_config_product_deleted")
         return {"status": "deleted", "id": product_id}
     except HTTPException:
         raise
@@ -300,6 +306,7 @@ def import_products(
         product_svc = ProductService(db)
         with db.begin():
             summary = product_svc.import_from_rows(rows)
+        refresh_catalog_cache_after_commit("business_config_products_imported")
 
         return {
             "status": "ok",

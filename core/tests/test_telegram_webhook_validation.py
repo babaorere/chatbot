@@ -126,11 +126,14 @@ async def test_webhook_rejects_expired_callback_via_message_id():
         assert response.status_code == 200
 
         # Debe haber respondido con alerta de expiración
-        mock_answer.assert_called_once_with(
-            bot_token="fake_token",
-            callback_query_id="query_123",
-            text="Este menú ha expirado o ya no está activo.",
+        mock_answer.assert_called_once()
+        assert mock_answer.call_args.kwargs["bot_token"] == "fake_token"
+        assert mock_answer.call_args.kwargs["callback_query_id"] == "query_123"
+        assert (
+            mock_answer.call_args.kwargs["text"]
+            == "Este menú ha expirado o ya no está activo."
         )
+        assert mock_answer.call_args.kwargs["trace_id"].startswith("tg:user_capa1:")
         dispatcher_instance.enqueue_job.assert_awaited_once()
         assert (
             dispatcher_instance.enqueue_job.call_args.args[0]
@@ -186,11 +189,14 @@ async def test_webhook_rejects_expired_callback_via_version():
             response = await client.post("/telegram/webhook/fake_token", json=payload)
         assert response.status_code == 200
 
-        mock_answer.assert_called_once_with(
-            bot_token="fake_token",
-            callback_query_id="query_124",
-            text="Este menú ha expirado o ya no está activo.",
+        mock_answer.assert_called_once()
+        assert mock_answer.call_args.kwargs["bot_token"] == "fake_token"
+        assert mock_answer.call_args.kwargs["callback_query_id"] == "query_124"
+        assert (
+            mock_answer.call_args.kwargs["text"]
+            == "Este menú ha expirado o ya no está activo."
         )
+        assert mock_answer.call_args.kwargs["trace_id"].startswith("tg:user_capa2:")
         dispatcher_instance.enqueue_job.assert_awaited_once()
         assert (
             dispatcher_instance.enqueue_job.call_args.args[0]

@@ -27,4 +27,5 @@ async def test_job_clear_reply_markup_calls_telegram_service() -> None:
         bot_token="bot-token",
         chat_id=12345,
         message_id=678,
+        trace_id="tg:1:2",
     )

@@ -31,4 +31,5 @@ async def job_clear_reply_markup(
         bot_token=token,
         chat_id=chat_id,
         message_id=message_id,
+        trace_id=trace_id,
     )

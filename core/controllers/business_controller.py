@@ -11,7 +11,10 @@ from sqlalchemy.orm import Session
 
 from app.security import get_current_tenant_user
 from config.database import get_db
-from controllers.telegram_controller import prime_human_agent_cache
+from controllers.telegram_controller import (
+    prime_human_agent_cache,
+    refresh_catalog_cache_after_commit,
+)
 from dtos import (
     BusinessConfigResponse,
     BusinessConfigUpdateRequest,
@@ -141,6 +144,7 @@ def create_product(
                 unit_of_measure=data.unit_of_measure,
                 format=data.format,
             )
+        refresh_catalog_cache_after_commit("business_me_product_created")
         return ProductResponse.model_validate(product)
     except Exception as exc:
         logger.error("business.create_product failed: %s", exc)
@@ -171,6 +175,7 @@ def update_product(
                 unit_of_measure=data.unit_of_measure,
                 format=data.format,
             )
+        refresh_catalog_cache_after_commit("business_me_product_updated")
         return ProductResponse.model_validate(product)
     except Exception as exc:
         logger.error("business.update_product failed: %s", exc)
@@ -184,6 +189,7 @@ def delete_product(product_id: str, db: Session = Depends(get_db)) -> dict:
             deleted = ProductService(db).delete_product(uuid.UUID(product_id))
         if not deleted:
             raise HTTPException(404, "Product not found")
+        refresh_catalog_cache_after_commit("business_me_product_deleted")
         return {"status": "deleted", "id": product_id}
     except HTTPException:
         raise
@@ -244,7 +250,9 @@ def import_products(
                     for index in range(len(FIELD_NAMES))
                 }
             )
-        result = ProductService(db).import_from_rows(rows)
+        with db.begin():
+            result = ProductService(db).import_from_rows(rows)
+        refresh_catalog_cache_after_commit("business_me_products_imported")
         return {
             "status": "ok",
             "rows_processed": len(rows),

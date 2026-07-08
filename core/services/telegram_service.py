@@ -8,6 +8,31 @@ from app.container import get_http_client
 logger = logging.getLogger(__name__)
 
 
+def _elapsed_ms(started_at: float) -> float:
+    return round((time.perf_counter() - started_at) * 1000, 2)
+
+
+def _log_telegram_api_timing(
+    *,
+    trace_id: str | None,
+    method: str,
+    started_at: float,
+    status_code: int | None = None,
+    ok: bool | None = None,
+    extra: str = "",
+) -> None:
+    suffix = f" {extra}" if extra else ""
+    logger.info(
+        "[telegram_api_timing] trace=%s method=%s elapsed_ms=%.2f status=%s ok=%s%s",
+        trace_id or "-",
+        method,
+        _elapsed_ms(started_at),
+        status_code if status_code is not None else "-",
+        ok if ok is not None else "-",
+        suffix,
+    )
+
+
 async def send_telegram_message(
     bot_token: str,
     chat_id: str | int,
@@ -38,15 +63,18 @@ async def send_telegram_message(
 
         client = get_http_client()
         resp = await client.post(url, json=payload)
-        if resp.status_code == 200 and resp.json().get("ok"):
-            elapsed_ms = round((time.perf_counter() - started_at) * 1000, 2)
-            logger.info(
-                "Message successfully sent to Telegram chat: %s%s elapsed_ms=%.2f",
-                chat_id,
-                f" trace={trace_id}" if trace_id else "",
-                elapsed_ms,
-            )
-            return resp.json().get("result", {}).get("message_id")
+        data = resp.json()
+        ok = bool(data.get("ok"))
+        _log_telegram_api_timing(
+            trace_id=trace_id,
+            method="sendMessage",
+            started_at=started_at,
+            status_code=resp.status_code,
+            ok=ok,
+            extra=f"chat_id={chat_id} has_markup={bool(reply_markup)} text_len={len(text)}",
+        )
+        if resp.status_code == 200 and ok:
+            return data.get("result", {}).get("message_id")
         raise RuntimeError(f"Telegram API returned failure: {resp.text}")
     except Exception as e:
         logger.exception("Failed to send Telegram message to chat %s", chat_id)
@@ -102,28 +130,29 @@ def inject_version_to_reply_markup(
 
 
 def build_main_menu(human_agent_available: bool = False) -> dict:
-    """Construye el menú principal de Telegram."""
+    """Construye el menú principal de Telegram optimizado para conversión."""
     buttons = [
         [
-            {"text": "1. 🏷️ Ver Categorías", "callback_data": "menu:categorias"},
-            {"text": "2. ✨ Promociones", "callback_data": "menu:promociones"},
+            {"text": "1. 🛍️ Ver Catálogo", "callback_data": "menu:categorias"},
+            {"text": "2. ⚡ Promos del Día", "callback_data": "menu:promociones"},
         ],
         [
-            {"text": "3. 🔥 Más vendidos", "callback_data": "menu:mas_vendidos"},
-            {"text": "4. 🛒 Ver carrito", "callback_data": "menu:carrito"},
+            {"text": "3. ⭐ Recomendados", "callback_data": "menu:mas_vendidos"},
+            {"text": "4. 🛒 Mi Carrito (Pagar)", "callback_data": "menu:carrito"},
+        ],
+        [
+            {"text": "5. 📋 Mis Pedidos", "callback_data": "menu:pedidos"},
+            {"text": "6. 🛵 Envíos y Horarios", "callback_data": "menu:horario"},
         ],
     ]
-    if human_agent_available:
-        buttons.append(
-            [
-                {"text": "5. 👤 Hablar con Humano", "callback_data": "menu:contacto"},
-            ]
-        )
     return {"inline_keyboard": buttons}
 
 
 async def clear_telegram_reply_markup(
-    bot_token: str, chat_id: str | int, message_id: int
+    bot_token: str,
+    chat_id: str | int,
+    message_id: int,
+    trace_id: str | None = None,
 ) -> bool:
     """Elimina los botones inline (reply_markup) de un mensaje específico para inhabilitarlo."""
     if not bot_token or not chat_id or not message_id:
@@ -132,6 +161,7 @@ async def clear_telegram_reply_markup(
             f"[token={'OK' if bot_token else 'MISSING'}, chat_id={'OK' if chat_id else 'MISSING'}, message_id={'OK' if message_id else 'MISSING'}]."
         )
     try:
+        started_at = time.perf_counter()
         url = f"https://api.telegram.org/bot{bot_token}/editMessageReplyMarkup"
         payload = {
             "chat_id": chat_id,
@@ -140,7 +170,17 @@ async def clear_telegram_reply_markup(
         }
         client = get_http_client()
         resp = await client.post(url, json=payload)
-        if resp.status_code == 200 and resp.json().get("ok"):
+        data = resp.json()
+        ok = bool(data.get("ok"))
+        _log_telegram_api_timing(
+            trace_id=trace_id,
+            method="editMessageReplyMarkup",
+            started_at=started_at,
+            status_code=resp.status_code,
+            ok=ok,
+            extra=f"chat_id={chat_id} message_id={message_id}",
+        )
+        if resp.status_code == 200 and ok:
             return True
         raise RuntimeError(f"Telegram API returned failure: {resp.text}")
     except Exception as e:
@@ -151,7 +191,10 @@ async def clear_telegram_reply_markup(
 
 
 async def answer_telegram_callback_query(
-    bot_token: str, callback_query_id: str, text: str | None = None
+    bot_token: str,
+    callback_query_id: str,
+    text: str | None = None,
+    trace_id: str | None = None,
 ) -> bool:
     """Confirma un callback query para evitar que quede cargando en el cliente de Telegram."""
     if not bot_token or not callback_query_id:
@@ -167,8 +210,19 @@ async def answer_telegram_callback_query(
         if text:
             payload["text"] = text
         client = get_http_client()
+        started_at = time.perf_counter()
         resp = await client.post(url, json=payload)
-        if resp.status_code == 200 and resp.json().get("ok"):
+        data = resp.json()
+        ok = bool(data.get("ok"))
+        _log_telegram_api_timing(
+            trace_id=trace_id,
+            method="answerCallbackQuery",
+            started_at=started_at,
+            status_code=resp.status_code,
+            ok=ok,
+            extra=f"callback_query_id={callback_query_id} has_text={bool(text)}",
+        )
+        if resp.status_code == 200 and ok:
             return True
         raise RuntimeError(f"Telegram API returned failure: {resp.text}")
     except Exception as e:

@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.security import require_tenant_or_admin_access
 from config.database import get_db, safe_transaction
+from controllers.telegram_controller import refresh_catalog_cache_after_commit
 from services.category_service import CategoryService
 
 logger = logging.getLogger(__name__)
@@ -53,6 +54,7 @@ def create_category(
         svc = CategoryService(db)
         with safe_transaction(db):
             category = svc.create_category(data.name)
+        refresh_catalog_cache_after_commit("category_created")
         return {"status": "success", "category": category.to_dict()}
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -72,6 +74,7 @@ def update_category(
         svc = CategoryService(db)
         with safe_transaction(db):
             category = svc.update_category(name, data.new_name)
+        refresh_catalog_cache_after_commit("category_updated")
         return {"status": "success", "category": category.to_dict()}
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -90,6 +93,7 @@ def delete_category(
         svc = CategoryService(db)
         with safe_transaction(db):
             svc.delete_category(name)
+        refresh_catalog_cache_after_commit("category_deleted")
         return {
             "status": "success",
             "message": f"Categoría '{name}' eliminada correctamente.",

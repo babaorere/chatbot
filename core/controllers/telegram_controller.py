@@ -11,6 +11,7 @@ import asyncio
 import logging
 import time
 import uuid
+from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
@@ -21,8 +22,8 @@ from application.use_cases.commands import ProcessMessageCommand
 from config.database import SessionLocal
 from models.order import Order, OrderItem
 from models.product import Product
+from models.category import Category
 from services.business_config_service import BusinessConfigService
-from services.category_service import CategoryService
 from services.job_dispatcher import JobDispatcher
 from services.cart_service import CartService
 from services.product_service import ProductService
@@ -31,12 +32,28 @@ from infrastructure.channels.telegram_fsm import (
     TelegramConversationFSM,
     FSMStateStore,
     FSMState,
+    ExpectedInput,
     RedisFSMStateStore,
 )
+from infrastructure.channels.telegram_menu_flow import (
+    CATEGORIES_MENU_SCOPE,
+    MAIN_MENU_SCOPE,
+    PEDIDOS_MENU_SCOPE,
+    TelegramMenuFlow,
+    TelegramMenuPlan,
+)
+from infrastructure.channels.telegram_purchase_flow import (
+    TelegramPurchaseFlow,
+    TelegramPurchasePlan,
+)
+from infrastructure.channels.telegram_router import (
+    TelegramInputKind,
+    TelegramInputRouter,
+)
 from config.settings import settings
+from services.order_service import OrderService
 from services.telegram_service import (
     answer_telegram_callback_query,
-    build_main_menu,
     send_telegram_message,
     inject_version_to_reply_markup,
 )
@@ -50,6 +67,115 @@ _memory_fsm_store = FSMStateStore()
 # Cerradura local en memoria para concurrencia si Redis no está activo
 _local_locks: set[str] = set()
 _FEATURED_MAX_ITEMS = 10
+
+# Caché en memoria para tablas pequeñas (Catálogo)
+_categories_cache: list[dict[str, Any]] = []
+_products_by_category_cache: dict[str, list[dict[str, Any]]] = {}
+
+
+@dataclass(frozen=True)
+class CatalogSnapshot:
+    categories: tuple[dict[str, Any], ...] = ()
+    products_by_category: dict[str, tuple[dict[str, Any], ...]] = field(
+        default_factory=dict
+    )
+    products_by_id: dict[str, dict[str, Any]] = field(default_factory=dict)
+    loaded_at: float = 0.0
+    version: int = 0
+
+
+_catalog_snapshot = CatalogSnapshot()
+
+
+def prime_catalog_cache() -> None:
+    """Pre-carga en memoria las categorías y productos disponibles para evitar accesos secuenciales a DB."""
+    global _catalog_snapshot, _categories_cache, _products_by_category_cache
+    started_at = time.perf_counter()
+    db = SessionLocal()
+    try:
+        # Obtener todas las categorías ordenadas por nombre
+        categories = db.query(Category).order_by(Category.name.asc()).all()
+        categories_cache = [
+            {"name": c.name, "slug": c.slug, "is_system": c.is_system}
+            for c in categories
+        ]
+
+        # Obtener todos los productos disponibles y agruparlos por categoría
+        products = db.query(Product).filter(Product.is_available.is_(True)).all()
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        by_id: dict[str, dict[str, Any]] = {}
+        for p in products:
+            p_dict = {
+                "id": str(p.id),
+                "name": p.name,
+                "price": float(p.price) if p.price is not None else 0.0,
+                "stock": int(p.stock) if p.stock is not None else 0,
+                "category": p.category,
+                "is_available": p.is_available,
+                "unit_of_measure": p.unit_of_measure,
+            }
+            if p.category not in grouped:
+                grouped[p.category] = []
+            grouped[p.category].append(p_dict)
+            by_id[p_dict["id"]] = p_dict
+
+        next_snapshot = CatalogSnapshot(
+            categories=tuple(categories_cache),
+            products_by_category={
+                category: tuple(category_products)
+                for category, category_products in grouped.items()
+            },
+            products_by_id=by_id,
+            loaded_at=time.time(),
+            version=_catalog_snapshot.version + 1,
+        )
+        _catalog_snapshot = next_snapshot
+        _categories_cache = list(next_snapshot.categories)
+        _products_by_category_cache = {
+            category: list(category_products)
+            for category, category_products in next_snapshot.products_by_category.items()
+        }
+        logger.info(
+            "Catalog cache primed successfully: %d categories, %d products cached, version=%d",
+            len(next_snapshot.categories),
+            len(products),
+            next_snapshot.version,
+        )
+        _log_timing(
+            trace_id="catalog-cache-prime",
+            stage="catalog_cache_primed",
+            started_at=started_at,
+            extra=(
+                f"categories={len(next_snapshot.categories)} products={len(products)} "
+                f"version={next_snapshot.version}"
+            ),
+        )
+    except Exception:
+        logger.exception("Failed to prime catalog cache")
+        raise
+    finally:
+        db.close()
+
+
+def refresh_catalog_cache_after_commit(reason: str) -> None:
+    """Refresca el snapshot de catálogo luego de una mutación confirmada."""
+    started_at = time.perf_counter()
+    try:
+        prime_catalog_cache()
+        _log_timing(
+            trace_id="catalog-cache-refresh",
+            stage="catalog_cache_refreshed_after_commit",
+            started_at=started_at,
+            extra=f"reason={reason} version={_catalog_snapshot.version}",
+        )
+    except Exception as exc:
+        logger.exception(
+            "Catalog cache refresh failed after committed mutation [reason=%s]",
+            reason,
+        )
+        raise RuntimeError(
+            f"Failed to refresh catalog cache after committed mutation: {reason}"
+        ) from exc
 
 
 def _elapsed_ms(start: float) -> float:
@@ -75,6 +201,69 @@ def _log_timing(
     )
 
 
+def _log_cache_snapshot(*, trace_id: str, user_id: str | None) -> None:
+    snapshot = _catalog_snapshot
+    product_count = len(snapshot.products_by_id)
+    logger.info(
+        "[telegram_cache] trace=%s categories=%d category_buckets=%d products=%d version=%d age_seconds=%.2f user=%s",
+        trace_id,
+        len(snapshot.categories),
+        len(snapshot.products_by_category),
+        product_count,
+        snapshot.version,
+        time.time() - snapshot.loaded_at if snapshot.loaded_at else -1,
+        user_id or "-",
+    )
+
+
+def _active_categories_cache() -> list[dict[str, Any]]:
+    snapshot_categories = list(_catalog_snapshot.categories)
+    if snapshot_categories != _categories_cache:
+        return _categories_cache
+    return snapshot_categories
+
+
+def _active_products_by_category_cache() -> dict[str, list[dict[str, Any]]]:
+    snapshot_products = {
+        category: list(products)
+        for category, products in _catalog_snapshot.products_by_category.items()
+    }
+    if snapshot_products != _products_by_category_cache:
+        return _products_by_category_cache
+    return snapshot_products
+
+
+def _create_logged_task(
+    coro: Any,
+    *,
+    trace_id: str,
+    stage: str,
+    user_id: str | None = None,
+) -> asyncio.Task[Any]:
+    task = asyncio.create_task(coro)
+
+    def _log_task_result(done_task: asyncio.Task[Any]) -> None:
+        try:
+            done_task.result()
+        except asyncio.CancelledError:
+            logger.info(
+                "[telegram_task] trace=%s stage=%s cancelled user=%s",
+                trace_id,
+                stage,
+                user_id or "-",
+            )
+        except Exception:
+            logger.exception(
+                "[telegram_task] trace=%s stage=%s failed user=%s",
+                trace_id,
+                stage,
+                user_id or "-",
+            )
+
+    task.add_done_callback(_log_task_result)
+    return task
+
+
 def get_fsm_store() -> FSMStateStore:
     """Returns the Redis-backed FSM state store if configured, otherwise falls back to in-memory."""
     if settings.use_redis_sessions:
@@ -96,6 +285,12 @@ async def send_menu_message(
     fsm: TelegramConversationFSM,
     trace_id: str | None = None,
     user_id: str | None = None,
+    menu_scope: str | None = None,
+    menu_stack: list[str] | None = None,
+    expected_input: ExpectedInput = ExpectedInput.FREE_TEXT,
+    allow_numeric_input: bool = False,
+    next_state: FSMState | None = None,
+    context_updates: dict[str, Any] | None = None,
 ) -> int | None:
     """Wrapper para enviar mensajes. Si contiene reply_markup, inyecta la versión del FSM
 
@@ -106,7 +301,15 @@ async def send_menu_message(
     menu_version: int | None = None
     menu_options: list[str] = []
     if reply_markup and "inline_keyboard" in reply_markup:
+        fsm_read_started_at = time.perf_counter()
         _, context = await fsm.get_state_and_context()
+        if trace_id:
+            _log_timing(
+                trace_id=trace_id,
+                stage="menu_fsm_context_loaded",
+                started_at=fsm_read_started_at,
+                user_id=user_id,
+            )
         menu_version = context.get("_fsm_version", 1) + 1
         reply_markup = inject_version_to_reply_markup(reply_markup, menu_version)
 
@@ -126,6 +329,7 @@ async def send_menu_message(
                 extra=f"version={menu_version} options={len(menu_options)}",
             )
 
+    telegram_send_started_at = time.perf_counter()
     msg_id = await send_telegram_message(
         bot_token=bot_token,
         chat_id=chat_id,
@@ -133,6 +337,14 @@ async def send_menu_message(
         reply_markup=reply_markup,
         trace_id=trace_id,
     )
+    if trace_id:
+        _log_timing(
+            trace_id=trace_id,
+            stage="telegram_send_message_done",
+            started_at=telegram_send_started_at,
+            user_id=user_id,
+            extra=f"message_id={msg_id} has_markup={bool(reply_markup)}",
+        )
 
     if (
         msg_id
@@ -140,16 +352,38 @@ async def send_menu_message(
         and "inline_keyboard" in reply_markup
         and menu_version is not None
     ):
+        if context_updates:
+            fsm_update_started_at = time.perf_counter()
+            await fsm.update_state(
+                lambda current_state, context: (
+                    next_state or current_state,
+                    {**context, **context_updates},
+                )
+            )
+            if trace_id:
+                _log_timing(
+                    trace_id=trace_id,
+                    stage="menu_context_updates_persisted",
+                    started_at=fsm_update_started_at,
+                    user_id=user_id,
+                    extra=f"keys={','.join(sorted(context_updates.keys()))}",
+                )
+        metadata_started_at = time.perf_counter()
         await fsm.persist_menu_metadata(
             version=menu_version,
             options=menu_options,
             active_menu_id=msg_id,
+            state=next_state,
+            menu_scope=menu_scope,
+            menu_stack=menu_stack,
+            expected_input=expected_input,
+            allow_numeric_input=allow_numeric_input,
         )
         if trace_id:
             _log_timing(
                 trace_id=trace_id,
                 stage="menu_metadata_persisted",
-                started_at=started_at,
+                started_at=metadata_started_at,
                 user_id=user_id,
                 extra=f"message_id={msg_id}",
             )
@@ -161,6 +395,22 @@ async def send_menu_message(
             user_id=user_id,
             extra=f"message_id={msg_id}",
         )
+    elif next_state is not None or context_updates:
+        fsm_update_started_at = time.perf_counter()
+        await fsm.update_state(
+            lambda current_state, context: (
+                next_state or current_state,
+                {**context, **(context_updates or {})},
+            )
+        )
+        if trace_id:
+            _log_timing(
+                trace_id=trace_id,
+                stage="message_state_persisted",
+                started_at=fsm_update_started_at,
+                user_id=user_id,
+                extra=f"has_context_updates={bool(context_updates)}",
+            )
 
     return msg_id
 
@@ -175,6 +425,8 @@ def prime_human_agent_cache(value: bool, ttl_seconds: int = 300) -> None:
         "value": value,
         "expires_at": time.time() + ttl_seconds,
     }
+    # Cargar también la caché del catálogo al arrancar o refrescar
+    prime_catalog_cache()
 
 
 def _get_human_agent_available() -> bool:
@@ -260,7 +512,7 @@ def _build_empty_cart_text() -> str:
     )
 
 
-def _get_promotions_text() -> str:
+def _get_promotions_text() -> tuple[str, list[str]]:
     db = SessionLocal()
     try:
         cfg = BusinessConfigService(db).get_config()
@@ -270,7 +522,7 @@ def _get_promotions_text() -> str:
             return _build_empty_featured_text(
                 title,
                 "Aún no hay promociones publicadas.",
-            )
+            ), []
 
         products = _load_products_by_ids(db, section["product_ids"])
         if not products:
@@ -289,10 +541,18 @@ def _get_promotions_text() -> str:
         else:
             products = [p for p in products if p.is_available]
 
-        return _build_featured_products_text(
-            title,
-            products[:_FEATURED_MAX_ITEMS],
-        )
+        lines = [title, ""]
+        product_names = []
+        for idx, product in enumerate(products[:_FEATURED_MAX_ITEMS], start=1):
+            price = float(product.price) if product.price else 0.0
+            lines.append(
+                f"{idx}. {product.name} - {_format_money(price)}"
+                + (f" | Stock: {product.stock}" if product.stock is not None else "")
+            )
+            product_names.append(product.name)
+        lines.append("")
+        lines.append("Usa las categorías para ver el detalle de cada producto.")
+        return "\n".join(lines), product_names
     except Exception as exc:
         logger.exception("Failed to build promotions menu text")
         raise RuntimeError(
@@ -302,7 +562,7 @@ def _get_promotions_text() -> str:
         db.close()
 
 
-def _get_best_sellers_text() -> str:
+def _get_best_sellers_text() -> tuple[str, list[str]]:
     db = SessionLocal()
     try:
         cfg = BusinessConfigService(db).get_config()
@@ -312,12 +572,27 @@ def _get_best_sellers_text() -> str:
             return _build_empty_featured_text(
                 title,
                 "Todavía no hay más vendidos para mostrar.",
-            )
+            ), []
 
         if section["mode"] == "manual" and section["product_ids"]:
             products = _load_products_by_ids(db, section["product_ids"])
             products = [p for p in products if p.is_available]
-            return _build_featured_products_text(title, products[:_FEATURED_MAX_ITEMS])
+            lines = [title, ""]
+            product_names = []
+            for idx, product in enumerate(products[:_FEATURED_MAX_ITEMS], start=1):
+                price = float(product.price) if product.price else 0.0
+                lines.append(
+                    f"{idx}. {product.name} - {_format_money(price)}"
+                    + (
+                        f" | Stock: {product.stock}"
+                        if product.stock is not None
+                        else ""
+                    )
+                )
+                product_names.append(product.name)
+            lines.append("")
+            lines.append("Usa las categorías para ver el detalle de cada producto.")
+            return "\n".join(lines), product_names
 
         rows = (
             db.query(
@@ -337,21 +612,36 @@ def _get_best_sellers_text() -> str:
             products = _load_products_by_ids(db, section["product_ids"])
             products = [p for p in products if p.is_available]
             if products:
-                return _build_featured_products_text(
-                    title, products[:_FEATURED_MAX_ITEMS]
-                )
+                lines = [title, ""]
+                product_names = []
+                for idx, product in enumerate(products[:_FEATURED_MAX_ITEMS], start=1):
+                    price = float(product.price) if product.price else 0.0
+                    lines.append(
+                        f"{idx}. {product.name} - {_format_money(price)}"
+                        + (
+                            f" | Stock: {product.stock}"
+                            if product.stock is not None
+                            else ""
+                        )
+                    )
+                    product_names.append(product.name)
+                lines.append("")
+                lines.append("Usa las categorías para ver el detalle de cada producto.")
+                return "\n".join(lines), product_names
             return _build_empty_featured_text(
                 title,
                 "Todavía no hay ventas suficientes para mostrar esta sección.",
-            )
+            ), []
 
         lines = [title, ""]
+        product_names = []
         for idx, row in enumerate(rows, start=1):
             price = float(row.price) if row.price is not None else 0.0
             lines.append(
                 f"{idx}. {row.name} - {_format_money(price)} | Vendidos: {int(row.units_sold or 0)}"
             )
-        return "\n".join(lines)
+            product_names.append(row.name)
+        return "\n".join(lines), product_names
     except Exception as exc:
         logger.exception("Failed to build best sellers menu text")
         raise RuntimeError(
@@ -361,7 +651,7 @@ def _get_best_sellers_text() -> str:
         db.close()
 
 
-def _get_favorites_text() -> str:
+def _get_favorites_text() -> tuple[str, list[str]]:
     db = SessionLocal()
     try:
         cfg = BusinessConfigService(db).get_config()
@@ -371,11 +661,22 @@ def _get_favorites_text() -> str:
             return _build_empty_featured_text(
                 title,
                 "Aún no hay productos favoritos publicados.",
-            )
+            ), []
 
         products = _load_products_by_ids(db, section["product_ids"])
         products = [p for p in products if p.is_available]
-        return _build_featured_products_text(title, products[:_FEATURED_MAX_ITEMS])
+        lines = [title, ""]
+        product_names = []
+        for idx, product in enumerate(products[:_FEATURED_MAX_ITEMS], start=1):
+            price = float(product.price) if product.price else 0.0
+            lines.append(
+                f"{idx}. {product.name} - {_format_money(price)}"
+                + (f" | Stock: {product.stock}" if product.stock is not None else "")
+            )
+            product_names.append(product.name)
+        lines.append("")
+        lines.append("Usa las categorías para ver el detalle de cada producto.")
+        return "\n".join(lines), product_names
     except Exception as exc:
         logger.exception("Failed to build favorites menu text")
         raise RuntimeError("No pudimos cargar los favoritos en este momento.") from exc
@@ -411,6 +712,154 @@ def _get_cart_text(user_id: str) -> str:
         raise RuntimeError("No pudimos cargar tu carrito en este momento.") from exc
     finally:
         db.close()
+
+
+def _get_cart_summary(user_id: str) -> tuple[str, bool]:
+    text = _get_cart_text(user_id)
+    return text, text != _build_empty_cart_text()
+
+
+def _get_orders_text(user_id: str) -> tuple[str, bool]:
+    db = SessionLocal()
+    try:
+        user = UserService(db).get_or_create(external_id=user_id, platform="telegram")
+        orders = OrderService(db).list_user_orders(user.id)
+        if not orders:
+            return "No tienes pedidos realizados aún.", False
+
+        lines = ["Historial de tus pedidos:", ""]
+        for idx, order in enumerate(orders[:5], start=1):
+            date_str = (
+                order.created_at.strftime("%d/%m/%Y %H:%M")
+                if order.created_at
+                else "Fecha desconocida"
+            )
+            status_emoji = {
+                "pending": "⏳ Pendiente",
+                "confirmed": "✅ Confirmado",
+                "preparing": "👨‍🍳 Preparando",
+                "ready": "📦 Listo para entrega",
+                "delivered": "🛵 Entregado",
+                "cancelled": "❌ Cancelado",
+            }.get(order.status, order.status)
+            lines.append(
+                f"{idx}. Pedido: `{str(order.id)[:8]}...`\n"
+                f"   Estado: {status_emoji}\n"
+                f"   Total: {_format_money(float(order.total_amount))}\n"
+                f"   Fecha: {date_str}"
+            )
+        lines.append("")
+        lines.append("Se muestran tus últimos 5 pedidos.")
+        return "\n".join(lines), True
+    except Exception as exc:
+        logger.exception("Failed to build orders menu summary")
+        raise RuntimeError("No pudimos cargar tus pedidos en este momento.") from exc
+    finally:
+        db.close()
+
+
+def _get_orders_summary(user_id: str) -> tuple[str, bool]:
+    return _get_orders_text(user_id)
+
+
+def _create_menu_flow() -> TelegramMenuFlow:
+    return TelegramMenuFlow(
+        promotions_builder=_get_promotions_text,
+        best_sellers_builder=_get_best_sellers_text,
+        favorites_builder=_get_favorites_text,
+        cart_builder=_get_cart_summary,
+        orders_builder=_get_orders_summary,
+        categories_cache=_active_categories_cache(),
+        products_cache=_active_products_by_category_cache(),
+    )
+
+
+def _create_purchase_flow() -> TelegramPurchaseFlow:
+    return TelegramPurchaseFlow(product_cache=_catalog_snapshot.products_by_id)
+
+
+async def _apply_menu_plan(
+    *,
+    token: str,
+    chat_id: Any,
+    user_id: str,
+    fsm: TelegramConversationFSM,
+    plan: TelegramMenuPlan,
+    trace_id: str,
+) -> None:
+    await send_menu_message(
+        bot_token=token,
+        chat_id=chat_id,
+        text=plan.text,
+        reply_markup=plan.reply_markup,
+        fsm=fsm,
+        trace_id=trace_id,
+        user_id=user_id,
+        menu_scope=plan.menu_scope,
+        menu_stack=plan.menu_stack,
+        expected_input=plan.expected_input,
+        allow_numeric_input=plan.allow_numeric_input,
+        next_state=plan.state,
+        context_updates=plan.context_updates,
+    )
+
+
+async def _apply_purchase_plan(
+    *,
+    token: str,
+    chat_id: Any,
+    user_id: str,
+    fsm: TelegramConversationFSM,
+    plan: TelegramPurchasePlan,
+    trace_id: str,
+) -> None:
+    await send_menu_message(
+        bot_token=token,
+        chat_id=chat_id,
+        text=plan.text,
+        reply_markup=plan.reply_markup,
+        fsm=fsm,
+        trace_id=trace_id,
+        user_id=user_id,
+        menu_scope=plan.menu_scope,
+        menu_stack=plan.menu_stack,
+        expected_input=plan.expected_input,
+        allow_numeric_input=plan.allow_numeric_input,
+        next_state=plan.state,
+        context_updates=plan.context_updates,
+    )
+
+
+async def _build_telegram_llm_metadata(
+    fsm: TelegramConversationFSM,
+) -> dict[str, str]:
+    state, context = await fsm.get_state_and_context()
+    metadata: dict[str, str] = {
+        "telegram_fsm_state": state.value,
+    }
+    menu_scope = context.get("_menu_scope")
+    if isinstance(menu_scope, str) and menu_scope:
+        metadata["telegram_menu_scope"] = menu_scope
+    expected_input = context.get("_expected_input")
+    if isinstance(expected_input, str) and expected_input:
+        metadata["telegram_expected_input"] = expected_input
+    selected_category = context.get("selected_category")
+    if isinstance(selected_category, str) and selected_category:
+        metadata["telegram_selected_category"] = selected_category
+    allowed_actions: list[str] = []
+    if state == FSMState.IN_MENU:
+        allowed_actions.extend(["stay_in_menu", "go_back", "go_home"])
+        if menu_scope == CATEGORIES_MENU_SCOPE:
+            allowed_actions.append("open_category")
+    elif state == FSMState.AWAITING_QUANTITY:
+        allowed_actions.extend(["stay_in_state", "go_back", "go_home"])
+    elif state == FSMState.AWAITING_CONFIRMATION:
+        allowed_actions.extend(["confirm_pending_action", "go_back", "go_home"])
+    elif state == FSMState.AWAITING_PRODUCT_NAME:
+        allowed_actions.extend(["stay_in_state", "go_home"])
+    if allowed_actions:
+        metadata["telegram_allowed_actions"] = ",".join(allowed_actions)
+    return metadata
 
 
 async def _clear_latest_conversation_session(
@@ -512,30 +961,21 @@ async def _process_telegram_update_core(
     )
     fsm = TelegramConversationFSM(user_id=user_id, state_store=get_fsm_store())
 
-    # Mapeo de entrada numérica a callback query simulado (soporte híbrido)
-    if message_obj and not callback_query:
-        message_text = message_obj.get("text")
-        if message_text:
-            stripped = message_text.strip()
-            if stripped.isdigit():
-                val = int(stripped)
-                ctx = await fsm.get_context()
-                options = ctx.get("_menu_options", [])
-                if 1 <= val <= len(options):
-                    selected_callback = options[val - 1]
-                    current_fsm_version = await fsm.get_fsm_version()
-                    callback_query = {
-                        "id": f"num_{int(time.time() * 1000)}",
-                        "from": message_obj.get("from"),
-                        "message": message_obj,
-                        "data": f"{selected_callback}#{current_fsm_version}",
-                    }
-                    callback_query_id = callback_query["id"]
-                    msg_obj = message_obj
-                    message_obj = None  # Descartamos procesamiento de mensaje libre
+    menu_flow = _create_menu_flow()
+    purchase_flow = _create_purchase_flow()
+    input_router = TelegramInputRouter()
+    _log_cache_snapshot(trace_id=trace_id, user_id=user_id)
 
     # Chequeo de expiración por inactividad de 30 minutos (1800 segundos)
+    fsm_context_started_at = time.perf_counter()
     ctx = await fsm.get_context()
+    _log_timing(
+        trace_id=trace_id,
+        stage="initial_fsm_context_loaded",
+        started_at=fsm_context_started_at,
+        user_id=user_id,
+        extra=f"context_keys={len(ctx)}",
+    )
     last_interaction = ctx.get("_last_interaction_at")
     if last_interaction is not None:
         if time.time() - last_interaction >= 1800:
@@ -558,327 +998,465 @@ async def _process_telegram_update_core(
                 user_id=user_id,
                 extra="reason=expired_inactivity",
             )
+            welcome_expired_text = (
+                "Tu sesión anterior expiró por inactividad. Puedes retomar desde el inicio. 🙂\n\n"
+                "Negocio El Buen Trago.\n"
+                "Horario: Lunes a Sábado 10:00-22:00, Domingo 12:00-20:00.\n"
+                "Servicios: Venta de licores, cervezas artesanales, vinos, pedidos a domicilio.\n"
+                "Ubicación: Santiago, Chile.\n\n"
+                "¿En qué puedo ayudarte hoy?"
+            )
+            expired_plan = menu_flow.render_main_menu()
+            await send_menu_message(
+                bot_token=token,
+                chat_id=chat_id,
+                text=welcome_expired_text,
+                reply_markup=expired_plan.reply_markup,
+                fsm=fsm,
+                trace_id=trace_id,
+                user_id=user_id,
+                menu_scope=expired_plan.menu_scope,
+                menu_stack=expired_plan.menu_stack,
+                expected_input=expired_plan.expected_input,
+                allow_numeric_input=expired_plan.allow_numeric_input,
+                next_state=expired_plan.state,
+            )
+            return
 
-            # Forzar el comportamiento de /start automático
-            if callback_query:
-                callback_query["data"] = "menu:back_to_main"
-            elif message_obj:
-                message_obj["text"] = "/start"
+    route_started_at = time.perf_counter()
+    event = await input_router.route(
+        message_obj=message_obj,
+        callback_query=callback_query,
+        callback_query_id=callback_query_id,
+        fsm=fsm,
+    )
+    _log_timing(
+        trace_id=trace_id,
+        stage="input_routed",
+        started_at=route_started_at,
+        user_id=user_id,
+        extra=f"kind={event.kind.value if event is not None else 'none'}",
+    )
+    if event is None:
+        return
 
-    if callback_query:
-        # Es un click en el menú (InlineKeyboard)
-        raw_callback_data = callback_query.get("data")
+    if event.kind in {
+        TelegramInputKind.CALLBACK,
+        TelegramInputKind.LEGACY_NUMERIC_MENU,
+    }:
+        callback_started_at = time.perf_counter()
+        raw_callback_data = event.callback_data
         if not raw_callback_data:
             return
 
-        # Verificar estado del FSM para validar si se permite la acción del menú
+        validation_started_at = time.perf_counter()
         current_state = await fsm.get_state()
         active_menu_id = await fsm.get_active_menu_id()
         current_fsm_version = await fsm.get_fsm_version()
-
-        # 2. Filtrado de Menú Expirado (Defensa en 3 Capas)
         is_valid = False
         btn_version = None
+        is_numeric_selection = event.kind == TelegramInputKind.LEGACY_NUMERIC_MENU
 
-        # Intentar Capa 1: ID de Mensaje (solo si no es una selección numérica híbrida)
-        is_numeric_selection = callback_query.get("id", "").startswith("num_")
-        if active_menu_id is not None and msg_obj and not is_numeric_selection:
-            is_valid = msg_obj.get("message_id") == active_menu_id
+        if (
+            active_menu_id is not None
+            and event.message_obj
+            and not is_numeric_selection
+        ):
+            is_valid = event.message_obj.get("message_id") == active_menu_id
         else:
-            # Capa 2: Contador de Versión/Turnos
             if "#" in raw_callback_data:
                 try:
                     btn_version = int(raw_callback_data.split("#")[1])
                 except ValueError:
-                    pass
-
+                    btn_version = None
             if btn_version is not None:
                 is_valid = btn_version == current_fsm_version
             else:
-                # Capa 3: Validación Temporal (menos de 10 minutos) y Estado FSM
-                msg_date = msg_obj.get("date", 0) if msg_obj else 0
+                msg_date = event.message_obj.get("date", 0) if event.message_obj else 0
                 current_time = int(time.time())
                 is_valid = (current_time - msg_date < 600) and (
                     current_state in {FSMState.IDLE, FSMState.IN_MENU}
                 )
+        _log_timing(
+            trace_id=trace_id,
+            stage="callback_validated",
+            started_at=validation_started_at,
+            user_id=user_id,
+            extra=(
+                f"valid={is_valid} numeric={is_numeric_selection} "
+                f"state={current_state.value} active_menu_id={active_menu_id} "
+                f"current_version={current_fsm_version}"
+            ),
+        )
 
         if not is_valid:
             logger.warning(
                 "Rejected expired callback [user=%s]: msg_id=%s (active=%s), btn_ver=%s (current=%s)",
                 user_id,
-                msg_obj.get("message_id") if msg_obj else None,
+                event.message_obj.get("message_id") if event.message_obj else None,
                 active_menu_id,
                 btn_version,
                 current_fsm_version,
             )
-            # Solución 2: Responder callback y limpiar reply markup en paralelo
-            tasks = []
-            if callback_query_id:
-                tasks.append(
-                    answer_telegram_callback_query(
-                        bot_token=token,
-                        callback_query_id=callback_query_id,
-                        text="Este menú ha expirado o ya no está activo.",
-                    )
+            if event.callback_query_id:
+                await answer_telegram_callback_query(
+                    bot_token=token,
+                    callback_query_id=event.callback_query_id,
+                    text="Este menú ha expirado o ya no está activo.",
+                    trace_id=trace_id,
                 )
-            if tasks:
-                await asyncio.gather(*tasks, return_exceptions=True)
-            if msg_obj and msg_obj.get("message_id"):
+            if event.message_obj and event.message_obj.get("message_id"):
                 await _defer_clear_reply_markup(
                     token=token,
                     chat_id=chat_id,
-                    message_id=msg_obj["message_id"],
+                    message_id=event.message_obj["message_id"],
                     trace_id=trace_id,
                     user_id=user_id,
                 )
             return
 
-        # Si el click es válido, respondemos primero el callback para liberar la UI.
-        tasks = []
-        if callback_query_id:
-            tasks.append(
+        if event.callback_query_id:
+            _create_logged_task(
                 answer_telegram_callback_query(
-                    bot_token=token, callback_query_id=callback_query_id
-                )
+                    bot_token=token,
+                    callback_query_id=event.callback_query_id,
+                    trace_id=trace_id,
+                ),
+                trace_id=trace_id,
+                stage="callback_ack",
+                user_id=user_id,
             )
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
-        if msg_obj and msg_obj.get("message_id"):
-            await _defer_clear_reply_markup(
+        if (
+            event.message_obj
+            and event.message_obj.get("message_id")
+            and event.kind == TelegramInputKind.CALLBACK
+        ):
+            _create_logged_task(
+                _defer_clear_reply_markup(
+                    token=token,
+                    chat_id=chat_id,
+                    message_id=event.message_obj["message_id"],
+                    trace_id=trace_id,
+                    user_id=user_id,
+                ),
+                trace_id=trace_id,
+                stage="callback_reply_markup_cleanup_enqueue",
+                user_id=user_id,
+            )
+
+        callback_data = raw_callback_data.split("#")[0]
+        stack_started_at = time.perf_counter()
+        current_stack = await fsm.get_menu_stack()
+        _log_timing(
+            trace_id=trace_id,
+            stage="menu_stack_loaded",
+            started_at=stack_started_at,
+            user_id=user_id,
+            extra=f"depth={len(current_stack)} callback={callback_data}",
+        )
+        plan: TelegramMenuPlan | None = None
+
+        render_started_at = time.perf_counter()
+        if callback_data == "menu:categorias":
+            plan = menu_flow.render_categories_menu(current_stack=current_stack)
+        elif callback_data.startswith("product_select:"):
+            product_id = callback_data.split(":", 1)[1]
+            purchase_plan = purchase_flow.render_quantity_prompt(product_id=product_id)
+            await _apply_purchase_plan(
                 token=token,
                 chat_id=chat_id,
-                message_id=msg_obj["message_id"],
-                trace_id=trace_id,
                 user_id=user_id,
+                fsm=fsm,
+                plan=purchase_plan,
+                trace_id=trace_id,
             )
-
-        # Limpiar callback_data de la versión para el procesamiento de intents
-        callback_data = raw_callback_data.split("#")[0]
-
-        # Interceptar botones de navegación de categorías
-        if callback_data == "menu:categorias":
-            db = SessionLocal()
-            try:
-                cat_svc = CategoryService(db)
-                categories = cat_svc.list_categories()
-                buttons = []
-                idx = 1
-                for i in range(0, len(categories), 2):
-                    row = []
-                    for cat in categories[i : i + 2]:
-                        row.append(
-                            {
-                                "text": f"{idx}. 🏷️ {cat.name}",
-                                "callback_data": f"cat_select:{cat.name}",
-                            }
-                        )
-                        idx += 1
-                    buttons.append(row)
-                buttons.append(
-                    [
-                        {
-                            "text": f"{idx}. 🔙 Menú Principal",
-                            "callback_data": "menu:back_to_main",
-                        }
-                    ]
-                )
-                await send_menu_message(
-                    bot_token=token,
-                    chat_id=chat_id,
-                    text="Selecciona una categoría para ver los productos disponibles:",
-                    reply_markup={"inline_keyboard": buttons},
-                    fsm=fsm,
-                    trace_id=trace_id,
-                    user_id=user_id,
-                )
-            finally:
-                db.close()
             return
-
+        elif callback_data.startswith("qty_select:"):
+            quantity = purchase_flow.parse_quantity(callback_data.split(":", 1)[1])
+            pending_product_id = (await fsm.get_context()).get("pending_product_id")
+            if quantity is None or not isinstance(pending_product_id, str):
+                plan = menu_flow.render_main_menu()
+                await _apply_menu_plan(
+                    token=token,
+                    chat_id=chat_id,
+                    user_id=user_id,
+                    fsm=fsm,
+                    plan=plan,
+                    trace_id=trace_id,
+                )
+                return
+            purchase_plan = purchase_flow.render_confirmation_prompt(
+                product_id=pending_product_id,
+                quantity=quantity,
+            )
+            await _apply_purchase_plan(
+                token=token,
+                chat_id=chat_id,
+                user_id=user_id,
+                fsm=fsm,
+                plan=purchase_plan,
+                trace_id=trace_id,
+            )
+            return
+        elif callback_data == "cart:change_quantity":
+            pending_product_id = (await fsm.get_context()).get("pending_product_id")
+            if not isinstance(pending_product_id, str):
+                plan = menu_flow.render_main_menu()
+                await _apply_menu_plan(
+                    token=token,
+                    chat_id=chat_id,
+                    user_id=user_id,
+                    fsm=fsm,
+                    plan=plan,
+                    trace_id=trace_id,
+                )
+                return
+            purchase_plan = purchase_flow.render_quantity_prompt(
+                product_id=pending_product_id
+            )
+            await _apply_purchase_plan(
+                token=token,
+                chat_id=chat_id,
+                user_id=user_id,
+                fsm=fsm,
+                plan=purchase_plan,
+                trace_id=trace_id,
+            )
+            return
+        elif callback_data == "cart:add_confirm":
+            context = await fsm.get_context()
+            pending_product_id = context.get("pending_product_id")
+            pending_quantity = context.get("pending_quantity")
+            if not isinstance(pending_product_id, str) or not isinstance(
+                pending_quantity, int
+            ):
+                plan = menu_flow.render_main_menu()
+                await _apply_menu_plan(
+                    token=token,
+                    chat_id=chat_id,
+                    user_id=user_id,
+                    fsm=fsm,
+                    plan=plan,
+                    trace_id=trace_id,
+                )
+                return
+            purchase_plan = purchase_flow.confirm_add_to_cart(
+                external_user_id=user_id,
+                product_id=pending_product_id,
+                quantity=pending_quantity,
+            )
+            await _apply_purchase_plan(
+                token=token,
+                chat_id=chat_id,
+                user_id=user_id,
+                fsm=fsm,
+                plan=purchase_plan,
+                trace_id=trace_id,
+            )
+            return
+        elif callback_data == "cart:start_checkout":
+            purchase_plan = purchase_flow.render_checkout_confirmation()
+            await _apply_purchase_plan(
+                token=token,
+                chat_id=chat_id,
+                user_id=user_id,
+                fsm=fsm,
+                plan=purchase_plan,
+                trace_id=trace_id,
+            )
+            return
+        elif callback_data == "checkout:confirm":
+            purchase_plan = purchase_flow.confirm_checkout(external_user_id=user_id)
+            await _apply_purchase_plan(
+                token=token,
+                chat_id=chat_id,
+                user_id=user_id,
+                fsm=fsm,
+                plan=purchase_plan,
+                trace_id=trace_id,
+            )
+            return
+        elif callback_data == "cart:clear":
+            purchase_plan = purchase_flow.clear_cart(external_user_id=user_id)
+            await _apply_purchase_plan(
+                token=token,
+                chat_id=chat_id,
+                user_id=user_id,
+                fsm=fsm,
+                plan=purchase_plan,
+                trace_id=trace_id,
+            )
+            return
         elif callback_data.startswith("cat_select:"):
-            category_name = callback_data.split(":", 1)[1]
-            db = SessionLocal()
-            try:
-                products = (
-                    db.query(Product)
-                    .filter(
-                        Product.category == category_name,
-                        Product.is_available.is_(True),
-                    )
-                    .all()
-                )
-                if not products:
-                    response_text = f"No hay productos disponibles en la categoría '{category_name}' en este momento."
-                else:
-                    lines = [f"Productos en '{category_name}':"]
-                    for p in products:
-                        lines.append(
-                            f"- {p.name}: ${float(p.price):,.0f} ({p.stock} un)"
-                        )
-                    response_text = "\n".join(lines)
-                await send_menu_message(
-                    bot_token=token,
-                    chat_id=chat_id,
-                    text=response_text,
-                    reply_markup={
-                        "inline_keyboard": [
-                            [
-                                {
-                                    "text": "1. Volver a Categorías 🏷️",
-                                    "callback_data": "menu:categorias",
-                                }
-                            ],
-                            [
-                                {
-                                    "text": "2. Menú Principal 🔙",
-                                    "callback_data": "menu:back_to_main",
-                                }
-                            ],
-                        ]
-                    },
-                    fsm=fsm,
-                    trace_id=trace_id,
-                    user_id=user_id,
-                )
-            finally:
-                db.close()
-            return
-
+            slug = callback_data.split(":", 1)[1]
+            plan = menu_flow.render_category_detail(
+                category_slug=slug,
+                current_stack=current_stack,
+            )
         elif callback_data == "menu:promociones":
-            try:
-                response_text = _get_promotions_text()
-            except Exception:
-                response_text = (
-                    "Promociones destacadas del momento:\n\n"
-                    "No fue posible cargar las promociones en este instante."
-                )
-            await send_menu_message(
-                bot_token=token,
-                chat_id=chat_id,
-                text=response_text,
-                reply_markup=build_main_menu(False),
-                fsm=fsm,
-                trace_id=trace_id,
+            plan = menu_flow.render_promotions_menu(
+                current_stack=current_stack,
                 user_id=user_id,
             )
-            return
-
         elif callback_data == "menu:mas_vendidos":
-            try:
-                response_text = _get_best_sellers_text()
-            except Exception:
-                response_text = (
-                    "Más vendidos del momento:\n\n"
-                    "No fue posible cargar los productos más vendidos en este instante."
-                )
-            await send_menu_message(
-                bot_token=token,
-                chat_id=chat_id,
-                text=response_text,
-                reply_markup=build_main_menu(False),
-                fsm=fsm,
-                trace_id=trace_id,
-                user_id=user_id,
-            )
-            return
-
+            plan = menu_flow.render_best_sellers_menu(current_stack=current_stack)
         elif callback_data == "menu:favoritos":
-            try:
-                response_text = _get_favorites_text()
-            except Exception:
-                response_text = (
-                    "Productos favoritos:\n\n"
-                    "No fue posible cargar los productos favoritos en este instante."
-                )
-            await send_menu_message(
-                bot_token=token,
-                chat_id=chat_id,
-                text=response_text,
-                reply_markup=build_main_menu(False),
-                fsm=fsm,
-                trace_id=trace_id,
-                user_id=user_id,
-            )
-            return
-
+            plan = menu_flow.render_favorites_menu(current_stack=current_stack)
         elif callback_data == "menu:carrito":
-            try:
-                response_text = _get_cart_text(user_id)
-            except Exception:
-                response_text = (
-                    "Tu carrito actual:\n\n"
-                    "No fue posible cargar el contenido del carrito en este instante."
-                )
+            plan = menu_flow.render_cart_menu(
+                current_stack=current_stack,
+                user_id=user_id,
+            )
+        elif callback_data == "menu:pedidos":
+            plan = menu_flow.render_orders_menu(
+                current_stack=current_stack,
+                user_id=user_id,
+            )
+        elif callback_data == "menu:buscar_pedido_prompt":
+            await fsm.set_state(
+                FSMState.AWAITING_ORDER_ID,
+                {
+                    "action": "search",
+                    "_expected_input": ExpectedInput.ORDER_ID.value,
+                    "_menu_stack": current_stack,
+                    "_menu_scope": PEDIDOS_MENU_SCOPE,
+                },
+            )
             await send_menu_message(
                 bot_token=token,
                 chat_id=chat_id,
-                text=response_text,
-                reply_markup=build_main_menu(False),
+                text="Por favor, escribe el ID (código o UUID) del pedido que deseas buscar:",
+                reply_markup={
+                    "inline_keyboard": [
+                        [{"text": "↩️ Volver", "callback_data": "menu:back"}],
+                        [{"text": "🏠 Menú principal", "callback_data": "menu:home"}],
+                    ]
+                },
                 fsm=fsm,
                 trace_id=trace_id,
                 user_id=user_id,
+                expected_input=ExpectedInput.ORDER_ID,
+                next_state=FSMState.AWAITING_ORDER_ID,
             )
             return
-
-        elif callback_data == "menu:back_to_main":
+        elif callback_data == "menu:cancelar_pedido_prompt":
+            await fsm.set_state(
+                FSMState.AWAITING_ORDER_ID,
+                {
+                    "action": "cancel",
+                    "_expected_input": ExpectedInput.ORDER_ID.value,
+                    "_menu_stack": current_stack,
+                    "_menu_scope": PEDIDOS_MENU_SCOPE,
+                },
+            )
             await send_menu_message(
                 bot_token=token,
                 chat_id=chat_id,
-                text="¿En qué puedo ayudarte hoy?",
-                reply_markup=build_main_menu(False),
+                text="Por favor, escribe el ID (código o UUID) del pedido que deseas cancelar:",
+                reply_markup={
+                    "inline_keyboard": [
+                        [{"text": "↩️ Volver", "callback_data": "menu:back"}],
+                        [{"text": "🏠 Menú principal", "callback_data": "menu:home"}],
+                    ]
+                },
                 fsm=fsm,
                 trace_id=trace_id,
                 user_id=user_id,
+                expected_input=ExpectedInput.ORDER_ID,
+                next_state=FSMState.AWAITING_ORDER_ID,
+            )
+            return
+        elif callback_data in {"menu:home", "menu:back_to_main", "menu:inicio"}:
+            plan = menu_flow.render_main_menu()
+        elif callback_data == "menu:back":
+            previous_scope = menu_flow.resolve_back_scope(current_stack)
+            plan = menu_flow.render_scope(
+                scope=previous_scope,
+                user_id=user_id,
+                current_stack=current_stack[:-1],
+            )
+
+        if plan is not None:
+            _log_timing(
+                trace_id=trace_id,
+                stage="callback_menu_plan_rendered",
+                started_at=render_started_at,
+                user_id=user_id,
+                extra=f"callback={callback_data} scope={plan.menu_scope}",
+            )
+            await _apply_menu_plan(
+                token=token,
+                chat_id=chat_id,
+                user_id=user_id,
+                fsm=fsm,
+                plan=plan,
+                trace_id=trace_id,
+            )
+            _log_timing(
+                trace_id=trace_id,
+                stage="callback_done",
+                started_at=callback_started_at,
+                user_id=user_id,
+                extra=f"callback={callback_data}",
             )
             return
 
-        # Resolver FSM
+        transition_started_at = time.perf_counter()
         new_state, context = await fsm.transition(raw_callback_data)
-
+        _log_timing(
+            trace_id=trace_id,
+            stage="callback_fsm_transition_done",
+            started_at=transition_started_at,
+            user_id=user_id,
+            extra=f"callback={callback_data} next_state={new_state.value}",
+        )
         intent = context.get("intent")
-        response_text = f"Has seleccionado una opción no implementada: {callback_data}"
-
         if intent == "consultar_stock":
-            response_text = "Por favor, escribe el nombre del producto que buscas:"
+            response_text = "Escribe el nombre del producto."
         elif intent == "consultar_precio":
-            response_text = (
-                "Por favor, escribe el nombre del producto para consultar su precio:"
-            )
+            response_text = "Escribe el producto para revisar su precio."
         elif intent == "get_chatbot_info":
             response_text = "Nuestro horario de atención es de Lunes a Sábado de 10:00 a 22:00, y Domingo de 12:00 a 20:00."
         elif intent == "contactar_humano":
-            response_text = "Un ejecutivo se pondrá en contacto contigo pronto. ¿En qué más puedo ayudarte?"
+            response_text = "Un ejecutivo se pondrá en contacto contigo pronto."
+        else:
+            response_text = "No entendí esa acción. Usa el menú para continuar."
 
         await send_menu_message(
             bot_token=token,
             chat_id=chat_id,
             text=response_text,
-            reply_markup=build_main_menu(False) if new_state == FSMState.IDLE else None,
+            reply_markup=None,
             fsm=fsm,
             trace_id=trace_id,
             user_id=user_id,
-        )
-        _log_timing(
-            trace_id=trace_id,
-            stage="callback_flow_done",
-            started_at=core_started_at,
-            user_id=user_id,
-            extra=f"intent={intent}",
+            next_state=new_state,
+            context_updates=context,
         )
         return
 
     # Procesamiento de Mensajes de Texto
-    message_text = message_obj.get("text")
+    text_started_at = time.perf_counter()
+    message_text = event.text
     if not message_text:
         return
 
+    text_state_started_at = time.perf_counter()
     current_state = await fsm.get_state()
     fsm_context = await fsm.get_context()
+    _log_timing(
+        trace_id=trace_id,
+        stage="text_fsm_state_loaded",
+        started_at=text_state_started_at,
+        user_id=user_id,
+        extra=f"state={current_state.value} context_keys={len(fsm_context)}",
+    )
 
     # Interceptar comandos de reinicio / salida
     cmd_text = message_text.strip().lower()
     if cmd_text in {"/start", "/cancel", "/exit", "/salir", "/clear", "/reset"}:
         await fsm.reset()
+        home_plan = menu_flow.render_main_menu()
 
         if cmd_text == "/start":
             start_command_at = time.perf_counter()
@@ -894,10 +1472,15 @@ async def _process_telegram_update_core(
                 bot_token=token,
                 chat_id=chat_id,
                 text=welcome_text,
-                reply_markup=build_main_menu(False),
+                reply_markup=home_plan.reply_markup,
                 fsm=fsm,
                 trace_id=trace_id,
                 user_id=user_id,
+                menu_scope=home_plan.menu_scope,
+                menu_stack=home_plan.menu_stack,
+                expected_input=home_plan.expected_input,
+                allow_numeric_input=home_plan.allow_numeric_input,
+                next_state=home_plan.state,
             )
             await _clear_latest_conversation_session(
                 user_id=user_id,
@@ -916,10 +1499,15 @@ async def _process_telegram_update_core(
                 bot_token=token,
                 chat_id=chat_id,
                 text="Sesión conversacional reiniciada y limpia. Tu carro de compra sigue conservado intacto. ¿En qué puedo ayudarte hoy?",
-                reply_markup=build_main_menu(False),
+                reply_markup=home_plan.reply_markup,
                 fsm=fsm,
                 trace_id=trace_id,
                 user_id=user_id,
+                menu_scope=home_plan.menu_scope,
+                menu_stack=home_plan.menu_stack,
+                expected_input=home_plan.expected_input,
+                allow_numeric_input=home_plan.allow_numeric_input,
+                next_state=home_plan.state,
             )
             await _clear_latest_conversation_session(
                 user_id=user_id,
@@ -935,6 +1523,326 @@ async def _process_telegram_update_core(
             )
         return
 
+    if current_state == FSMState.IN_MENU:
+        override_scope = menu_flow.try_resolve_scope_override(message_text)
+        if override_scope is not None:
+            override_stack = (
+                [MAIN_MENU_SCOPE, CATEGORIES_MENU_SCOPE, override_scope]
+                if override_scope.startswith("category:")
+                else [MAIN_MENU_SCOPE, override_scope]
+            )
+            plan = menu_flow.render_scope(
+                scope=override_scope,
+                user_id=user_id,
+                current_stack=override_stack[:-1],
+            )
+            await _apply_menu_plan(
+                token=token,
+                chat_id=chat_id,
+                user_id=user_id,
+                fsm=fsm,
+                plan=plan,
+                trace_id=trace_id,
+            )
+            return
+
+    if current_state == FSMState.AWAITING_QUANTITY:
+        override_scope = menu_flow.try_resolve_scope_override(message_text)
+        if override_scope is not None:
+            override_stack = (
+                [MAIN_MENU_SCOPE, CATEGORIES_MENU_SCOPE, override_scope]
+                if override_scope.startswith("category:")
+                else [MAIN_MENU_SCOPE, override_scope]
+            )
+            plan = menu_flow.render_scope(
+                scope=override_scope,
+                user_id=user_id,
+                current_stack=override_stack[:-1],
+            )
+            await _apply_menu_plan(
+                token=token,
+                chat_id=chat_id,
+                user_id=user_id,
+                fsm=fsm,
+                plan=plan,
+                trace_id=trace_id,
+            )
+            return
+        pending_product_id = fsm_context.get("pending_product_id")
+        if not isinstance(pending_product_id, str):
+            plan = menu_flow.render_main_menu()
+            await _apply_menu_plan(
+                token=token,
+                chat_id=chat_id,
+                user_id=user_id,
+                fsm=fsm,
+                plan=plan,
+                trace_id=trace_id,
+            )
+            return
+        quantity = purchase_flow.parse_quantity(message_text)
+        purchase_plan = (
+            purchase_flow.render_confirmation_prompt(
+                product_id=pending_product_id,
+                quantity=quantity,
+            )
+            if quantity is not None
+            else purchase_flow.render_quantity_prompt(
+                product_id=pending_product_id,
+                invalid_input=True,
+            )
+        )
+        await _apply_purchase_plan(
+            token=token,
+            chat_id=chat_id,
+            user_id=user_id,
+            fsm=fsm,
+            plan=purchase_plan,
+            trace_id=trace_id,
+        )
+        return
+
+    if current_state == FSMState.AWAITING_CONFIRMATION:
+        override_scope = menu_flow.try_resolve_scope_override(message_text)
+        if override_scope is not None:
+            override_stack = (
+                [MAIN_MENU_SCOPE, CATEGORIES_MENU_SCOPE, override_scope]
+                if override_scope.startswith("category:")
+                else [MAIN_MENU_SCOPE, override_scope]
+            )
+            plan = menu_flow.render_scope(
+                scope=override_scope,
+                user_id=user_id,
+                current_stack=override_stack[:-1],
+            )
+            await _apply_menu_plan(
+                token=token,
+                chat_id=chat_id,
+                user_id=user_id,
+                fsm=fsm,
+                plan=plan,
+                trace_id=trace_id,
+            )
+            return
+        normalized = cmd_text
+        context = fsm_context
+        pending_action = context.get("pending_action")
+        pending_product_id = context.get("pending_product_id")
+        pending_quantity = context.get("pending_quantity")
+        if (
+            normalized in {"si", "sí", "confirmar", "ok"}
+            and pending_action == "checkout"
+        ):
+            purchase_plan = purchase_flow.confirm_checkout(external_user_id=user_id)
+        elif (
+            normalized in {"no", "volver", "cancelar"} and pending_action == "checkout"
+        ):
+            plan = menu_flow.render_cart_menu(
+                current_stack=await fsm.get_menu_stack(),
+                user_id=user_id,
+            )
+            await _apply_menu_plan(
+                token=token,
+                chat_id=chat_id,
+                user_id=user_id,
+                fsm=fsm,
+                plan=plan,
+                trace_id=trace_id,
+            )
+            return
+        elif (
+            normalized in {"si", "sí", "confirmar", "ok"}
+            and isinstance(pending_product_id, str)
+            and isinstance(pending_quantity, int)
+        ):
+            purchase_plan = purchase_flow.confirm_add_to_cart(
+                external_user_id=user_id,
+                product_id=pending_product_id,
+                quantity=pending_quantity,
+            )
+        elif normalized in {"no", "cambiar", "editar"} and isinstance(
+            pending_product_id, str
+        ):
+            purchase_plan = purchase_flow.render_quantity_prompt(
+                product_id=pending_product_id
+            )
+        elif isinstance(pending_product_id, str) and isinstance(pending_quantity, int):
+            purchase_plan = purchase_flow.render_confirmation_prompt(
+                product_id=pending_product_id,
+                quantity=pending_quantity,
+                invalid_input=True,
+            )
+        else:
+            plan = menu_flow.render_main_menu()
+            await _apply_menu_plan(
+                token=token,
+                chat_id=chat_id,
+                user_id=user_id,
+                fsm=fsm,
+                plan=plan,
+                trace_id=trace_id,
+            )
+            return
+        await _apply_purchase_plan(
+            token=token,
+            chat_id=chat_id,
+            user_id=user_id,
+            fsm=fsm,
+            plan=purchase_plan,
+            trace_id=trace_id,
+        )
+        return
+
+    if current_state == FSMState.AWAITING_ORDER_ID:
+        override_scope = menu_flow.try_resolve_scope_override(message_text)
+        if override_scope is not None:
+            override_stack = (
+                [MAIN_MENU_SCOPE, CATEGORIES_MENU_SCOPE, override_scope]
+                if override_scope.startswith("category:")
+                else [MAIN_MENU_SCOPE, override_scope]
+            )
+            plan = menu_flow.render_scope(
+                scope=override_scope,
+                user_id=user_id,
+                current_stack=override_stack[:-1],
+            )
+            await _apply_menu_plan(
+                token=token,
+                chat_id=chat_id,
+                user_id=user_id,
+                fsm=fsm,
+                plan=plan,
+                trace_id=trace_id,
+            )
+            return
+        action = fsm_context.get("action", "search")
+        db = SessionLocal()
+        try:
+            user = UserService(db).get_or_create(
+                external_id=user_id, platform="telegram"
+            )
+            order_svc = OrderService(db)
+            order_uuid = None
+            try:
+                # Intentar parsear el ID de pedido ingresado por el usuario
+                raw_id = message_text.strip()
+                if len(raw_id) > 8:
+                    order_uuid = uuid.UUID(raw_id)
+                else:
+                    # Búsqueda parcial por prefijo si es un ID corto
+                    user_orders = order_svc.list_user_orders(user.id)
+                    matched_orders = [
+                        o for o in user_orders if str(o.id).startswith(raw_id)
+                    ]
+                    if matched_orders:
+                        order_uuid = matched_orders[0].id
+            except ValueError:
+                pass
+
+            if order_uuid is None:
+                # No se pudo encontrar por UUID ni por prefijo
+                await send_menu_message(
+                    bot_token=token,
+                    chat_id=chat_id,
+                    text="No encontré ningún pedido con ese ID. Por favor, asegúrate de escribir el ID completo o los primeros caracteres correctamente.",
+                    reply_markup={
+                        "inline_keyboard": [
+                            [{"text": "↩️ Volver", "callback_data": "menu:back"}],
+                            [
+                                {
+                                    "text": "🏠 Menú principal",
+                                    "callback_data": "menu:home",
+                                }
+                            ],
+                        ]
+                    },
+                    fsm=fsm,
+                    trace_id=trace_id,
+                    user_id=user_id,
+                    expected_input=ExpectedInput.ORDER_ID,
+                    next_state=FSMState.AWAITING_ORDER_ID,
+                )
+                return
+
+            if action == "search":
+                order = order_svc.get_order(order_uuid)
+                if not order or order.user_id != user.id:
+                    msg = "No encontré ese pedido."
+                else:
+                    status_emoji = {
+                        "pending": "⏳ Pendiente",
+                        "confirmed": "✅ Confirmado",
+                        "preparing": "👨‍🍳 Preparando",
+                        "ready": "📦 Listo para entrega",
+                        "delivered": "🛵 Entregado",
+                        "cancelled": "❌ Cancelado",
+                    }.get(order.status, order.status)
+                    date_str = (
+                        order.created_at.strftime("%d/%m/%Y %H:%M")
+                        if order.created_at
+                        else "Fecha desconocida"
+                    )
+                    msg = (
+                        f"📊 *Detalle del Pedido:*\n"
+                        f"• ID: `{str(order.id)}`\n"
+                        f"• Estado: {status_emoji}\n"
+                        f"• Total: {_format_money(float(order.total_amount))}\n"
+                        f"• Fecha: {date_str}\n\n"
+                        f"Detalle de productos:\n"
+                    )
+                    for item in order.items:
+                        msg += f" - {item.product.name} x{item.quantity} ({_format_money(float(item.total_price))})\n"
+
+                # Volver al menú de pedidos
+                stack = await fsm.get_menu_stack()
+                plan = menu_flow.render_orders_menu(
+                    current_stack=stack, user_id=user_id
+                )
+                await send_menu_message(
+                    bot_token=token,
+                    chat_id=chat_id,
+                    text=msg,
+                    reply_markup=plan.reply_markup,
+                    fsm=fsm,
+                    trace_id=trace_id,
+                    user_id=user_id,
+                    menu_scope=plan.menu_scope,
+                    menu_stack=plan.menu_stack,
+                    expected_input=plan.expected_input,
+                    allow_numeric_input=plan.allow_numeric_input,
+                    next_state=plan.state,
+                )
+                return
+            elif action == "cancel":
+                try:
+                    order_svc.cancel_order(order_uuid, user.id)
+                    db.commit()
+                    msg = f"✅ Pedido `{str(order_uuid)[:8]}...` cancelado exitosamente. Se ha restaurado el stock."
+                except ValueError as e:
+                    msg = f"❌ No se pudo cancelar el pedido: {str(e)}"
+
+                stack = await fsm.get_menu_stack()
+                plan = menu_flow.render_orders_menu(
+                    current_stack=stack, user_id=user_id
+                )
+                await send_menu_message(
+                    bot_token=token,
+                    chat_id=chat_id,
+                    text=msg,
+                    reply_markup=plan.reply_markup,
+                    fsm=fsm,
+                    trace_id=trace_id,
+                    user_id=user_id,
+                    menu_scope=plan.menu_scope,
+                    menu_stack=plan.menu_stack,
+                    expected_input=plan.expected_input,
+                    allow_numeric_input=plan.allow_numeric_input,
+                    next_state=plan.state,
+                )
+                return
+        finally:
+            db.close()
+
     # Si estamos esperando algo específico (ej: producto), podemos prefijar el texto
     if current_state == FSMState.AWAITING_PRODUCT_NAME:
         intent = fsm_context.get("intent")
@@ -945,10 +1853,20 @@ async def _process_telegram_update_core(
         await fsm.reset()  # Volver a IDLE tras procesar
 
     # Delega la lógica de negocio al Use Case
+    metadata_started_at = time.perf_counter()
+    metadata = await _build_telegram_llm_metadata(fsm)
+    _log_timing(
+        trace_id=trace_id,
+        stage="llm_metadata_built",
+        started_at=metadata_started_at,
+        user_id=user_id,
+        extra=f"keys={len(metadata)}",
+    )
     cmd = ProcessMessageCommand(
         user_id=user_id,
         platform="telegram",
         message=message_text,
+        metadata=metadata,
     )
 
     try:
@@ -971,20 +1889,61 @@ async def _process_telegram_update_core(
         return
 
     # Enviar respuesta con el menú principal siempre activo si estamos en IDLE
+    post_llm_state_started_at = time.perf_counter()
     current_state = await fsm.get_state()
+    _log_timing(
+        trace_id=trace_id,
+        stage="post_llm_fsm_state_loaded",
+        started_at=post_llm_state_started_at,
+        user_id=user_id,
+        extra=f"state={current_state.value}",
+    )
+    reply_markup = None
+    menu_scope = None
+    menu_stack = None
+    expected_input = ExpectedInput.FREE_TEXT
+    allow_numeric_input = False
+    if current_state == FSMState.IDLE:
+        home_plan = menu_flow.render_main_menu()
+        reply_markup = home_plan.reply_markup
+        menu_scope = home_plan.menu_scope
+        menu_stack = home_plan.menu_stack
+        expected_input = home_plan.expected_input
+        allow_numeric_input = home_plan.allow_numeric_input
+        current_state = home_plan.state
+    elif current_state == FSMState.IN_MENU:
+        current_scope = await fsm.get_menu_scope()
+        current_stack = await fsm.get_menu_stack()
+        if current_scope:
+            current_plan = menu_flow.render_scope(
+                scope=current_scope,
+                user_id=user_id,
+                current_stack=current_stack[:-1] if current_stack else None,
+            )
+            reply_markup = current_plan.reply_markup
+            menu_scope = current_plan.menu_scope
+            menu_stack = current_stack or current_plan.menu_stack
+            expected_input = current_plan.expected_input
+            allow_numeric_input = current_plan.allow_numeric_input
+
     await send_menu_message(
         bot_token=token,
         chat_id=chat_id,
         text=response_text,
-        reply_markup=build_main_menu(False) if current_state == FSMState.IDLE else None,
+        reply_markup=reply_markup,
         fsm=fsm,
         trace_id=trace_id,
         user_id=user_id,
+        menu_scope=menu_scope,
+        menu_stack=menu_stack,
+        expected_input=expected_input,
+        allow_numeric_input=allow_numeric_input,
+        next_state=current_state,
     )
     _log_timing(
         trace_id=trace_id,
         stage="text_message_done",
-        started_at=core_started_at,
+        started_at=text_started_at,
         user_id=user_id,
     )
 
@@ -1002,9 +1961,17 @@ async def process_telegram_update_background(
     lock_acquired: bool,
     redis_client: Any,
     trace_id: str,
+    webhook_started_at: float | None = None,
 ) -> None:
     """Manejador en segundo plano para procesar la actualización y liberar el lock."""
     background_started_at = time.perf_counter()
+    if webhook_started_at is not None:
+        _log_timing(
+            trace_id=trace_id,
+            stage="background_started_after_webhook",
+            started_at=webhook_started_at,
+            user_id=user_id,
+        )
     try:
         await _process_telegram_update_core(
             token=token,
@@ -1036,6 +2003,13 @@ async def process_telegram_update_background(
             started_at=background_started_at,
             user_id=user_id,
         )
+        if webhook_started_at is not None:
+            _log_timing(
+                trace_id=trace_id,
+                stage="webhook_to_background_finished",
+                started_at=webhook_started_at,
+                user_id=user_id,
+            )
 
 
 @router.post("/webhook/{token}")
@@ -1106,7 +2080,15 @@ async def telegram_webhook(
 
     if redis_client is not None:
         try:
+            lock_started_at = time.perf_counter()
             lock_acquired = await redis_client.set(lock_key, "locked", ex=20, nx=True)
+            _log_timing(
+                trace_id=trace_id,
+                stage="redis_lock_checked",
+                started_at=lock_started_at,
+                user_id=user_id,
+                extra=f"acquired={bool(lock_acquired)}",
+            )
             if not lock_acquired:
                 logger.warning(
                     "Concurrency warning: duplicate request from user %s blocked",
@@ -1120,6 +2102,7 @@ async def telegram_webhook(
                         bot_token=token,
                         callback_query_id=callback_query_id,
                         text="Procesando tu solicitud anterior, por favor espera...",
+                        trace_id=trace_id,
                     )
                     _log_timing(
                         trace_id=trace_id,
@@ -1127,11 +2110,19 @@ async def telegram_webhook(
                         started_at=webhook_started_at,
                         user_id=user_id,
                     )
+                _log_timing(
+                    trace_id=trace_id,
+                    stage="webhook_response_ready",
+                    started_at=webhook_started_at,
+                    user_id=user_id,
+                    extra=f"detail=duplicate_request_blocked kind={update_kind}",
+                )
                 return {"status": "ok", "detail": "duplicate request blocked"}
         except Exception as e:
             logger.exception("Redis concurrency lock error")
             raise RuntimeError("Failed to acquire Redis concurrency lock") from e
     else:
+        lock_started_at = time.perf_counter()
         if user_id in _local_locks:
             logger.warning(
                 "Local concurrency warning: duplicate request from user %s blocked",
@@ -1145,6 +2136,7 @@ async def telegram_webhook(
                     bot_token=token,
                     callback_query_id=callback_query_id,
                     text="Procesando tu solicitud anterior, por favor espera...",
+                    trace_id=trace_id,
                 )
                 _log_timing(
                     trace_id=trace_id,
@@ -1152,11 +2144,26 @@ async def telegram_webhook(
                     started_at=webhook_started_at,
                     user_id=user_id,
                 )
+            _log_timing(
+                trace_id=trace_id,
+                stage="webhook_response_ready",
+                started_at=webhook_started_at,
+                user_id=user_id,
+                extra=f"detail=duplicate_request_blocked kind={update_kind}",
+            )
             return {"status": "ok", "detail": "duplicate request blocked"}
         _local_locks.add(user_id)
         lock_acquired = True
+        _log_timing(
+            trace_id=trace_id,
+            stage="local_lock_checked",
+            started_at=lock_started_at,
+            user_id=user_id,
+            extra="acquired=True",
+        )
 
     # 2. Programar ejecución en segundo plano y responder de inmediato
+    schedule_started_at = time.perf_counter()
     background_tasks.add_task(
         process_telegram_update_background,
         token=token,
@@ -1171,6 +2178,14 @@ async def telegram_webhook(
         lock_acquired=lock_acquired,
         redis_client=redis_client,
         trace_id=trace_id,
+        webhook_started_at=webhook_started_at,
+    )
+    _log_timing(
+        trace_id=trace_id,
+        stage="background_task_scheduled",
+        started_at=schedule_started_at,
+        user_id=user_id,
+        extra=f"kind={update_kind}",
     )
 
     _log_timing(
@@ -1179,6 +2194,13 @@ async def telegram_webhook(
         started_at=webhook_started_at,
         user_id=user_id,
         extra=f"lock_acquired={lock_acquired} kind={update_kind}",
+    )
+    _log_timing(
+        trace_id=trace_id,
+        stage="webhook_response_ready",
+        started_at=webhook_started_at,
+        user_id=user_id,
+        extra=f"detail=scheduled kind={update_kind}",
     )
 
     return {"status": "ok", "detail": "scheduled"}
