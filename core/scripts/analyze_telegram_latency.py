@@ -64,7 +64,10 @@ def _match_float(pattern: re.Pattern[str], line: str, group: str) -> float | Non
     value = _match_text(pattern, line, group)
     if value is None:
         return None
-    return float(value)
+    parsed = float(value)
+    if not math.isfinite(parsed) or parsed < 0:
+        return None
+    return parsed
 
 
 def parse_latency_event(line: str) -> LatencyEvent | None:

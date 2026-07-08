@@ -142,3 +142,106 @@ def test_local_locks_leak_safety():
 
     # Descartar un ID que no existe no debe lanzar error (debe ser seguro)
     _local_locks.discard("non-existent-user")
+
+
+# ============================================================================
+# 5. LIMIT / SYSTEM-BREAKING TESTS: Cart and Checkout Edge Cases
+# ============================================================================
+
+
+def test_cart_service_rejects_negative_or_zero_quantity(db_session):
+    """Verifica cómo se comporta el sistema ante cantidades nulas o negativas."""
+    from services.cart_service import CartService
+    from services.user_service import UserService
+    from services.product_service import ProductService
+    from models.cart import CartItem
+
+    user = UserService(db_session).get_or_create(
+        external_id="tg_paranoid_user", platform="telegram"
+    )
+    product = ProductService(db_session).create_product(
+        sku="PARANOID-SKU-1",
+        name="Paranoid Product",
+        price=10.0,
+        stock=10,
+        category="General",
+    )
+
+    cart_svc = CartService(db_session)
+
+    # 1. CartService debe lanzar ValueError al añadir cantidad negativa o cero
+    with pytest.raises(ValueError, match="La cantidad a añadir debe ser mayor que cero"):
+        cart_svc.add_to_cart(user_id=user.id, product_id=product.id, quantity=-5)
+
+    with pytest.raises(ValueError, match="La cantidad a añadir debe ser mayor que cero"):
+        cart_svc.add_to_cart(user_id=user.id, product_id=product.id, quantity=0)
+
+    # 2. Si forzamos un CartItem con cantidad negativa directo en base de datos (bypassing CartService)
+    cart = cart_svc.get_or_create_cart(user.id)
+    malformed_item = CartItem(cart_id=cart.id, product_id=product.id, quantity=-2)
+    db_session.add(malformed_item)
+    db_session.commit()
+
+    # El checkout debe lanzar ValueError protegiendo la integridad transaccional
+    from services.order_service import OrderService
+    with pytest.raises(ValueError, match="Cantidad inválida o vacía en el carrito"):
+        OrderService(db_session).checkout_cart(user_id=user.id)
+
+
+def test_cart_service_rejects_negative_or_zero_remove_quantity(db_session):
+    from services.cart_service import CartService
+    from services.user_service import UserService
+    from services.product_service import ProductService
+
+    user = UserService(db_session).get_or_create(
+        external_id="tg_paranoid_remove_user", platform="telegram"
+    )
+    product = ProductService(db_session).create_product(
+        sku="PARANOID-SKU-REMOVE-1",
+        name="Paranoid Remove Product",
+        price=10.0,
+        stock=10,
+        category="General",
+    )
+    cart_svc = CartService(db_session)
+    cart_svc.add_to_cart(user_id=user.id, product_id=product.id, quantity=2)
+
+    with pytest.raises(
+        ValueError, match="La cantidad a remover debe ser mayor que cero"
+    ):
+        cart_svc.remove_from_cart(user_id=user.id, product_id=product.id, quantity=-5)
+
+    with pytest.raises(
+        ValueError, match="La cantidad a remover debe ser mayor que cero"
+    ):
+        cart_svc.remove_from_cart(user_id=user.id, product_id=product.id, quantity=0)
+
+    cart = cart_svc.get_or_create_cart(user.id)
+    assert cart.items[0].quantity == 2
+
+
+# ============================================================================
+# 6. LIMIT TESTS: Latency Analyzer Malformed Data Resilience
+# ============================================================================
+
+
+def test_analyze_stream_malformed_lines_resilience():
+    """Prueba que el script de latencia ignore trazas corruptas o valores NaN/Infinitos sin fallar por completo."""
+    from io import StringIO
+    from scripts.analyze_telegram_latency import analyze_stream
+
+    corrupt_log = StringIO(
+        "\n".join(
+            [
+                "INFO [telegram_timing] trace=tg:9:9 stage=webhook_response_ready elapsed_ms=NaN user=1",
+                "INFO [telegram_timing] trace=tg:9:9 stage=webhook_response_ready elapsed_ms=inf user=1",
+                "INFO [telegram_timing] trace=tg:9:9 stage=webhook_response_ready elapsed_ms=-100.00 user=1",
+                "INFO [telegram_timing] trace=tg:broken stage=webhook_response_ready elapsed_ms=abc user=1",
+            ]
+        )
+    )
+
+    # Debe ejecutarse sin lanzar ValueError / TypeError
+    output = analyze_stream(corrupt_log, include_aggregate=True)
+    assert len(output) > 0
+    assert not any("p50=-" in line for line in output)

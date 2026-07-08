@@ -31,6 +31,8 @@ class CartService:
     def add_to_cart(
         self, user_id: int, product_id: uuid.UUID, quantity: int = 1
     ) -> Cart:
+        if quantity <= 0:
+            raise ValueError("La cantidad a añadir debe ser mayor que cero")
         try:
             cart = self.get_or_create_cart(user_id)
 
@@ -64,6 +66,8 @@ class CartService:
     def remove_from_cart(
         self, user_id: int, product_id: uuid.UUID, quantity: int | None = None
     ) -> Cart:
+        if quantity is not None and quantity <= 0:
+            raise ValueError("La cantidad a remover debe ser mayor que cero")
         try:
             cart = self.get_or_create_cart(user_id)
             item = (

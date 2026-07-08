@@ -77,6 +77,9 @@ class OrderService:
 
             # Reserve stock under pessimistic lock (with_for_update) for each product
             for cart_item in cart.items:
+                if cart_item.quantity <= 0:
+                    raise ValueError("Cantidad inválida o vacía en el carrito")
+
                 # 1. Lock product row to prevent concurrency issues
                 product = (
                     self.db.query(Product)
