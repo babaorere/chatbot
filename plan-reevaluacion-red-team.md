@@ -32,6 +32,8 @@ Este documento es el plan operativo vigente. Si una prueba contradice una premis
 - La limpieza de reply markup ahora envia `{"inline_keyboard": []}`.
 - `prime_human_agent_cache()` tenia un efecto colateral: tambien primeaba catalogo.
 - El prime de catalogo ahora se ejecuta explicitamente en `lifespan` despues del seed demo.
+- El hook local ejecutaba `pytest` dentro del contenedor `chatbot_api` contra la DB runtime `chatbot`; los tests truncaban `products`.
+- `core/tests/conftest.py` ahora deriva automaticamente una DB aislada `chatbot_test` fuera de GitHub Actions cuando no se define `TEST_DATABASE_URL`, evitando destruir datos runtime durante validaciones locales.
 
 ## Regla de red team
 
@@ -72,12 +74,32 @@ Criterio de fallo:
 
 Objetivo: demostrar que la cache acelera navegacion sin convertirse en verdad operacional.
 
+Estado: completado.
+
+Evidencia:
+- Se detecto una precondicion rota antes de RT-2: `products=0` en `chatbot` porque el pre-commit habia ejecutado tests destructivos contra la DB runtime.
+- Se corrigio el aislamiento de tests: suite local usa `chatbot_test`; despues de `pytest`, `chatbot` mantuvo `10` productos y `0` productos RT-2 temporales.
+- Mutacion real por endpoint admin `POST /business/config/products` creo `RT2 Cache Probe HTTP 1783537118`.
+- Postgres confirmo la mutacion: `products=11`, `rt2=1`.
+- Redis publico version distribuida `1` en `chatbot:adk:v1:catalog:snapshot_version`.
+- Logs API confirmaron `Catalog cache primed successfully: 1 categories, 11 products cached, version=2`.
+- Logs API confirmaron `distributed_version_bumped ... version=1 reason=business_config_product_created`.
+- Proceso Python separado inicializo Redis, partio con `seen=0` y ejecuto `_refresh_catalog_cache_if_remote_version_changed`.
+- El proceso separado confirmo refresh por version remota: `seen=1`, `products=11`, `rt2=1`.
+- Borrado real por endpoint admin `DELETE /business/config/products/{id}` elimino el producto temporal.
+- Postgres confirmo limpieza: `products=10`, `rt2=0`.
+- Redis publico version distribuida `2`.
+- Logs API confirmaron `Catalog cache primed successfully: 1 categories, 10 products cached, version=3`.
+- Proceso separado confirmo refresh post-delete: `seen=2`, `products=10`, `rt2=0`.
+- Test automatizado agregado: `test_checkout_uses_db_stock_when_catalog_cache_is_stale`.
+- El test fuerza `_catalog_snapshot` con stock obsoleto `99`, pero DB tiene stock real `1` y carrito pide `2`; checkout falla por `Stock insuficiente` y no descuenta stock.
+
 Pruebas:
-- Mutar catalogo por flujo admin o script controlado.
-- Confirmar que la mutacion actualiza Postgres.
-- Confirmar bump de version distribuida en Redis.
-- Confirmar que otro proceso refresca cache cuando ve version remota mayor.
-- Confirmar que carrito, checkout, pedidos y stock final siguen consultando DB.
+- [x] Mutar catalogo por flujo admin o script controlado.
+- [x] Confirmar que la mutacion actualiza Postgres.
+- [x] Confirmar bump de version distribuida en Redis.
+- [x] Confirmar que otro proceso refresca cache cuando ve version remota mayor.
+- [x] Confirmar que carrito, checkout, pedidos y stock final siguen consultando DB.
 
 Criterio de fallo:
 - Navegacion usa productos obsoletos despues de mutacion confirmada.

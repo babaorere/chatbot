@@ -1,18 +1,54 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 import pytest
 from dotenv import dotenv_values
+from sqlalchemy import create_engine
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 
 _REPO_ENV = dotenv_values(Path(__file__).resolve().parents[2] / ".env")
-_TEST_DATABASE_URL = (
-    os.getenv("TEST_DATABASE_URL")
-    or _REPO_ENV.get("DATABASE_URL")
-    or os.getenv("DATABASE_URL")
-)
+
+
+def _database_url_for_tests() -> str | None:
+    explicit_test_url = os.getenv("TEST_DATABASE_URL")
+    if explicit_test_url:
+        return explicit_test_url
+
+    runtime_url = _REPO_ENV.get("DATABASE_URL") or os.getenv("DATABASE_URL")
+    if runtime_url is None:
+        return None
+    if os.getenv("GITHUB_ACTIONS") == "true":
+        return runtime_url
+
+    parsed = make_url(runtime_url)
+    database = parsed.database or ""
+    if parsed.drivername.startswith("postgresql") and not database.endswith("_test"):
+        test_database = f"{database}_test"
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", test_database) is None:
+            raise RuntimeError(f"Unsafe test database name: {test_database!r}")
+        admin_url = parsed.set(database="postgres")
+        test_url = parsed.set(database=test_database)
+        engine = create_engine(admin_url, isolation_level="AUTOCOMMIT")
+        try:
+            with engine.connect() as conn:
+                exists = conn.execute(
+                    text("SELECT 1 FROM pg_database WHERE datname = :database"),
+                    {"database": test_database},
+                ).scalar()
+                if exists is None:
+                    conn.execute(text(f'CREATE DATABASE "{test_database}"'))
+        finally:
+            engine.dispose()
+        return test_url.render_as_string(hide_password=False)
+
+    return runtime_url
+
+
+_TEST_DATABASE_URL = _database_url_for_tests()
 if _TEST_DATABASE_URL:
     os.environ["DATABASE_URL"] = _TEST_DATABASE_URL
 os.environ.setdefault("OPENROUTER_API_KEY", "dummy_key")

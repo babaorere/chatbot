@@ -5,6 +5,7 @@ from services.user_service import UserService
 from services.product_service import ProductService
 from services.cart_service import CartService
 from services.order_service import OrderService
+from controllers import telegram_controller
 
 
 def test_complete_sales_workflow(db_session):
@@ -112,3 +113,47 @@ def test_checkout_insufficient_stock(db_session):
     # Ensure stock was NOT decremented (transaction rollback)
     db_session.refresh(whisky)
     assert whisky.stock == 1
+
+
+def test_checkout_uses_db_stock_when_catalog_cache_is_stale(db_session):
+    # Arrange
+    user = UserService(db_session).get_or_create(
+        external_id="telegram_cache_stale", platform="telegram"
+    )
+    product = ProductService(db_session).create_product(
+        sku="CACHE-STALE-STOCK",
+        name="Producto Stock DB",
+        price=1990.0,
+        stock=1,
+        category="General",
+    )
+    CartService(db_session).add_to_cart(
+        user_id=user.id,
+        product_id=product.id,
+        quantity=2,
+    )
+    previous_snapshot = telegram_controller._catalog_snapshot
+    telegram_controller._catalog_snapshot = telegram_controller.CatalogSnapshot(
+        products_by_id={
+            str(product.id): {
+                "id": str(product.id),
+                "name": product.name,
+                "price": 1990.0,
+                "stock": 99,
+                "category": "General",
+                "is_available": True,
+                "unit_of_measure": "un",
+            }
+        },
+        version=999,
+    )
+
+    try:
+        # Act / Assert
+        with pytest.raises(ValueError, match="Stock insuficiente"):
+            OrderService(db_session).checkout_cart(user_id=user.id)
+    finally:
+        telegram_controller._catalog_snapshot = previous_snapshot
+
+    db_session.refresh(product)
+    assert product.stock == 1
