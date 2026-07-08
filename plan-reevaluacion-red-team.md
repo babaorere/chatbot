@@ -2,9 +2,9 @@
 
 ## Objetivo
 
-Reevaluar el plan de optimizacion de latencia del bot Telegram con evidencia del runtime Docker real, buscando fallas de arquitectura, medicion, cache, concurrencia y operacion antes de seguir agregando optimizaciones.
+Reevaluar y continuar el plan de optimizacion de latencia del bot Telegram con evidencia del runtime Docker real, buscando fallas de arquitectura, medicion, cache, concurrencia y operacion antes de seguir agregando optimizaciones.
 
-Este plan no reemplaza `plan-optimizacion.md`; lo audita. Si una prueba contradice el plan original, primero se actualiza el plan y luego se modifica codigo.
+Este documento es el plan operativo vigente. Si una prueba contradice una premisa anterior, primero se actualiza este plan y luego se modifica codigo.
 
 ## Evidencia runtime aprendida
 
@@ -20,6 +20,9 @@ Este plan no reemplaza `plan-optimizacion.md`; lo audita. Si una prueba contradi
 - Medicion real: `webhook_response_ready=1.42ms`.
 - Medicion real: `background_started_after_webhook=2.68ms`.
 - Medicion real: `sendMessage=1185.24ms` con chat falso y error Telegram 400, fuera del path critico.
+- RT-5 ejecutado el 2026-07-08: 5 reinicios consecutivos de `api`, todos `healthy`.
+- RT-5 confirmo 10 productos exactos y `General:10` despues de cada reinicio.
+- RT-5 confirmo en logs el orden `Sembrado de productos generales finalizado` antes de `catalog_cache_primed`.
 
 ## Hallazgos corregidos durante la validacion
 
@@ -103,11 +106,21 @@ Criterio de fallo:
 
 Objetivo: validar que cada reinicio Docker deja DB y cache consistentes.
 
+Estado: completado.
+
+Evidencia:
+- Ciclo 1: `api_health=healthy`, `product_total=10`, `category_counts=["General:10"]`.
+- Ciclo 2: `api_health=healthy`, `product_total=10`, `category_counts=["General:10"]`.
+- Ciclo 3: `api_health=healthy`, `product_total=10`, `category_counts=["General:10"]`.
+- Ciclo 4: `api_health=healthy`, `product_total=10`, `category_counts=["General:10"]`.
+- Ciclo 5: `api_health=healthy`, `product_total=10`, `category_counts=["General:10"]`.
+- Logs de los 5 ciclos muestran `Sembrado de productos generales finalizado` antes de `catalog_cache_primed`.
+
 Pruebas:
-- Reiniciar `api` 5 veces.
-- Confirmar 10 productos exactos y categoria `General`.
-- Confirmar que `catalog_cache_primed` aparece despues de `Sembrado de productos generales finalizado`.
-- Confirmar que Redis local, no Redis externo, es el backend del stack.
+- [x] Reiniciar `api` 5 veces.
+- [x] Confirmar 10 productos exactos y categoria `General`.
+- [x] Confirmar que `catalog_cache_primed` aparece despues de `Sembrado de productos generales finalizado`.
+- [x] Confirmar que Redis local, no Redis externo, es el backend del stack.
 
 Criterio de fallo:
 - Duplicados de productos.
@@ -138,7 +151,7 @@ Criterio de fallo:
 5. Ejecutar RT-2 con mutaciones reales de catalogo.
 6. Ejecutar RT-6 con logs de todos los escenarios anteriores.
 
-## Cambios esperados al plan original
+## Cambios esperados del plan vigente
 
 - Mantener Postgres como verdad transaccional.
 - Mantener cache solo para lectura estable y navegacion.
@@ -152,6 +165,6 @@ Al terminar esta reevaluacion debe existir:
 
 - Reporte de latencia p50/p95/p99 por stage.
 - Tabla de fallos red-team con estado: corregido, reproducible pendiente, o descartado con evidencia.
-- Actualizacion de `plan-optimizacion.md` si algun paso queda reemplazado.
+- Actualizacion de este plan si algun paso queda reemplazado.
 - Tests automatizados para todo hallazgo corregido.
 - Validacion Docker final con `api`, `db`, `redis` y `arq_worker` healthy.
