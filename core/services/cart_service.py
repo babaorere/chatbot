@@ -5,6 +5,11 @@ import uuid
 from sqlalchemy.orm import Session
 from models.cart import Cart, CartItem
 from models.product import Product
+from config.value_limits import (
+    CART_QUANTITY_MAX,
+    CART_QUANTITY_MIN,
+    ensure_int_range,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +36,12 @@ class CartService:
     def add_to_cart(
         self, user_id: int, product_id: uuid.UUID, quantity: int = 1
     ) -> Cart:
-        if quantity <= 0:
-            raise ValueError("La cantidad a añadir debe ser mayor que cero")
+        ensure_int_range(
+            quantity,
+            name="La cantidad a añadir",
+            min_value=CART_QUANTITY_MIN,
+            max_value=CART_QUANTITY_MAX,
+        )
         try:
             cart = self.get_or_create_cart(user_id)
 
@@ -66,8 +75,13 @@ class CartService:
     def remove_from_cart(
         self, user_id: int, product_id: uuid.UUID, quantity: int | None = None
     ) -> Cart:
-        if quantity is not None and quantity <= 0:
-            raise ValueError("La cantidad a remover debe ser mayor que cero")
+        if quantity is not None:
+            ensure_int_range(
+                quantity,
+                name="La cantidad a remover",
+                min_value=CART_QUANTITY_MIN,
+                max_value=CART_QUANTITY_MAX,
+            )
         try:
             cart = self.get_or_create_cart(user_id)
             item = (

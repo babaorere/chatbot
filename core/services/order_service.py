@@ -8,6 +8,11 @@ from sqlalchemy.orm import Session
 from models.order import Order, OrderItem
 from models.product import Product
 from services.cart_service import CartService
+from config.value_limits import (
+    CART_QUANTITY_MAX,
+    CART_QUANTITY_MIN,
+    ensure_int_range,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -77,8 +82,12 @@ class OrderService:
 
             # Reserve stock under pessimistic lock (with_for_update) for each product
             for cart_item in cart.items:
-                if cart_item.quantity <= 0:
-                    raise ValueError("Cantidad inválida o vacía en el carrito")
+                ensure_int_range(
+                    cart_item.quantity,
+                    name="Cantidad inválida o vacía en el carrito",
+                    min_value=CART_QUANTITY_MIN,
+                    max_value=CART_QUANTITY_MAX,
+                )
 
                 # 1. Lock product row to prevent concurrency issues
                 product = (

@@ -14,6 +14,7 @@ from services.user_service import UserService
 from services.cart_service import CartService
 from services.business_config_service import BusinessConfigService
 from services.order_service import OrderService
+from config.value_limits import CART_QUANTITY_MAX
 
 logger = logging.getLogger(__name__)
 
@@ -29,14 +30,14 @@ class CartAddRequest(BaseModel):
     )
     platform: str = Field(..., description="Plataforma del canal (ej: telegram)")
     product_id: uuid.UUID
-    quantity: int = Field(default=1, ge=1)
+    quantity: int = Field(default=1, ge=1, le=CART_QUANTITY_MAX)
 
 
 class CartRemoveRequest(BaseModel):
     user_id: str
     platform: str
     product_id: uuid.UUID
-    quantity: int | None = Field(default=None, ge=1)
+    quantity: int | None = Field(default=None, ge=1, le=CART_QUANTITY_MAX)
 
 
 class CheckoutRequest(BaseModel):
@@ -119,6 +120,8 @@ def remove_from_cart(
             )
 
         return {"status": "success", "cart": cart.to_dict()}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
         logger.error("remove_from_cart endpoint failed: %s", e)
         raise HTTPException(500, "Failed to remove item from cart")

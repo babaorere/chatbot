@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import logging
+import math
 import uuid
 from decimal import Decimal
 
@@ -13,6 +14,18 @@ from models.category import Category
 from models.product import Product
 from repositories.product_repository import ProductRepository
 from services.category_service import slugify
+from config.value_limits import (
+    PRODUCT_MARGIN_MAX,
+    PRODUCT_MARGIN_MIN,
+    PRODUCT_MONEY_MAX,
+    PRODUCT_MONEY_MIN,
+    PRODUCT_STOCK_MAX,
+    PRODUCT_STOCK_MIN,
+    PRODUCT_TAX_MAX,
+    PRODUCT_TAX_MIN,
+    ensure_int_range,
+    ensure_optional_float_range,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +77,10 @@ class ProductService:
         if value is None or str(value).strip() == "":
             return None
         try:
-            return float(str(value).strip())
+            parsed = float(str(value).strip())
+            if not math.isfinite(parsed):
+                return None
+            return parsed
         except ValueError:
             return None
 
@@ -72,8 +88,11 @@ class ProductService:
         if value is None or str(value).strip() == "":
             return 0
         try:
-            return int(float(str(value).strip()))
-        except ValueError:
+            parsed = float(str(value).strip())
+            if not math.isfinite(parsed):
+                return 0
+            return int(parsed)
+        except (OverflowError, ValueError):
             return 0
 
     def _row_to_bool(self, value: object) -> bool:
@@ -88,6 +107,47 @@ class ProductService:
         return stripped if stripped else None
 
     # ── CRUD ─────────────────────────────────────────────────────────────────
+
+    def _validate_product_limits(
+        self,
+        *,
+        price: float | None = None,
+        stock: int | None = None,
+        cost: float | None = None,
+        margin: float | None = None,
+        taxes: float | None = None,
+    ) -> None:
+        ensure_optional_float_range(
+            price,
+            name="Precio",
+            min_value=PRODUCT_MONEY_MIN,
+            max_value=PRODUCT_MONEY_MAX,
+        )
+        if stock is not None:
+            ensure_int_range(
+                stock,
+                name="Stock",
+                min_value=PRODUCT_STOCK_MIN,
+                max_value=PRODUCT_STOCK_MAX,
+            )
+        ensure_optional_float_range(
+            cost,
+            name="Costo",
+            min_value=PRODUCT_MONEY_MIN,
+            max_value=PRODUCT_MONEY_MAX,
+        )
+        ensure_optional_float_range(
+            margin,
+            name="Margen",
+            min_value=PRODUCT_MARGIN_MIN,
+            max_value=PRODUCT_MARGIN_MAX,
+        )
+        ensure_optional_float_range(
+            taxes,
+            name="IVA",
+            min_value=PRODUCT_TAX_MIN,
+            max_value=PRODUCT_TAX_MAX,
+        )
 
     def list_products(
         self,
@@ -135,6 +195,13 @@ class ProductService:
         format: str | None = None,
     ) -> Product:
         try:
+            self._validate_product_limits(
+                price=price,
+                stock=stock,
+                cost=cost,
+                margin=margin,
+                taxes=taxes,
+            )
             self._ensure_category_exists(category)
             product = Product(
                 sku=sku,
@@ -178,6 +245,13 @@ class ProductService:
         format: str | None = None,
     ) -> Product:
         try:
+            self._validate_product_limits(
+                price=price,
+                stock=stock,
+                cost=cost,
+                margin=margin,
+                taxes=taxes,
+            )
             product = self.repo.find_by_id(product_id)
             if not product:
                 raise ValueError(f"Product {product_id} not found")
@@ -280,6 +354,18 @@ class ProductService:
             raise ValueError("El campo 'Nombre' es obligatorio.")
 
         category = self._row_to_str(row.get("category"))
+        price = self._row_to_float(row.get("price"))
+        cost = self._row_to_float(row.get("cost"))
+        stock = self._row_to_int(row.get("stock"))
+        taxes = self._row_to_float(row.get("taxes"))
+        margin = self._row_to_float(row.get("margin"))
+        self._validate_product_limits(
+            price=price,
+            stock=stock,
+            cost=cost,
+            margin=margin,
+            taxes=taxes,
+        )
         self._ensure_category_exists(category)
 
         existing: Product | None = None
@@ -289,18 +375,18 @@ class ProductService:
         if existing:
             existing.name = name
             existing.description = self._row_to_str(row.get("description"))
-            existing.price = self._row_to_float(row.get("price"))
-            existing.cost = self._row_to_float(row.get("cost"))
-            existing.stock = self._row_to_int(row.get("stock"))
+            existing.price = price
+            existing.cost = cost
+            existing.stock = stock
             existing.format = self._row_to_str(row.get("format"))
             existing.unit_of_measure = (
                 self._row_to_str(row.get("unit_of_measure")) or "un"
             )
             existing.category = category
             existing.provider = self._row_to_str(row.get("provider"))
-            existing.taxes = self._row_to_float(row.get("taxes"))
+            existing.taxes = taxes
             existing.is_available = self._row_to_bool(row.get("is_available"))
-            existing.margin = self._row_to_float(row.get("margin"))
+            existing.margin = margin
             self.db.flush()
             self.db.refresh(existing)
             return existing, False
@@ -309,16 +395,16 @@ class ProductService:
             sku=sku,
             name=name,
             description=self._row_to_str(row.get("description")),
-            price=self._row_to_float(row.get("price")),
-            cost=self._row_to_float(row.get("cost")),
-            stock=self._row_to_int(row.get("stock")),
+            price=price,
+            cost=cost,
+            stock=stock,
             format=self._row_to_str(row.get("format")),
             unit_of_measure=self._row_to_str(row.get("unit_of_measure")) or "un",
             category=category,
             provider=self._row_to_str(row.get("provider")),
-            taxes=self._row_to_float(row.get("taxes")),
+            taxes=taxes,
             is_available=self._row_to_bool(row.get("is_available")),
-            margin=self._row_to_float(row.get("margin")),
+            margin=margin,
         )
         return self.repo.save(product), True
 

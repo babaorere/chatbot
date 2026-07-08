@@ -1,8 +1,18 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 from unittest.mock import MagicMock
 
+from config.value_limits import (
+    CART_QUANTITY_MAX,
+    PRODUCT_MARGIN_MAX,
+    PRODUCT_MONEY_MAX,
+    PRODUCT_STOCK_MAX,
+)
+from dtos import ProductCreateRequest
+from models.category import Category
+from controllers.order_controller import CartAddRequest, CartRemoveRequest
 from services.category_service import slugify
 from services.product_service import ProductService
 from services.rag_policy import RAGPolicyService, RAGIntent
@@ -59,6 +69,8 @@ def test_product_service_helper_value_conversions():
     assert product_svc._row_to_float("corrupt-float") is None
     assert product_svc._row_to_float(None) is None
     assert product_svc._row_to_float(-9.99) == -9.99
+    assert product_svc._row_to_float("NaN") is None
+    assert product_svc._row_to_float("inf") is None
 
     # 3. Conversión a Booleano (disponibilidad)
     assert product_svc._row_to_bool(True) is True
@@ -169,14 +181,21 @@ def test_cart_service_rejects_negative_or_zero_quantity(db_session):
 
     cart_svc = CartService(db_session)
 
-    # 1. CartService debe lanzar ValueError al añadir cantidad negativa o cero
-    with pytest.raises(ValueError, match="La cantidad a añadir debe ser mayor que cero"):
+    # 1. CartService debe lanzar ValueError al añadir cantidad fuera de rango
+    with pytest.raises(ValueError, match="La cantidad a añadir debe estar entre 1 y 1000"):
         cart_svc.add_to_cart(user_id=user.id, product_id=product.id, quantity=-5)
 
-    with pytest.raises(ValueError, match="La cantidad a añadir debe ser mayor que cero"):
+    with pytest.raises(ValueError, match="La cantidad a añadir debe estar entre 1 y 1000"):
         cart_svc.add_to_cart(user_id=user.id, product_id=product.id, quantity=0)
 
-    # 2. Si forzamos un CartItem con cantidad negativa directo en base de datos (bypassing CartService)
+    with pytest.raises(ValueError, match="La cantidad a añadir debe estar entre 1 y 1000"):
+        cart_svc.add_to_cart(
+            user_id=user.id,
+            product_id=product.id,
+            quantity=CART_QUANTITY_MAX + 1,
+        )
+
+    # 2. Si forzamos un CartItem con cantidad inválida directo en base de datos (bypassing CartService)
     cart = cart_svc.get_or_create_cart(user.id)
     malformed_item = CartItem(cart_id=cart.id, product_id=product.id, quantity=-2)
     db_session.add(malformed_item)
@@ -184,7 +203,7 @@ def test_cart_service_rejects_negative_or_zero_quantity(db_session):
 
     # El checkout debe lanzar ValueError protegiendo la integridad transaccional
     from services.order_service import OrderService
-    with pytest.raises(ValueError, match="Cantidad inválida o vacía en el carrito"):
+    with pytest.raises(ValueError, match="Cantidad inválida o vacía"):
         OrderService(db_session).checkout_cart(user_id=user.id)
 
 
@@ -207,17 +226,115 @@ def test_cart_service_rejects_negative_or_zero_remove_quantity(db_session):
     cart_svc.add_to_cart(user_id=user.id, product_id=product.id, quantity=2)
 
     with pytest.raises(
-        ValueError, match="La cantidad a remover debe ser mayor que cero"
+        ValueError, match="La cantidad a remover debe estar entre 1 y 1000"
     ):
         cart_svc.remove_from_cart(user_id=user.id, product_id=product.id, quantity=-5)
 
     with pytest.raises(
-        ValueError, match="La cantidad a remover debe ser mayor que cero"
+        ValueError, match="La cantidad a remover debe estar entre 1 y 1000"
     ):
         cart_svc.remove_from_cart(user_id=user.id, product_id=product.id, quantity=0)
 
+    with pytest.raises(
+        ValueError, match="La cantidad a remover debe estar entre 1 y 1000"
+    ):
+        cart_svc.remove_from_cart(
+            user_id=user.id,
+            product_id=product.id,
+            quantity=CART_QUANTITY_MAX + 1,
+        )
+
     cart = cart_svc.get_or_create_cart(user.id)
     assert cart.items[0].quantity == 2
+
+
+def test_product_service_rejects_out_of_range_numeric_values(db_session):
+    product_svc = ProductService(db_session)
+
+    with pytest.raises(ValueError, match="Stock debe estar entre 0 y 1000000"):
+        product_svc.create_product(
+            sku="LIMIT-STOCK",
+            name="Stock fuera de rango",
+            stock=PRODUCT_STOCK_MAX + 1,
+            category="General",
+        )
+
+    with pytest.raises(ValueError, match="Precio debe estar entre 0 y"):
+        product_svc.create_product(
+            sku="LIMIT-PRICE",
+            name="Precio fuera de rango",
+            price=PRODUCT_MONEY_MAX + 0.01,
+            stock=1,
+            category="General",
+        )
+
+    with pytest.raises(ValueError, match="IVA debe estar entre 0 y 1"):
+        product_svc.create_product(
+            sku="LIMIT-TAX",
+            name="IVA fuera de rango",
+            stock=1,
+            taxes=1.01,
+            category="General",
+        )
+
+    with pytest.raises(ValueError, match="Margen debe estar entre 0 y 1000"):
+        product_svc.create_product(
+            sku="LIMIT-MARGIN",
+            name="Margen fuera de rango",
+            stock=1,
+            margin=PRODUCT_MARGIN_MAX + 0.01,
+            category="General",
+        )
+
+    with pytest.raises(ValueError, match="Stock debe estar entre 0 y 1000000"):
+        product_svc.upsert_by_sku(
+            {
+                "sku": "LIMIT-IMPORT-STOCK",
+                "name": "Import stock fuera de rango",
+                "stock": "-1",
+                "category": "CategoriaNoDebeCrearse",
+            }
+        )
+
+    assert (
+        db_session.query(Category).filter_by(name="CategoriaNoDebeCrearse").first()
+        is None
+    )
+
+
+def test_product_dto_rejects_out_of_range_numeric_values() -> None:
+    with pytest.raises(ValidationError):
+        ProductCreateRequest(
+            name="Stock inválido",
+            stock=PRODUCT_STOCK_MAX + 1,
+            category="General",
+        )
+
+    with pytest.raises(ValidationError):
+        ProductCreateRequest(
+            name="Precio inválido",
+            price=PRODUCT_MONEY_MAX + 0.01,
+            stock=1,
+            category="General",
+        )
+
+
+def test_cart_request_dto_rejects_quantity_above_limit() -> None:
+    with pytest.raises(ValidationError):
+        CartAddRequest(
+            user_id="u1",
+            platform="telegram",
+            product_id="00000000-0000-0000-0000-000000000001",
+            quantity=CART_QUANTITY_MAX + 1,
+        )
+
+    with pytest.raises(ValidationError):
+        CartRemoveRequest(
+            user_id="u1",
+            platform="telegram",
+            product_id="00000000-0000-0000-0000-000000000001",
+            quantity=CART_QUANTITY_MAX + 1,
+        )
 
 
 # ============================================================================
