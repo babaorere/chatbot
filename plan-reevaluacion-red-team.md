@@ -119,12 +119,34 @@ Criterio de fallo:
 
 Objetivo: romper supuestos de orden y locks.
 
+Estado: completado.
+
+Evidencia:
+- Prueba `same-user`: 10 updates concurrentes del usuario sintetico `720004001`.
+- Resultado HTTP `same-user`: 10 respuestas `200`; 1 `scheduled`; 9 `duplicate request blocked`.
+- Redis lock `same-user`: 1 `acquired=True`; 9 `acquired=False`.
+- `same-user` `webhook_response_ready`: count=10, p50=`8.69ms`, p95=`9.01ms`, max=`9.36ms`.
+- El unico background permitido en `same-user` continuo fuera del path critico; `process_message_uc_done=9410.07ms`, `sendMessage=794.03ms`, `webhook_to_background_finished=10220.91ms`.
+- Prueba `different-users`: 10 updates concurrentes de usuarios sinteticos `720004100` a `720004109`.
+- Resultado HTTP `different-users`: 10 respuestas `200`; 10 `scheduled`.
+- Redis lock `different-users`: 10 `acquired=True`.
+- `different-users` `webhook_response_ready`: count=10, p50=`6.73ms`, p95=`9.95ms`, max=`10.53ms`.
+- `different-users` `background_started_after_webhook`: count=10, p50=`9.00ms`, p95=`11.36ms`, max=`11.41ms`.
+- Prueba callback/cleanup: 12 callbacks concurrentes de usuarios sinteticos `720004200` a `720004211`.
+- Resultado HTTP callback/cleanup: 12 respuestas `200`; 12 `scheduled`.
+- Callback `webhook_response_ready`: count=12, p50=`9.28ms`, p95=`13.84ms`, max=`14.32ms`.
+- `answerCallbackQuery` fue lento y fallo por IDs sinteticos falsos, pero ocurrio fuera del path critico: count=12, p50=`1854.91ms`, p95=`2049.00ms`, max=`2639.07ms`.
+- `sendMessage` tambien fallo por chats sinteticos falsos, fuera del path critico: count=12, p50=`2384.31ms`, p95=`2936.94ms`, max=`3320.00ms`.
+- Saturacion de cleanup cosmetico reproducida: 8 `reply_markup_clear_dropped` controlados en `0.02ms` a `0.07ms`.
+- Cleanup ARQ en runtime real: 2 `reply_markup_clear_enqueued`, p50=`247.61ms`.
+- `core/scripts/analyze_telegram_latency.py` reconstruyo traces de callback con `webhook_ack`, `background_total`, `callback_validated`, `sendMessage`, `answerCallbackQuery` y cache.
+
 Pruebas:
-- Enviar updates concurrentes del mismo usuario.
-- Enviar updates concurrentes de usuarios distintos.
-- Medir espera por lock Redis.
-- Verificar que un usuario no bloquea al resto.
-- Saturar cleanup cosmetico y confirmar drop controlado sin romper flujo.
+- [x] Enviar updates concurrentes del mismo usuario.
+- [x] Enviar updates concurrentes de usuarios distintos.
+- [x] Medir espera por lock Redis.
+- [x] Verificar que un usuario no bloquea al resto.
+- [x] Saturar cleanup cosmetico y confirmar drop controlado sin romper flujo.
 
 Criterio de fallo:
 - Locks globales bloquean usuarios no relacionados.
