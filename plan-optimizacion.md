@@ -93,14 +93,14 @@ docker compose logs -f api | rg "telegram_timing|telegram_api_timing|telegram_ca
 
 ### 1. Consolidar helper de analisis de logs
 
-- [ ] Crear script `core/scripts/analyze_telegram_latency.py`.
-- [ ] Entrada: archivo de logs o stdin.
-- [ ] Parsear lineas con:
+- [x] Crear script `core/scripts/analyze_telegram_latency.py`.
+- [x] Entrada: archivo de logs o stdin.
+- [x] Parsear lineas con:
   - `[telegram_timing]`
   - `[telegram_api_timing]`
   - `[telegram_cache]`
-- [ ] Agrupar por `trace`.
-- [ ] Mostrar tabla por trace con:
+- [x] Agrupar por `trace`.
+- [x] Mostrar tabla por trace con:
   - `webhook_response_ready`
   - `background_started_after_webhook`
   - `webhook_to_background_finished`
@@ -111,15 +111,15 @@ docker compose logs -f api | rg "telegram_timing|telegram_api_timing|telegram_ca
   - `process_message_uc_done`
   - llamadas `sendMessage`
   - llamadas `answerCallbackQuery`
-- [ ] Marcar en salida el mayor tramo por trace.
-- [ ] Salida esperada ejemplo:
+- [x] Marcar en salida el mayor tramo por trace.
+- [x] Salida esperada ejemplo:
 
 ```text
 trace=tg:777002:9002 total_bg=2.44ms webhook_ack=0.71ms slowest=telegram_sendMessage:180.21ms
 ```
 
-- [ ] Agregar test unitario del parser con logs de ejemplo.
-- [ ] No agregar dependencias externas; usar stdlib (`re`, `argparse`, `dataclasses`).
+- [x] Agregar test unitario del parser con logs de ejemplo.
+- [x] No agregar dependencias externas; usar stdlib (`re`, `argparse`, `dataclasses`).
 
 ### 2. Reducir lecturas FSM secuenciales en callbacks
 
