@@ -123,22 +123,22 @@ trace=tg:777002:9002 total_bg=2.44ms webhook_ack=0.71ms slowest=telegram_sendMes
 
 ### 2. Reducir lecturas FSM secuenciales en callbacks
 
-- [ ] Revisar en `core/controllers/telegram_controller.py` el bloque de callback.
-- [ ] Actualmente puede llamar en secuencia:
+- [x] Revisar en `core/controllers/telegram_controller.py` el bloque de callback.
+- [x] Reemplazar lecturas secuenciales previas:
   - `fsm.get_state()`
   - `fsm.get_active_menu_id()`
   - `fsm.get_fsm_version()`
   - `fsm.get_menu_stack()`
   - `fsm.get_context()` en ramas posteriores
-- [ ] Crear metodo en `TelegramConversationFSM` para cargar una sola vez estado/contexto/menu metadata.
-- [ ] Nombre sugerido:
+- [x] Crear metodo en `TelegramConversationFSM` para cargar una sola vez estado/contexto/menu metadata.
+- [x] Nombre implementado:
 
 ```python
 async def get_runtime_snapshot(self) -> TelegramFSMRuntimeSnapshot:
     ...
 ```
 
-- [ ] Snapshot sugerido:
+- [x] Snapshot implementado:
   - `state`
   - `context`
   - `active_menu_id`
@@ -147,18 +147,21 @@ async def get_runtime_snapshot(self) -> TelegramFSMRuntimeSnapshot:
   - `menu_scope`
   - `expected_input`
   - `allow_numeric_input`
-- [ ] Usar el snapshot solo para lecturas dentro del turno.
-- [ ] Mantener escrituras FSM serializadas y explicitas.
-- [ ] No paralelizar escrituras.
+- [x] Usar el snapshot solo para lecturas dentro del turno.
+- [x] Mantener escrituras FSM serializadas y explicitas.
+- [x] No paralelizar escrituras.
+- [x] Reducir en texto la lectura inicial `get_state()` + `get_context()` a `get_state_and_context()`.
 - [ ] Tests:
-  - callback valido por `active_menu_id`
-  - callback valido por version
-  - callback expirado
-  - seleccion numerica legacy
-  - `menu:back`
+  - [x] snapshot carga metadata de menu.
+  - [x] snapshot rechaza stack corrupto.
+  - [ ] callback valido por `active_menu_id`
+  - [ ] callback valido por version
+  - [ ] callback expirado
+  - [ ] seleccion numerica legacy
+  - [ ] `menu:back`
 - [ ] Validar que bajan tiempos de:
   - `callback_validated`
-  - `menu_stack_loaded`
+  - `menu_stack_loaded_from_snapshot`
 
 ### 3. Invalidacion distribuida si hay mas de un worker
 

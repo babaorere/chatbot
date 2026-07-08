@@ -16,6 +16,8 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
@@ -31,14 +33,45 @@ class FSMState(str, Enum):
     AWAITING_PRODUCT_NAME = "awaiting_product_name"
     """El FSM espera que el usuario especifique un producto."""
 
+    AWAITING_QUANTITY = "awaiting_quantity"
+    """El FSM espera que el usuario indique una cantidad válida."""
+
     AWAITING_CONFIRMATION = "awaiting_confirmation"
     """El FSM espera confirmación sí/no del usuario."""
 
     AWAITING_CONTACT_INFO = "awaiting_contact_info"
     """El FSM espera datos de contacto del usuario."""
 
+    AWAITING_ORDER_ID = "awaiting_order_id"
+    """El FSM espera que el usuario ingrese un ID de pedido válido."""
+
     IN_MENU = "in_menu"
     """El usuario está navegando un menú, aún no ha elegido."""
+
+
+class ExpectedInput(str, Enum):
+    """Tipo de input esperado por el FSM en el turno actual."""
+
+    FREE_TEXT = "free_text"
+    MENU_SELECTION = "menu_selection"
+    PRODUCT_NAME = "product_name"
+    QUANTITY = "quantity"
+    CONFIRMATION = "confirmation"
+    ORDER_ID = "order_id"
+
+
+@dataclass(frozen=True)
+class TelegramFSMRuntimeSnapshot:
+    """Lectura compuesta del FSM para evitar I/O secuencial en un turno."""
+
+    state: FSMState
+    context: dict[str, Any]
+    active_menu_id: int | None
+    fsm_version: int
+    menu_stack: list[str]
+    menu_scope: str | None
+    expected_input: ExpectedInput
+    allow_numeric_input: bool
 
 
 # Mapeo de callback_data a intención semántica
@@ -54,6 +87,9 @@ _CALLBACK_INTENTS: dict[str, str] = {
     "menu:inicio": "inicio",
     "confirm:si": "confirmacion_si",
     "confirm:no": "confirmacion_no",
+    "menu:pedidos": "mostrar_pedidos",
+    "menu:buscar_pedido_prompt": "buscar_pedido_prompt",
+    "menu:cancelar_pedido_prompt": "cancelar_pedido_prompt",
 }
 
 
@@ -119,6 +155,32 @@ class TelegramConversationFSM:
             )
         return state, context
 
+    async def get_runtime_snapshot(self) -> TelegramFSMRuntimeSnapshot:
+        """Carga estado, contexto y metadata de menú con una sola lectura."""
+        state, context = await self.get_state_and_context()
+        stack = context.get("_menu_stack", [])
+        if not isinstance(stack, list):
+            raise ValueError(
+                f"Invalid FSM menu stack stored for user {self._user_id}: {type(stack).__name__}"
+            )
+        menu_scope = context.get("_menu_scope")
+        if not isinstance(menu_scope, str) or not menu_scope:
+            menu_scope = None
+        expected_input_value = context.get(
+            "_expected_input",
+            ExpectedInput.FREE_TEXT.value,
+        )
+        return TelegramFSMRuntimeSnapshot(
+            state=state,
+            context=context.copy(),
+            active_menu_id=context.get("_active_menu_id"),
+            fsm_version=context.get("_fsm_version", 1),
+            menu_stack=[item for item in stack if isinstance(item, str) and item],
+            menu_scope=menu_scope,
+            expected_input=ExpectedInput(expected_input_value),
+            allow_numeric_input=bool(context.get("_allow_numeric_input", False)),
+        )
+
     async def set_state(
         self,
         state: FSMState,
@@ -136,6 +198,32 @@ class TelegramConversationFSM:
             self._user_id,
             {"state": state.value, "context": ctx},
         )
+
+    async def update_state(
+        self,
+        mutator: Callable[[FSMState, dict[str, Any]], tuple[FSMState, dict[str, Any]]],
+    ) -> tuple[FSMState, dict[str, Any]]:
+        """Actualiza estado y contexto en una sola operación lógica."""
+
+        async def _apply(raw: dict[str, Any] | None) -> dict[str, Any]:
+            if raw is None:
+                current_state = FSMState.IDLE
+                current_context: dict[str, Any] = {}
+            else:
+                current_state = FSMState(raw.get("state", FSMState.IDLE))
+                current_context = raw.get("context", {}) or {}
+                if not isinstance(current_context, dict):
+                    raise ValueError(
+                        f"Invalid FSM context stored for user {self._user_id}: {type(current_context).__name__}"
+                    )
+            next_state, next_context = mutator(current_state, current_context.copy())
+            next_context["_last_interaction_at"] = time.time()
+            return {"state": next_state.value, "context": next_context}
+
+        payload = await self._store.update(self._user_id, _apply)
+        state = FSMState(payload["state"])
+        context = payload.get("context", {}) or {}
+        return state, context
 
     async def reset(self) -> None:
         """Resetea el FSM al estado IDLE y limpia el contexto."""
@@ -190,13 +278,90 @@ class TelegramConversationFSM:
         version: int,
         options: list[str],
         active_menu_id: int,
+        state: FSMState | None = None,
+        menu_scope: str | None = None,
+        menu_stack: list[str] | None = None,
+        expected_input: ExpectedInput = ExpectedInput.MENU_SELECTION,
+        allow_numeric_input: bool = True,
     ) -> None:
         """Guarda de una sola vez la metadata del menú activo en el FSM."""
+
+        def mutate(
+            current_state: FSMState,
+            context: dict[str, Any],
+        ) -> tuple[FSMState, dict[str, Any]]:
+            context["_fsm_version"] = version
+            context["_menu_options"] = options
+            context["_active_menu_id"] = active_menu_id
+            context["_menu_scope"] = (
+                menu_scope if menu_scope is not None else context.get("_menu_scope")
+            )
+            context["_menu_stack"] = (
+                menu_stack
+                if menu_stack is not None
+                else ([menu_scope] if menu_scope else context.get("_menu_stack", []))
+            )
+            context["_expected_input"] = expected_input.value
+            context["_allow_numeric_input"] = allow_numeric_input
+            return state or FSMState.IN_MENU, context
+
+        await self.update_state(mutate)
+
+    async def get_expected_input(self) -> ExpectedInput:
+        """Recupera el tipo de input esperado en el estado actual."""
+        context = await self.get_context()
+        value = context.get("_expected_input", ExpectedInput.FREE_TEXT.value)
+        return ExpectedInput(value)
+
+    async def get_menu_scope(self) -> str | None:
+        """Recupera el scope del menú activo."""
+        context = await self.get_context()
+        scope = context.get("_menu_scope")
+        return scope if isinstance(scope, str) and scope else None
+
+    async def get_menu_stack(self) -> list[str]:
+        """Recupera la pila de navegación del menú activo."""
+        context = await self.get_context()
+        stack = context.get("_menu_stack", [])
+        if not isinstance(stack, list):
+            raise ValueError(
+                f"Invalid FSM menu stack stored for user {self._user_id}: {type(stack).__name__}"
+            )
+        return [item for item in stack if isinstance(item, str) and item]
+
+    async def resolve_legacy_numeric_menu_selection(
+        self,
+        text: str,
+    ) -> str | None:
+        """Resuelve un input numérico o de atajo de teclado al callback del menú activo."""
+        # Normalizar acentos y pasar a minúsculas
+        import unicodedata
+
+        normalized = "".join(
+            c
+            for c in unicodedata.normalize("NFD", text.strip().lower())
+            if unicodedata.category(c) != "Mn"
+        )
+        if normalized in {"v", "volver"}:
+            return "menu:back"
+        if normalized in {"m", "menu"}:
+            return "menu:home"
+
+        if not normalized.isdigit():
+            return None
         state, context = await self.get_state_and_context()
-        context["_fsm_version"] = version
-        context["_menu_options"] = options
-        context["_active_menu_id"] = active_menu_id
-        await self.set_state(state, context)
+        if state != FSMState.IN_MENU or not context.get("_allow_numeric_input", False):
+            return None
+        options = context.get("_menu_options", [])
+        if not isinstance(options, list):
+            raise ValueError(
+                f"Invalid FSM menu options stored for user {self._user_id}: {type(options).__name__}"
+            )
+        index = int(normalized) - 1
+        if 0 <= index < len(options):
+            option = options[index]
+            return option if isinstance(option, str) else None
+        return None
 
     @staticmethod
     def resolve_callback_intent(callback_data: str) -> str | None:
@@ -238,19 +403,33 @@ class TelegramConversationFSM:
             "inicio": FSMState.IDLE,
             "confirmacion_si": FSMState.IDLE,
             "confirmacion_no": FSMState.IDLE,
+            "buscar_pedido_prompt": FSMState.AWAITING_ORDER_ID,
+            "cancelar_pedido_prompt": FSMState.AWAITING_ORDER_ID,
         }
 
-        next_state = transitions.get(intent or "", FSMState.IDLE)
+        if intent is None:
+            current_state, context = await self.get_state_and_context()
+            return current_state, context
 
-        # Recuperar y actualizar el contexto existente para no perder variables ni _active_menu_id
-        context = await self.get_context()
-        context.update({"intent": intent, "callback": base_data})
+        next_state = transitions.get(intent, FSMState.IDLE)
 
-        # Incrementar versión en transición
-        current_version = context.get("_fsm_version", 1)
-        context["_fsm_version"] = current_version + 1
+        def mutate(
+            current_state: FSMState,
+            context: dict[str, Any],
+        ) -> tuple[FSMState, dict[str, Any]]:
+            context.update({"intent": intent, "callback": base_data})
+            current_version = context.get("_fsm_version", 1)
+            context["_fsm_version"] = current_version + 1
+            if next_state != FSMState.IN_MENU:
+                if next_state == FSMState.AWAITING_PRODUCT_NAME:
+                    context["_expected_input"] = ExpectedInput.PRODUCT_NAME.value
+                elif next_state == FSMState.AWAITING_ORDER_ID:
+                    context["_expected_input"] = ExpectedInput.ORDER_ID.value
+                else:
+                    context["_expected_input"] = ExpectedInput.FREE_TEXT.value
+            return next_state, context
 
-        await self.set_state(next_state, context)
+        _, context = await self.update_state(mutate)
         logger.debug(
             "FSM transition [user=%s]: callback='%s' → state=%s, version=%d",
             self._user_id,
@@ -294,6 +473,17 @@ class FSMStateStore:
             data: Datos del estado a persistir.
         """
         self._store[user_id] = data
+
+    async def update(
+        self,
+        user_id: str,
+        updater: Callable[[dict[str, Any] | None], Any],
+    ) -> dict[str, Any]:
+        """Aplica una mutación lógica sobre el estado almacenado."""
+        current = self._store.get(user_id)
+        next_value = await updater(current)
+        self._store[user_id] = next_value
+        return next_value
 
     async def delete(self, user_id: str) -> None:
         """Elimina el estado del usuario.
@@ -342,6 +532,36 @@ class RedisFSMStateStore(FSMStateStore):
             json.dumps(data),
             ex=self._ttl,
         )
+
+    async def update(
+        self,
+        user_id: str,
+        updater: Callable[[dict[str, Any] | None], Any],
+    ) -> dict[str, Any]:
+        key = self._key(user_id)
+        while True:
+            async with self._redis.pipeline() as pipe:
+                try:
+                    await pipe.watch(key)
+                    raw = await self._redis.get(key)
+                    current = None
+                    if raw is not None:
+                        try:
+                            current = json.loads(raw)
+                        except (json.JSONDecodeError, TypeError) as exc:
+                            raise ValueError(
+                                f"Invalid FSM payload stored in Redis for user {user_id}"
+                            ) from exc
+                    next_value = await updater(current)
+                    pipe.multi()
+                    pipe.set(key, json.dumps(next_value), ex=self._ttl)
+                    await pipe.execute()
+                    return next_value
+                except Exception as exc:
+                    watch_error_name = exc.__class__.__name__
+                    if watch_error_name == "WatchError":
+                        continue
+                    raise
 
     async def delete(self, user_id: str) -> None:
         await self._redis.delete(self._key(user_id))

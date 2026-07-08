@@ -1050,9 +1050,10 @@ async def _process_telegram_update_core(
             return
 
         validation_started_at = time.perf_counter()
-        current_state = await fsm.get_state()
-        active_menu_id = await fsm.get_active_menu_id()
-        current_fsm_version = await fsm.get_fsm_version()
+        runtime_snapshot = await fsm.get_runtime_snapshot()
+        current_state = runtime_snapshot.state
+        active_menu_id = runtime_snapshot.active_menu_id
+        current_fsm_version = runtime_snapshot.fsm_version
         is_valid = False
         btn_version = None
         is_numeric_selection = event.kind == TelegramInputKind.LEGACY_NUMERIC_MENU
@@ -1146,10 +1147,10 @@ async def _process_telegram_update_core(
 
         callback_data = raw_callback_data.split("#")[0]
         stack_started_at = time.perf_counter()
-        current_stack = await fsm.get_menu_stack()
+        current_stack = runtime_snapshot.menu_stack
         _log_timing(
             trace_id=trace_id,
-            stage="menu_stack_loaded",
+            stage="menu_stack_loaded_from_snapshot",
             started_at=stack_started_at,
             user_id=user_id,
             extra=f"depth={len(current_stack)} callback={callback_data}",
@@ -1173,7 +1174,7 @@ async def _process_telegram_update_core(
             return
         elif callback_data.startswith("qty_select:"):
             quantity = purchase_flow.parse_quantity(callback_data.split(":", 1)[1])
-            pending_product_id = (await fsm.get_context()).get("pending_product_id")
+            pending_product_id = runtime_snapshot.context.get("pending_product_id")
             if quantity is None or not isinstance(pending_product_id, str):
                 plan = menu_flow.render_main_menu()
                 await _apply_menu_plan(
@@ -1199,7 +1200,7 @@ async def _process_telegram_update_core(
             )
             return
         elif callback_data == "cart:change_quantity":
-            pending_product_id = (await fsm.get_context()).get("pending_product_id")
+            pending_product_id = runtime_snapshot.context.get("pending_product_id")
             if not isinstance(pending_product_id, str):
                 plan = menu_flow.render_main_menu()
                 await _apply_menu_plan(
@@ -1224,7 +1225,7 @@ async def _process_telegram_update_core(
             )
             return
         elif callback_data == "cart:add_confirm":
-            context = await fsm.get_context()
+            context = runtime_snapshot.context
             pending_product_id = context.get("pending_product_id")
             pending_quantity = context.get("pending_quantity")
             if not isinstance(pending_product_id, str) or not isinstance(
@@ -1442,8 +1443,7 @@ async def _process_telegram_update_core(
         return
 
     text_state_started_at = time.perf_counter()
-    current_state = await fsm.get_state()
-    fsm_context = await fsm.get_context()
+    current_state, fsm_context = await fsm.get_state_and_context()
     _log_timing(
         trace_id=trace_id,
         stage="text_fsm_state_loaded",

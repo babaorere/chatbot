@@ -1,8 +1,9 @@
 import pytest
 from unittest.mock import AsyncMock
 from infrastructure.channels.telegram_fsm import (
-    TelegramConversationFSM,
+    ExpectedInput,
     FSMStateStore,
+    TelegramConversationFSM,
     FSMState,
     RedisFSMStateStore,
 )
@@ -76,10 +77,14 @@ async def test_telegram_fsm_persist_menu_metadata_single_write_shape():
         version=4,
         options=["menu:categorias", "menu:promociones", "menu:mas_vendidos"],
         active_menu_id=777,
+        menu_scope="menu:main",
+        menu_stack=["menu:main"],
+        expected_input=ExpectedInput.MENU_SELECTION,
+        allow_numeric_input=True,
     )
 
     state, context = await fsm.get_state_and_context()
-    assert state == FSMState.IDLE
+    assert state == FSMState.IN_MENU
     assert context["_fsm_version"] == 4
     assert context["_menu_options"] == [
         "menu:categorias",
@@ -87,6 +92,80 @@ async def test_telegram_fsm_persist_menu_metadata_single_write_shape():
         "menu:mas_vendidos",
     ]
     assert context["_active_menu_id"] == 777
+    assert context["_menu_scope"] == "menu:main"
+    assert context["_expected_input"] == ExpectedInput.MENU_SELECTION.value
+
+
+@pytest.mark.asyncio
+async def test_telegram_fsm_runtime_snapshot_reads_menu_metadata() -> None:
+    store = FSMStateStore()
+    fsm = TelegramConversationFSM("user-snapshot", store)
+
+    await fsm.persist_menu_metadata(
+        version=8,
+        options=["menu:categorias"],
+        active_menu_id=444,
+        menu_scope="menu:main",
+        menu_stack=["menu:main", "menu:categorias"],
+        expected_input=ExpectedInput.MENU_SELECTION,
+        allow_numeric_input=True,
+    )
+
+    snapshot = await fsm.get_runtime_snapshot()
+
+    assert snapshot.state == FSMState.IN_MENU
+    assert snapshot.active_menu_id == 444
+    assert snapshot.fsm_version == 8
+    assert snapshot.menu_stack == ["menu:main", "menu:categorias"]
+    assert snapshot.menu_scope == "menu:main"
+    assert snapshot.expected_input == ExpectedInput.MENU_SELECTION
+    assert snapshot.allow_numeric_input is True
+    assert snapshot.context["_menu_options"] == ["menu:categorias"]
+
+
+@pytest.mark.asyncio
+async def test_telegram_fsm_runtime_snapshot_rejects_invalid_menu_stack() -> None:
+    store = FSMStateStore()
+    store._store["user-bad-stack"] = {
+        "state": FSMState.IN_MENU.value,
+        "context": {"_menu_stack": "menu:main"},
+    }
+    fsm = TelegramConversationFSM("user-bad-stack", store)
+
+    with pytest.raises(ValueError, match="Invalid FSM menu stack stored"):
+        await fsm.get_runtime_snapshot()
+
+
+@pytest.mark.asyncio
+async def test_telegram_fsm_resolve_legacy_numeric_selection_only_for_active_menu() -> (
+    None
+):
+    store = FSMStateStore()
+    fsm = TelegramConversationFSM("user-menu", store)
+
+    await fsm.persist_menu_metadata(
+        version=2,
+        options=["menu:categorias", "menu:promociones"],
+        active_menu_id=99,
+        menu_scope="menu:main",
+        menu_stack=["menu:main"],
+        allow_numeric_input=True,
+    )
+
+    assert await fsm.resolve_legacy_numeric_menu_selection("1") == "menu:categorias"
+    assert await fsm.resolve_legacy_numeric_menu_selection("9") is None
+
+
+@pytest.mark.asyncio
+async def test_telegram_fsm_unknown_transition_keeps_current_state() -> None:
+    store = FSMStateStore()
+    fsm = TelegramConversationFSM("user-unknown", store)
+    await fsm.set_state(FSMState.AWAITING_PRODUCT_NAME, {"intent": "consultar_stock"})
+
+    new_state, context = await fsm.transition("menu:not-registered")
+
+    assert new_state == FSMState.AWAITING_PRODUCT_NAME
+    assert context["intent"] == "consultar_stock"
 
 
 @pytest.mark.asyncio
