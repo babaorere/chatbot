@@ -10,6 +10,7 @@ from infrastructure.channels.telegram_fsm import (
     TelegramConversationFSM,
     FSMStateStore,
 )
+from controllers import telegram_controller
 
 
 @pytest.fixture(autouse=True)
@@ -86,6 +87,108 @@ async def test_webhook_rejects_payload_missing_user_or_chat_ids():
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "detail": "invalid user_id or chat_id"}
+
+
+@pytest.mark.asyncio
+async def test_webhook_distinct_users_are_scheduled_independently() -> None:
+    telegram_controller._local_locks.clear()
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        with (
+            patch(
+                "controllers.telegram_controller.settings.telegram_bot_token",
+                "fake_token",
+            ),
+            patch(
+                "controllers.telegram_controller.get_redis_client", return_value=None
+            ),
+            patch(
+                "controllers.telegram_controller.process_telegram_update_background",
+                new_callable=AsyncMock,
+            ) as background_mock,
+        ):
+            first = await client.post(
+                "/telegram/webhook/fake_token",
+                json={
+                    "message": {
+                        "message_id": 1,
+                        "from": {"id": 81001},
+                        "chat": {"id": 81001, "type": "private"},
+                        "date": 100000,
+                        "text": "hola",
+                    }
+                },
+            )
+            second = await client.post(
+                "/telegram/webhook/fake_token",
+                json={
+                    "message": {
+                        "message_id": 2,
+                        "from": {"id": 81002},
+                        "chat": {"id": 81002, "type": "private"},
+                        "date": 100001,
+                        "text": "hola",
+                    }
+                },
+            )
+
+    telegram_controller._local_locks.clear()
+    assert first.status_code == 200
+    assert first.json() == {"status": "ok", "detail": "scheduled"}
+    assert second.status_code == 200
+    assert second.json() == {"status": "ok", "detail": "scheduled"}
+    assert background_mock.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_webhook_same_user_duplicate_is_rejected_while_lock_is_active() -> None:
+    telegram_controller._local_locks.clear()
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        with (
+            patch(
+                "controllers.telegram_controller.settings.telegram_bot_token",
+                "fake_token",
+            ),
+            patch(
+                "controllers.telegram_controller.get_redis_client", return_value=None
+            ),
+            patch(
+                "controllers.telegram_controller.process_telegram_update_background",
+                new_callable=AsyncMock,
+            ) as background_mock,
+        ):
+            first = await client.post(
+                "/telegram/webhook/fake_token",
+                json={
+                    "message": {
+                        "message_id": 1,
+                        "from": {"id": 81003},
+                        "chat": {"id": 81003, "type": "private"},
+                        "date": 100000,
+                        "text": "hola",
+                    }
+                },
+            )
+            second = await client.post(
+                "/telegram/webhook/fake_token",
+                json={
+                    "message": {
+                        "message_id": 2,
+                        "from": {"id": 81003},
+                        "chat": {"id": 81003, "type": "private"},
+                        "date": 100001,
+                        "text": "otra vez",
+                    }
+                },
+            )
+
+    telegram_controller._local_locks.clear()
+    assert first.status_code == 200
+    assert first.json() == {"status": "ok", "detail": "scheduled"}
+    assert second.status_code == 200
+    assert second.json() == {"status": "ok", "detail": "duplicate request blocked"}
+    assert background_mock.await_count == 1
 
 
 @pytest.mark.asyncio

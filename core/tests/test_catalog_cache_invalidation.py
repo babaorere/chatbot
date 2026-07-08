@@ -128,6 +128,23 @@ def test_refresh_catalog_cache_after_commit_bumps_distributed_version() -> None:
     assert telegram_controller._catalog_distributed_version_seen == 12
 
 
+def test_refresh_catalog_cache_after_commit_propagates_redis_failure() -> None:
+    redis_client = MagicMock()
+
+    with (
+        patch(
+            "controllers.telegram_controller.get_redis_client",
+            return_value=redis_client,
+        ),
+        patch("controllers.telegram_controller.prime_catalog_cache") as prime_mock,
+        patch("redis.Redis.from_url", side_effect=RuntimeError("redis down")),
+    ):
+        with pytest.raises(RuntimeError, match="Failed to refresh catalog cache"):
+            telegram_controller.refresh_catalog_cache_after_commit("test_mutation")
+
+    prime_mock.assert_called_once()
+
+
 @pytest.mark.asyncio
 async def test_remote_catalog_version_refreshes_local_snapshot() -> None:
     redis_client = MagicMock()

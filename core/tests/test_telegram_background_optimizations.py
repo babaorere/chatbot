@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Mapping
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -10,7 +11,11 @@ import pytest
 from app.container import get_process_message_uc
 from controllers import telegram_controller
 from controllers.telegram_controller import CatalogSnapshot
-from infrastructure.channels.telegram_fsm import FSMStateStore
+from infrastructure.channels.telegram_fsm import (
+    ExpectedInput,
+    FSMStateStore,
+    TelegramConversationFSM,
+)
 from main import app
 
 
@@ -120,3 +125,115 @@ async def test_reply_markup_cleanup_drops_when_semaphore_is_saturated() -> None:
         )
 
     dispatcher_instance.enqueue_job.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reply_markup_cleanup_enqueues_serializable_job_payload() -> None:
+    with patch("controllers.telegram_controller.JobDispatcher") as dispatcher_mock:
+        dispatcher_instance = MagicMock()
+        dispatcher_instance.enqueue_job = AsyncMock(return_value={"job_id": "job-1"})
+        dispatcher_mock.return_value = dispatcher_instance
+
+        await telegram_controller._defer_clear_reply_markup(
+            token="token",
+            chat_id=123,
+            message_id=456,
+            trace_id="tg:test:cleanup",
+            user_id="72004",
+        )
+
+    dispatcher_instance.enqueue_job.assert_awaited_once()
+    assert dispatcher_instance.enqueue_job.call_args.args == ("job_clear_reply_markup",)
+    kwargs = dispatcher_instance.enqueue_job.call_args.kwargs
+    assert kwargs["token"] == "token"
+    assert kwargs["chat_id"] == 123
+    assert kwargs["message_id"] == 456
+    assert kwargs["trace_id"] == "tg:test:cleanup"
+    assert kwargs["user_id"] == "72004"
+    assert isinstance(kwargs["event_id"], str)
+    assert kwargs["_job_id"].startswith("telegram:clear-reply-markup:")
+    assert _is_plain_serializable_payload(
+        {key: value for key, value in kwargs.items() if not key.startswith("_")}
+    )
+
+
+@pytest.mark.asyncio
+async def test_callback_ack_does_not_wait_for_reply_markup_cleanup() -> None:
+    store = FSMStateStore()
+    user_id = "72005"
+    fsm = TelegramConversationFSM(user_id, store)
+    await fsm.persist_menu_metadata(
+        version=2,
+        options=["menu:promociones"],
+        active_menu_id=500,
+        menu_scope="menu:main",
+        menu_stack=["menu:main"],
+        expected_input=ExpectedInput.MENU_SELECTION,
+        allow_numeric_input=True,
+    )
+    cleanup_started = asyncio.Event()
+    release_cleanup = asyncio.Event()
+
+    async def slow_cleanup(**_: object) -> None:
+        cleanup_started.set()
+        await release_cleanup.wait()
+
+    with (
+        patch("controllers.telegram_controller.get_fsm_store", return_value=store),
+        patch(
+            "controllers.telegram_controller.answer_telegram_callback_query",
+            new_callable=AsyncMock,
+        ) as answer_mock,
+        patch(
+            "controllers.telegram_controller._defer_clear_reply_markup",
+            side_effect=slow_cleanup,
+        ),
+        patch(
+            "controllers.telegram_controller.send_telegram_message",
+            new_callable=AsyncMock,
+        ) as send_mock,
+        patch(
+            "controllers.telegram_controller._get_promotions_text",
+            return_value=("Promos sin esperar cleanup", []),
+        ),
+    ):
+        send_mock.return_value = 501
+        await telegram_controller._process_telegram_update_core(
+            token="token",
+            chat_id=123,
+            user_id=user_id,
+            message_obj=None,
+            callback_query={
+                "id": "callback-1",
+                "from": {"id": int(user_id)},
+                "message": {
+                    "message_id": 500,
+                    "chat": {"id": 123},
+                    "date": 100000,
+                },
+                "data": "menu:promociones#2",
+            },
+            callback_query_id="callback-1",
+            msg_obj=None,
+            process_message_uc=AsyncMock(),
+            trace_id="tg:72005:1",
+        )
+        await asyncio.wait_for(cleanup_started.wait(), timeout=1)
+
+        answer_mock.assert_awaited_once()
+        send_mock.assert_awaited_once()
+        release_cleanup.set()
+        await asyncio.sleep(0)
+
+
+def _is_plain_serializable_payload(value: object) -> bool:
+    if value is None or isinstance(value, str | int | float | bool):
+        return True
+    if isinstance(value, list):
+        return all(_is_plain_serializable_payload(item) for item in value)
+    if isinstance(value, Mapping):
+        return all(
+            isinstance(key, str) and _is_plain_serializable_payload(item)
+            for key, item in value.items()
+        )
+    return False
