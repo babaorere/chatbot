@@ -237,3 +237,70 @@ def _is_plain_serializable_payload(value: object) -> bool:
             for key, item in value.items()
         )
     return False
+
+
+@pytest.mark.asyncio
+async def test_callback_ack_succeeds_even_when_reply_markup_cleanup_raises_exception() -> None:
+    """Verifica que un fallo de encolado ARQ/Redis no bloquea el ack del callback."""
+    store = FSMStateStore()
+    user_id = "72006"
+    fsm = TelegramConversationFSM(user_id, store)
+    await fsm.persist_menu_metadata(
+        version=2,
+        options=["menu:promociones"],
+        active_menu_id=500,
+        menu_scope="menu:main",
+        menu_stack=["menu:main"],
+        expected_input=ExpectedInput.MENU_SELECTION,
+        allow_numeric_input=True,
+    )
+
+    with (
+        patch("controllers.telegram_controller.get_fsm_store", return_value=store),
+        patch(
+            "controllers.telegram_controller.answer_telegram_callback_query",
+            new_callable=AsyncMock,
+        ) as answer_mock,
+        patch("controllers.telegram_controller.JobDispatcher") as dispatcher_mock,
+        patch(
+            "controllers.telegram_controller.send_telegram_message",
+            new_callable=AsyncMock,
+        ) as send_mock,
+        patch(
+            "controllers.telegram_controller._get_promotions_text",
+            return_value=("Promos", []),
+        ),
+    ):
+        dispatcher_instance = MagicMock()
+        dispatcher_instance.enqueue_job = AsyncMock(
+            side_effect=RuntimeError("Redis down")
+        )
+        dispatcher_mock.return_value = dispatcher_instance
+        send_mock.return_value = 501
+
+        await telegram_controller._process_telegram_update_core(
+            token="token",
+            chat_id=123,
+            user_id=user_id,
+            message_obj=None,
+            callback_query={
+                "id": "callback-1",
+                "from": {"id": int(user_id)},
+                "message": {
+                    "message_id": 500,
+                    "chat": {"id": 123},
+                    "date": 100000,
+                },
+                "data": "menu:promociones#2",
+            },
+            callback_query_id="callback-1",
+            msg_obj=None,
+            process_message_uc=AsyncMock(),
+            trace_id="tg:72006:1",
+        )
+
+        await asyncio.sleep(0.1)
+
+        answer_mock.assert_awaited_once()
+        send_mock.assert_awaited_once()
+        dispatcher_instance.enqueue_job.assert_awaited_once()
