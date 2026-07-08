@@ -35,6 +35,7 @@ Este documento es el plan operativo vigente. Si una prueba contradice una premis
 - El hook local ejecutaba `pytest` dentro del contenedor `chatbot_api` contra la DB runtime `chatbot`; los tests truncaban `products`.
 - `core/tests/conftest.py` ahora deriva automaticamente una DB aislada `chatbot_test` fuera de GitHub Actions cuando no se define `TEST_DATABASE_URL`, evitando destruir datos runtime durante validaciones locales.
 - `core/scripts/analyze_telegram_latency.py` ahora acepta `--aggregate` para reportar p50/p95/p99/max por stage sin perder el detalle por trace.
+- El worker ARQ ahora configura logging propio y `job_clear_reply_markup` registra inicio/fallo/exito con `event_id`, `trace_id`, `user_id`, `message_id` y retry.
 
 ## Regla de red team
 
@@ -123,10 +124,18 @@ Evidencia:
 - Medicion interna: `webhook_response_ready=2.98ms`.
 - Medicion interna: `background_started_after_webhook=3.59ms`.
 - Medicion interna: `sendMessage=1249.45ms` fallo en background por chat sintetico, sin bloquear webhook.
+- Job real `job_clear_reply_markup` encolado con id `redteam:clear-reply-markup:rt3-clear-reply-markup-1783538453`.
+- ARQ ejecuto `job_clear_reply_markup`; Telegram externo fallo por token/chat sintetico, sin dejar retry pendiente.
+- Se detecto que el log propio del worker no salia en `docker compose logs`; se corrigio configurando logging en `workers/arq_worker.py`.
+- Segundo job real `job_clear_reply_markup` encolado con id `redteam:clear-reply-markup:rt3-clear-reply-markup-logs-1783538584`.
+- Logs runtime confirmaron payload observable: `event_id=rt3-clear-reply-markup-logs-1783538584`, `trace_id=rt3:clear-reply-markup:logs`, `user_id=730003002`, `message_id=930003002`, `retry=1`.
+- Logs runtime confirmaron llamada externa: `editMessageReplyMarkup elapsed_ms=1216.75 status=404 ok=False`.
+- Resultados ARQ sinteticos de RT-3 fueron limpiados de Redis despues de capturar evidencia.
+- `/health` posterior siguio reportando `arq.worker_status=ok`.
 
 Pruebas:
 - [x] Encolar `job_healthcheck` y verificar ejecucion por ARQ.
-- [ ] Encolar cleanup de reply markup con payload serializable en runtime real.
+- [x] Encolar cleanup de reply markup con payload serializable en runtime real.
 - [ ] Forzar Redis caido y verificar que fallos de jobs no bloquean `answerCallbackQuery`.
 - [x] Verificar heartbeat fresco cada 15s y `/health` `worker_status=ok`.
 

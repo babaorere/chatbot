@@ -15,6 +15,10 @@ from jobs.sessions import job_clear_latest_conversation_session
 from jobs.telegram import job_clear_reply_markup
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=getattr(logging, settings.log_level),
+    format="%(levelname)s:%(name)s:%(message)s",
+)
 
 
 async def _heartbeat_loop(ctx: dict[str, Any]) -> None:

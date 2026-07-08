@@ -27,9 +27,27 @@ async def job_clear_reply_markup(
         message_id,
         ctx.get("job_try"),
     )
-    await clear_telegram_reply_markup(
-        bot_token=token,
-        chat_id=chat_id,
-        message_id=message_id,
-        trace_id=trace_id,
+    try:
+        await clear_telegram_reply_markup(
+            bot_token=token,
+            chat_id=chat_id,
+            message_id=message_id,
+            trace_id=trace_id,
+        )
+    except Exception:
+        logger.exception(
+            "ARQ telegram job failed [job=clear_reply_markup event_id=%s trace_id=%s user_id=%s message_id=%s retry=%s]",
+            event_id,
+            trace_id,
+            user_id,
+            message_id,
+            ctx.get("job_try"),
+        )
+        raise
+    logger.info(
+        "ARQ telegram job completed [job=clear_reply_markup event_id=%s trace_id=%s user_id=%s message_id=%s]",
+        event_id,
+        trace_id,
+        user_id,
+        message_id,
     )
