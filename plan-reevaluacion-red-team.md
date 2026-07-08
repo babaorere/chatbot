@@ -24,6 +24,17 @@ Este documento es el plan operativo vigente. Si una prueba contradice una premis
 - RT-5 confirmo 10 productos exactos y `General:10` despues de cada reinicio.
 - RT-5 confirmo en logs el orden `Sembrado de productos generales finalizado` antes de `catalog_cache_primed`.
 
+## Avance certificado desde la ultima revision
+
+- Se definieron y centralizaron limites numericos en `core/config/value_limits.py`.
+- Se aplico `0 < quantity <= 1000` en carrito, checkout y flujo Telegram.
+- Se aplicaron limites de producto en DTO, servicio y DB: `stock`, `price`, `cost`, `margin`, `taxes`.
+- Se agregaron `CHECK constraints` PostgreSQL para `products`, `cart_items`, `orders` y `order_items`.
+- Se limitaron consultas paginadas HTTP con `skip` y `limit` acotados en endpoints administrativos y de soporte.
+- Se dejaron pruebas paranoicas y de API para confirmar rechazo de valores fuera de rango.
+- Se ejecuto la suite completa con `247 passed` y push confirmado en `main`.
+- La base real permanece en `10` productos y sin residuos RT2.
+
 ## Hallazgos corregidos durante la validacion
 
 - `REDIS_URL` de `.env` apuntaba a Redis externo y dejaba el Redis local sin uso efectivo por API/ARQ.
