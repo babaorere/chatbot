@@ -292,20 +292,22 @@ BusinessConfigSnapshot(...)
 
 ### 9. Revisar rutas que hacen DB en render de menus
 
-- [ ] `render_promotions_menu`
-- [ ] `render_best_sellers_menu`
-- [ ] `render_favorites_menu`
-- [ ] `render_cart_menu`
-- [ ] `render_orders_menu`
-- [ ] Clasificar:
+- [x] `render_promotions_menu`
+- [x] `render_best_sellers_menu`
+- [x] `render_favorites_menu`
+- [x] `render_cart_menu`
+- [x] `render_orders_menu`
+- [x] Clasificar:
   - estatico/global cacheable
   - dinamico/usuario no cacheable
   - transaccional DB obligatorio
-- [ ] Promociones/favoritos pueden cachearse si vienen de config estable.
-- [ ] Mas vendidos puede requerir DB o snapshot calculado periodicamente.
-- [ ] Carrito y pedidos deben seguir DB.
-- [ ] Tests:
+- [x] Promociones/favoritos cachean productos manuales si vienen de config estable y existen en `CatalogSnapshot.products_by_id`.
+- [x] Mas vendidos automatico sigue usando DB; seleccion manual usa catalog cache si existe.
+- [x] Carrito y pedidos siguen DB.
+- [x] Tests:
   - promociones cacheadas no consultan DB tras prewarm
+  - favoritos cacheados no consultan DB
+  - mas vendidos manual cacheado no consulta DB
   - carrito sigue consultando DB
   - pedidos sigue consultando DB
 

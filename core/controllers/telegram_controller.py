@@ -836,6 +836,39 @@ def _build_empty_featured_text(title: str, body: str) -> str:
     )
 
 
+def _cached_featured_products_by_ids(
+    product_ids: list[str],
+) -> list[dict[str, Any]]:
+    if not product_ids:
+        return []
+    products_by_id = _catalog_snapshot.products_by_id
+    products = []
+    for product_id in product_ids:
+        product = products_by_id.get(product_id)
+        if product and product.get("is_available", True):
+            products.append(product)
+    return products
+
+
+def _build_cached_featured_products_text(
+    title: str,
+    products: list[dict[str, Any]],
+) -> tuple[str, list[str]]:
+    lines = [title, ""]
+    product_names = []
+    for idx, product in enumerate(products[:_FEATURED_MAX_ITEMS], start=1):
+        price = float(product.get("price") or 0.0)
+        stock = product.get("stock")
+        lines.append(
+            f"{idx}. {product['name']} - {_format_money(price)}"
+            + (f" | Stock: {stock}" if stock is not None else "")
+        )
+        product_names.append(str(product["name"]))
+    lines.append("")
+    lines.append("Usa las categorías para ver el detalle de cada producto.")
+    return "\n".join(lines), product_names
+
+
 def _build_empty_cart_text() -> str:
     return (
         "Tu carrito está vacío por ahora.\n\n"
@@ -852,6 +885,10 @@ def _get_promotions_text() -> tuple[str, list[str]]:
             title,
             "Aún no hay promociones publicadas.",
         ), []
+
+    cached_products = _cached_featured_products_by_ids(section["product_ids"])
+    if cached_products:
+        return _build_cached_featured_products_text(title, cached_products)
 
     db = SessionLocal()
     try:
@@ -902,6 +939,11 @@ def _get_best_sellers_text() -> tuple[str, list[str]]:
             title,
             "Todavía no hay más vendidos para mostrar.",
         ), []
+
+    if section["mode"] == "manual" and section["product_ids"]:
+        cached_products = _cached_featured_products_by_ids(section["product_ids"])
+        if cached_products:
+            return _build_cached_featured_products_text(title, cached_products)
 
     db = SessionLocal()
     try:
@@ -991,6 +1033,10 @@ def _get_favorites_text() -> tuple[str, list[str]]:
             title,
             "Aún no hay productos favoritos publicados.",
         ), []
+
+    cached_products = _cached_featured_products_by_ids(section["product_ids"])
+    if cached_products:
+        return _build_cached_featured_products_text(title, cached_products)
 
     db = SessionLocal()
     try:
