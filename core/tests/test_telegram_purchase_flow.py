@@ -7,17 +7,32 @@ import pytest
 import time
 
 from app.container import get_process_message_uc
+from config.value_limits import CART_QUANTITY_MAX
 from controllers.telegram_controller import prime_human_agent_cache
 from infrastructure.channels.telegram_fsm import (
     FSMState,
     FSMStateStore,
     TelegramConversationFSM,
 )
+from infrastructure.channels.telegram_purchase_flow import TelegramPurchaseFlow
 from main import app
 from services.cart_service import CartService
 from services.product_service import ProductService
 from services.user_service import UserService
 from services.order_service import OrderService
+
+
+def test_telegram_purchase_flow_parse_quantity_accepts_configured_upper_limit() -> None:
+    assert TelegramPurchaseFlow.parse_quantity("1") == 1
+    assert (
+        TelegramPurchaseFlow.parse_quantity(str(CART_QUANTITY_MAX)) == CART_QUANTITY_MAX
+    )
+
+
+def test_telegram_purchase_flow_parse_quantity_rejects_out_of_range_values() -> None:
+    assert TelegramPurchaseFlow.parse_quantity("0") is None
+    assert TelegramPurchaseFlow.parse_quantity(str(CART_QUANTITY_MAX + 1)) is None
+    assert TelegramPurchaseFlow.parse_quantity("quiero 2") is None
 
 
 @pytest.fixture(autouse=True)

@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from config.database import SessionLocal
+from config.value_limits import CART_QUANTITY_MAX, CART_QUANTITY_MIN
 from infrastructure.channels.telegram_fsm import ExpectedInput, FSMState
 from models.product import Product
 from services.business_config_service import BusinessConfigService
@@ -43,7 +44,7 @@ class TelegramPurchaseFlow:
     ) -> TelegramPurchasePlan:
         product = self._get_product_data(product_id)
         prefix = (
-            "No entendí esa cantidad. Ingresa un número válido.\n\n"
+            f"No entendí esa cantidad. Ingresa un número entre {CART_QUANTITY_MIN} y {CART_QUANTITY_MAX}.\n\n"
             if invalid_input
             else ""
         )
@@ -304,7 +305,7 @@ class TelegramPurchaseFlow:
         if not stripped.isdigit():
             return None
         quantity = int(stripped)
-        if quantity <= 0 or quantity > 99:
+        if quantity < CART_QUANTITY_MIN or quantity > CART_QUANTITY_MAX:
             return None
         return quantity
 
