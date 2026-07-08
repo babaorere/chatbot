@@ -75,11 +75,27 @@ Criterio de fallo:
 
 Objetivo: asegurar que los jobs durables existen, son observables y no bloquean respuestas.
 
+Estado: parcialmente completado.
+
+Evidencia:
+- `api` y `arq_worker` usan `REDIS_URL=redis://redis:6379/0`.
+- Redis local contiene heartbeat fresco en `chatbot:jobs:health`.
+- `/health` reporta `arq.worker_status=ok`.
+- Job real `job_healthcheck` encolado con id `redteam:job-healthcheck:1783532993`.
+- ARQ ejecuto el job y devolvio `status=ok`, `worker=arq`, `queue_name=chatbot:jobs`.
+- Webhook sintetico durante ARQ/Redis activo respondio `200 scheduled`.
+- Medicion interna: `webhook_response_ready=2.98ms`.
+- Medicion interna: `background_started_after_webhook=3.59ms`.
+- Medicion interna: `sendMessage=1249.45ms` fallo en background por chat sintetico, sin bloquear webhook.
+
 Pruebas:
-- Encolar `job_healthcheck` y verificar ejecucion por ARQ.
-- Encolar cleanup de reply markup con payload serializable.
-- Forzar Redis caido y verificar que fallos de jobs no bloquean `answerCallbackQuery`.
-- Verificar heartbeat fresco cada 15s y `/health` `worker_status=ok`.
+- [x] Encolar `job_healthcheck` y verificar ejecucion por ARQ.
+- [ ] Encolar cleanup de reply markup con payload serializable en runtime real.
+- [ ] Forzar Redis caido y verificar que fallos de jobs no bloquean `answerCallbackQuery`.
+- [x] Verificar heartbeat fresco cada 15s y `/health` `worker_status=ok`.
+
+Pendiente destructivo:
+- Apagar Redis en este stack activo puede afectar sesiones reales y el tunnel local. Ejecutar solo en ventana controlada o con compose aislado.
 
 Criterio de fallo:
 - Worker healthy por proceso vivo pero sin heartbeat.
