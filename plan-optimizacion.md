@@ -245,30 +245,31 @@ async def get_runtime_snapshot(self) -> TelegramFSMRuntimeSnapshot:
 
 ### 7. Cache estable de configuracion de negocio
 
-- [ ] Revisar `BusinessConfigService(db).get_config()` en rutas calientes.
-- [ ] Mantener cache solo para datos estables:
+- [x] Revisar `BusinessConfigService(db).get_config()` en rutas calientes.
+- [x] Mantener cache solo para datos estables:
   - nombre negocio
   - horarios
   - direccion
   - servicios
   - estimated_attention_minutes si se usa solo en mensaje
   - human_agent_available con TTL corto o invalidacion explicita
-- [ ] No cachear:
+- [x] No cachear:
   - pedidos
   - carrito
   - stock transaccional
   - precio final de checkout
-- [ ] Crear snapshot separado:
+- [x] Crear snapshot separado:
 
 ```python
 BusinessConfigSnapshot(...)
 ```
 
-- [ ] Invalidar en `update_profile`.
-- [ ] Tests:
+- [x] Invalidar en `update_profile`.
+- [x] Tests:
   - update profile refresca snapshot
   - lectura caliente no consulta DB
   - checkout sigue usando DB si el dato afecta contrato final
+- [x] Nota: `human_agent_available` conserva TTL corto propio; al expirar vuelve a DB y refresca `BusinessConfigSnapshot`.
 
 ### 8. Pre-render de menus estaticos
 

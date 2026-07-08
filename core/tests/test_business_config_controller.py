@@ -18,6 +18,9 @@ def test_update_profile_refreshes_human_agent_cache() -> None:
             "controllers.business_config_controller.prime_human_agent_cache"
         ) as prime_mock,
         patch(
+            "controllers.business_config_controller.prime_business_config_cache"
+        ) as prime_config_mock,
+        patch(
             "controllers.business_config_controller.BusinessConfigResponse.model_validate",
             return_value={"ok": True},
         ),
@@ -45,6 +48,7 @@ def test_update_profile_refreshes_human_agent_cache() -> None:
             db=db_mock,
         )
 
+    prime_config_mock.assert_called_once_with(config_mock)
     prime_mock.assert_called_once_with(False)
     svc_instance.update_config.assert_called_once()
     update_kwargs = svc_instance.update_config.call_args.kwargs

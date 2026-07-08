@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.security import get_admin_api_key
 from config.database import get_db
 from controllers.telegram_controller import (
+    prime_business_config_cache,
     prime_human_agent_cache,
     refresh_catalog_cache_after_commit,
 )
@@ -99,6 +100,7 @@ def update_profile(
                 estimated_attention_minutes=data.estimated_attention_minutes,
                 human_agent_available=data.human_agent_available,
             )
+        prime_business_config_cache(config)
         prime_human_agent_cache(config.human_agent_available)
         return BusinessConfigResponse.model_validate(config)
     except Exception as e:

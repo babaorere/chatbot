@@ -3,6 +3,17 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def reset_business_config_snapshot() -> None:
+    from controllers import telegram_controller
+
+    telegram_controller._business_config_snapshot = (
+        telegram_controller.BusinessConfigSnapshot()
+    )
+
 
 def test_promotions_text_uses_configured_products() -> None:
     db_mock = MagicMock()
@@ -37,6 +48,38 @@ def test_promotions_text_uses_configured_products() -> None:
     assert "Promociones de hoy" in text
     assert "Promo Uno" in text
     assert "Promo Dos" in text
+
+
+def test_promotions_text_cache_hit_disabled_section_does_not_query_db() -> None:
+    from controllers import telegram_controller
+    from controllers.telegram_controller import _get_promotions_text
+
+    telegram_controller.prime_business_config_cache(
+        SimpleNamespace(
+            human_agent_available=True,
+            promotions_config={
+                "enabled": False,
+                "title": "Promos pausadas",
+                "mode": "manual",
+                "product_ids": [],
+            },
+            best_sellers_config={},
+            favorites_config={},
+        )
+    )
+
+    with (
+        patch("controllers.telegram_controller.SessionLocal") as session_mock,
+        patch(
+            "controllers.telegram_controller.BusinessConfigService"
+        ) as config_service_mock,
+    ):
+        text, product_names = _get_promotions_text()
+
+    session_mock.assert_not_called()
+    config_service_mock.assert_not_called()
+    assert product_names == []
+    assert "Promos pausadas" in text
 
 
 def test_best_sellers_text_uses_manual_selection_when_configured() -> None:

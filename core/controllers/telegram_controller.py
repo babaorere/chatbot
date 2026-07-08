@@ -88,7 +88,24 @@ class CatalogSnapshot:
     version: int = 0
 
 
+@dataclass(frozen=True)
+class BusinessConfigSnapshot:
+    name: str = ""
+    phone: str = ""
+    address: str = ""
+    city: str = ""
+    business_hours: dict[str, Any] = field(default_factory=dict)
+    promotions_config: dict[str, Any] = field(default_factory=dict)
+    best_sellers_config: dict[str, Any] = field(default_factory=dict)
+    favorites_config: dict[str, Any] = field(default_factory=dict)
+    estimated_attention_minutes: int | None = None
+    human_agent_available: bool = True
+    loaded_at: float = 0.0
+    version: int = 0
+
+
 _catalog_snapshot = CatalogSnapshot()
+_business_config_snapshot = BusinessConfigSnapshot()
 _catalog_distributed_version_seen = 0
 _catalog_remote_version_checked_at = 0.0
 
@@ -272,6 +289,67 @@ async def _refresh_catalog_cache_if_remote_version_changed(
             f"seen_version={_catalog_distributed_version_seen}"
         ),
     )
+
+
+def prime_business_config_cache(config: Any | None = None) -> BusinessConfigSnapshot:
+    """Carga configuración estable del negocio para evitar DB en menús no transaccionales."""
+    global _business_config_snapshot, _human_agent_cache
+    started_at = time.perf_counter()
+    db = None
+    try:
+        if config is None:
+            db = SessionLocal()
+            config = BusinessConfigService(db).get_config()
+
+        next_snapshot = BusinessConfigSnapshot(
+            name=str(getattr(config, "name", "") or ""),
+            phone=str(getattr(config, "phone", "") or ""),
+            address=str(getattr(config, "address", "") or ""),
+            city=str(getattr(config, "city", "") or ""),
+            business_hours=dict(getattr(config, "business_hours", {}) or {}),
+            promotions_config=dict(getattr(config, "promotions_config", {}) or {}),
+            best_sellers_config=dict(getattr(config, "best_sellers_config", {}) or {}),
+            favorites_config=dict(getattr(config, "favorites_config", {}) or {}),
+            estimated_attention_minutes=getattr(
+                config,
+                "estimated_attention_minutes",
+                None,
+            ),
+            human_agent_available=bool(getattr(config, "human_agent_available", True)),
+            loaded_at=time.time(),
+            version=_business_config_snapshot.version + 1,
+        )
+        _business_config_snapshot = next_snapshot
+        _human_agent_cache = {
+            "value": next_snapshot.human_agent_available,
+            "expires_at": time.time() + 300,
+        }
+        _log_timing(
+            trace_id="business-config-cache-prime",
+            stage="business_config_cache_primed",
+            started_at=started_at,
+            extra=f"version={next_snapshot.version}",
+        )
+        return next_snapshot
+    except Exception as exc:
+        logger.exception("Failed to prime business config cache")
+        raise RuntimeError("Failed to prime business config cache") from exc
+    finally:
+        if db is not None:
+            db.close()
+
+
+def _get_business_config_snapshot() -> BusinessConfigSnapshot:
+    if _business_config_snapshot.version > 0:
+        logger.info(
+            "[telegram_cache] key=business_config hit version=%d age_seconds=%.2f",
+            _business_config_snapshot.version,
+            time.time() - _business_config_snapshot.loaded_at,
+        )
+        return _business_config_snapshot
+
+    logger.info("[telegram_cache] key=business_config miss")
+    return prime_business_config_cache()
 
 
 def _elapsed_ms(start: float) -> float:
@@ -589,11 +667,9 @@ def _get_human_agent_available() -> bool:
     logger.info("[telegram_cache] key=human_agent_available miss")
     db = SessionLocal()
     try:
-        cfg_svc = BusinessConfigService(db)
-        cfg = cfg_svc.get_config()
-        val = cfg.human_agent_available if cfg else True
-        _human_agent_cache = {"value": val, "expires_at": now + 300}
-        return val
+        cfg = BusinessConfigService(db).get_config()
+        snapshot = prime_business_config_cache(cfg)
+        return snapshot.human_agent_available
     except Exception as exc:
         logger.exception("Failed to resolve human agent availability")
         raise RuntimeError("Failed to resolve human agent availability") from exc
@@ -658,17 +734,17 @@ def _build_empty_cart_text() -> str:
 
 
 def _get_promotions_text() -> tuple[str, list[str]]:
+    cfg = _get_business_config_snapshot()
+    section = _parse_featured_section(cfg.promotions_config)
+    title = section["title"] or "Promociones destacadas del momento:"
+    if not section["enabled"]:
+        return _build_empty_featured_text(
+            title,
+            "Aún no hay promociones publicadas.",
+        ), []
+
     db = SessionLocal()
     try:
-        cfg = BusinessConfigService(db).get_config()
-        section = _parse_featured_section(cfg.promotions_config)
-        title = section["title"] or "Promociones destacadas del momento:"
-        if not section["enabled"]:
-            return _build_empty_featured_text(
-                title,
-                "Aún no hay promociones publicadas.",
-            ), []
-
         products = _load_products_by_ids(db, section["product_ids"])
         if not products:
             product_svc = ProductService(db)
@@ -708,17 +784,17 @@ def _get_promotions_text() -> tuple[str, list[str]]:
 
 
 def _get_best_sellers_text() -> tuple[str, list[str]]:
+    cfg = _get_business_config_snapshot()
+    section = _parse_featured_section(cfg.best_sellers_config)
+    title = section["title"] or "Más vendidos del momento:"
+    if not section["enabled"]:
+        return _build_empty_featured_text(
+            title,
+            "Todavía no hay más vendidos para mostrar.",
+        ), []
+
     db = SessionLocal()
     try:
-        cfg = BusinessConfigService(db).get_config()
-        section = _parse_featured_section(cfg.best_sellers_config)
-        title = section["title"] or "Más vendidos del momento:"
-        if not section["enabled"]:
-            return _build_empty_featured_text(
-                title,
-                "Todavía no hay más vendidos para mostrar.",
-            ), []
-
         if section["mode"] == "manual" and section["product_ids"]:
             products = _load_products_by_ids(db, section["product_ids"])
             products = [p for p in products if p.is_available]
@@ -797,17 +873,17 @@ def _get_best_sellers_text() -> tuple[str, list[str]]:
 
 
 def _get_favorites_text() -> tuple[str, list[str]]:
+    cfg = _get_business_config_snapshot()
+    section = _parse_featured_section(cfg.favorites_config)
+    title = section["title"] or "Productos favoritos:"
+    if not section["enabled"]:
+        return _build_empty_featured_text(
+            title,
+            "Aún no hay productos favoritos publicados.",
+        ), []
+
     db = SessionLocal()
     try:
-        cfg = BusinessConfigService(db).get_config()
-        section = _parse_featured_section(cfg.favorites_config)
-        title = section["title"] or "Productos favoritos:"
-        if not section["enabled"]:
-            return _build_empty_featured_text(
-                title,
-                "Aún no hay productos favoritos publicados.",
-            ), []
-
         products = _load_products_by_ids(db, section["product_ids"])
         products = [p for p in products if p.is_available]
         lines = [title, ""]
