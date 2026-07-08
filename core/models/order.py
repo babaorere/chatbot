@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from sqlalchemy import (
+    CheckConstraint,
     Column,
     String,
     DateTime,
@@ -14,10 +15,16 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from config.database import Base
+from config.value_limits import CART_QUANTITY_MAX, CART_QUANTITY_MIN
 
 
 class Order(Base):
     __tablename__ = "orders"
+    __table_args__ = (
+        CheckConstraint(
+            "total_amount >= 0", name="ck_orders_total_amount_non_negative"
+        ),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(
@@ -59,6 +66,18 @@ class Order(Base):
 
 class OrderItem(Base):
     __tablename__ = "order_items"
+    __table_args__ = (
+        CheckConstraint(
+            f"quantity >= {CART_QUANTITY_MIN} AND quantity <= {CART_QUANTITY_MAX}",
+            name="ck_order_items_quantity_range",
+        ),
+        CheckConstraint(
+            "unit_price >= 0", name="ck_order_items_unit_price_non_negative"
+        ),
+        CheckConstraint(
+            "total_price >= 0", name="ck_order_items_total_price_non_negative"
+        ),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     order_id = Column(

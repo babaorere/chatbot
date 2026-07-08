@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy.exc import IntegrityError
 from unittest.mock import MagicMock
 
 from config.value_limits import (
@@ -11,7 +12,11 @@ from config.value_limits import (
     PRODUCT_STOCK_MAX,
 )
 from dtos import ProductCreateRequest
+from models.cart import Cart, CartItem
 from models.category import Category
+from models.order import Order, OrderItem
+from models.product import Product
+from models.user import User
 from controllers.order_controller import CartAddRequest, CartRemoveRequest
 from services.category_service import slugify
 from services.product_service import ProductService
@@ -182,29 +187,33 @@ def test_cart_service_rejects_negative_or_zero_quantity(db_session):
     cart_svc = CartService(db_session)
 
     # 1. CartService debe lanzar ValueError al añadir cantidad fuera de rango
-    with pytest.raises(ValueError, match="La cantidad a añadir debe estar entre 1 y 1000"):
+    with pytest.raises(
+        ValueError, match="La cantidad a añadir debe estar entre 1 y 1000"
+    ):
         cart_svc.add_to_cart(user_id=user.id, product_id=product.id, quantity=-5)
 
-    with pytest.raises(ValueError, match="La cantidad a añadir debe estar entre 1 y 1000"):
+    with pytest.raises(
+        ValueError, match="La cantidad a añadir debe estar entre 1 y 1000"
+    ):
         cart_svc.add_to_cart(user_id=user.id, product_id=product.id, quantity=0)
 
-    with pytest.raises(ValueError, match="La cantidad a añadir debe estar entre 1 y 1000"):
+    with pytest.raises(
+        ValueError, match="La cantidad a añadir debe estar entre 1 y 1000"
+    ):
         cart_svc.add_to_cart(
             user_id=user.id,
             product_id=product.id,
             quantity=CART_QUANTITY_MAX + 1,
         )
 
-    # 2. Si forzamos un CartItem con cantidad inválida directo en base de datos (bypassing CartService)
+    # 2. Si se intenta forzar un CartItem inválido directo en base de datos,
+    # PostgreSQL debe bloquearlo antes de que llegue al checkout.
     cart = cart_svc.get_or_create_cart(user.id)
     malformed_item = CartItem(cart_id=cart.id, product_id=product.id, quantity=-2)
     db_session.add(malformed_item)
-    db_session.commit()
-
-    # El checkout debe lanzar ValueError protegiendo la integridad transaccional
-    from services.order_service import OrderService
-    with pytest.raises(ValueError, match="Cantidad inválida o vacía"):
-        OrderService(db_session).checkout_cart(user_id=user.id)
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
 
 
 def test_cart_service_rejects_negative_or_zero_remove_quantity(db_session):
@@ -335,6 +344,92 @@ def test_cart_request_dto_rejects_quantity_above_limit() -> None:
             product_id="00000000-0000-0000-0000-000000000001",
             quantity=CART_QUANTITY_MAX + 1,
         )
+
+
+def test_database_constraints_reject_invalid_product_values(db_session):
+    invalid_product = Product(
+        sku="DB-LIMIT-STOCK",
+        name="Stock corrupto directo",
+        price=1000,
+        stock=-1,
+        category="General",
+    )
+    db_session.add(invalid_product)
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+    db_session.rollback()
+
+    invalid_tax_product = Product(
+        sku="DB-LIMIT-TAX",
+        name="IVA corrupto directo",
+        price=1000,
+        stock=1,
+        taxes=1.01,
+        category="General",
+    )
+    db_session.add(invalid_tax_product)
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+    db_session.rollback()
+
+
+def test_database_constraints_reject_invalid_cart_and_order_values(db_session):
+    user = User(external_id="db-limit-user", platform="telegram")
+    product = Product(
+        sku="DB-LIMIT-PRODUCT",
+        name="Producto DB constraint",
+        price=1000,
+        stock=10,
+        category="General",
+    )
+    db_session.add_all([user, product])
+    db_session.commit()
+
+    cart = Cart(user_id=user.id)
+    db_session.add(cart)
+    db_session.commit()
+
+    invalid_cart_item = CartItem(
+        cart_id=cart.id,
+        product_id=product.id,
+        quantity=CART_QUANTITY_MAX + 1,
+    )
+    db_session.add(invalid_cart_item)
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+    db_session.rollback()
+
+    invalid_order = Order(user_id=user.id, total_amount=-1)
+    db_session.add(invalid_order)
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+    db_session.rollback()
+
+    order = Order(user_id=user.id, total_amount=0)
+    db_session.add(order)
+    db_session.commit()
+
+    invalid_order_item = OrderItem(
+        order_id=order.id,
+        product_id=product.id,
+        quantity=1,
+        unit_price=1000,
+        total_price=-1000,
+    )
+    db_session.add(invalid_order_item)
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+    db_session.rollback()
 
 
 # ============================================================================

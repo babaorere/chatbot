@@ -2,13 +2,55 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Column, String, DateTime, Text, Integer, Numeric, Boolean, func
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Column,
+    DateTime,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
+from config.value_limits import (
+    PRODUCT_MARGIN_MAX,
+    PRODUCT_MARGIN_MIN,
+    PRODUCT_MONEY_MAX,
+    PRODUCT_MONEY_MIN,
+    PRODUCT_STOCK_MAX,
+    PRODUCT_STOCK_MIN,
+    PRODUCT_TAX_MAX,
+    PRODUCT_TAX_MIN,
+)
 from config.database import Base
 
 
 class Product(Base):
     __tablename__ = "products"
+    __table_args__ = (
+        CheckConstraint(
+            f"price IS NULL OR (price >= {PRODUCT_MONEY_MIN} AND price <= {PRODUCT_MONEY_MAX})",
+            name="ck_products_price_range",
+        ),
+        CheckConstraint(
+            f"stock >= {PRODUCT_STOCK_MIN} AND stock <= {PRODUCT_STOCK_MAX}",
+            name="ck_products_stock_range",
+        ),
+        CheckConstraint(
+            f"cost IS NULL OR (cost >= {PRODUCT_MONEY_MIN} AND cost <= {PRODUCT_MONEY_MAX})",
+            name="ck_products_cost_range",
+        ),
+        CheckConstraint(
+            f"margin IS NULL OR (margin >= {PRODUCT_MARGIN_MIN} AND margin <= {PRODUCT_MARGIN_MAX})",
+            name="ck_products_margin_range",
+        ),
+        CheckConstraint(
+            f"taxes IS NULL OR (taxes >= {PRODUCT_TAX_MIN} AND taxes <= {PRODUCT_TAX_MAX})",
+            name="ck_products_taxes_range",
+        ),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     sku = Column(String(50), unique=True, nullable=True, index=True)

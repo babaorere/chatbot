@@ -25,6 +25,18 @@ from app.container import clear_providers, set_llm_provider, set_redis_client
 from config.database import Base, SessionLocal, _sync_engine
 from config.redis import create_redis_client
 from config.settings import settings
+from config.value_limits import (
+    CART_QUANTITY_MAX,
+    CART_QUANTITY_MIN,
+    PRODUCT_MARGIN_MAX,
+    PRODUCT_MARGIN_MIN,
+    PRODUCT_MONEY_MAX,
+    PRODUCT_MONEY_MIN,
+    PRODUCT_STOCK_MAX,
+    PRODUCT_STOCK_MIN,
+    PRODUCT_TAX_MAX,
+    PRODUCT_TAX_MIN,
+)
 from controllers.telegram_controller import prime_catalog_cache, prime_human_agent_cache
 from infrastructure.llm.adk_provider import ADKLLMProvider
 from models import (  # noqa: F401 – registers models in Base
@@ -53,6 +65,26 @@ def _ensure_postgres_extensions(conn: object) -> None:
     conn.execute(text("CREATE EXTENSION IF NOT EXISTS unaccent;"))
     conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
     conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+
+
+def _add_check_constraint_if_missing(
+    conn: object,
+    *,
+    table: str,
+    name: str,
+    condition: str,
+) -> None:
+    exists = conn.execute(
+        text("SELECT 1 FROM pg_constraint WHERE conname = :name;"),
+        {"name": name},
+    ).first()
+    if exists:
+        return
+
+    conn.execute(
+        text(f"ALTER TABLE {table} ADD CONSTRAINT {name} CHECK ({condition});")
+    )
+    logger.info("Added check constraint %s on %s", name, table)
 
 
 def _run_migrations(conn: object) -> None:
@@ -173,6 +205,79 @@ def _run_migrations(conn: object) -> None:
     if not check_confirmed_at:
         conn.execute(text("ALTER TABLE orders ADD COLUMN confirmed_at TIMESTAMP NULL;"))
         logger.info("Added 'confirmed_at' column to orders table")
+
+    _add_check_constraint_if_missing(
+        conn,
+        table="products",
+        name="ck_products_price_range",
+        condition=(
+            "price IS NULL OR "
+            f"(price >= {PRODUCT_MONEY_MIN} AND price <= {PRODUCT_MONEY_MAX})"
+        ),
+    )
+    _add_check_constraint_if_missing(
+        conn,
+        table="products",
+        name="ck_products_stock_range",
+        condition=f"stock >= {PRODUCT_STOCK_MIN} AND stock <= {PRODUCT_STOCK_MAX}",
+    )
+    _add_check_constraint_if_missing(
+        conn,
+        table="products",
+        name="ck_products_cost_range",
+        condition=(
+            "cost IS NULL OR "
+            f"(cost >= {PRODUCT_MONEY_MIN} AND cost <= {PRODUCT_MONEY_MAX})"
+        ),
+    )
+    _add_check_constraint_if_missing(
+        conn,
+        table="products",
+        name="ck_products_margin_range",
+        condition=(
+            "margin IS NULL OR "
+            f"(margin >= {PRODUCT_MARGIN_MIN} AND margin <= {PRODUCT_MARGIN_MAX})"
+        ),
+    )
+    _add_check_constraint_if_missing(
+        conn,
+        table="products",
+        name="ck_products_taxes_range",
+        condition=(
+            "taxes IS NULL OR "
+            f"(taxes >= {PRODUCT_TAX_MIN} AND taxes <= {PRODUCT_TAX_MAX})"
+        ),
+    )
+    _add_check_constraint_if_missing(
+        conn,
+        table="cart_items",
+        name="ck_cart_items_quantity_range",
+        condition=f"quantity >= {CART_QUANTITY_MIN} AND quantity <= {CART_QUANTITY_MAX}",
+    )
+    _add_check_constraint_if_missing(
+        conn,
+        table="orders",
+        name="ck_orders_total_amount_non_negative",
+        condition="total_amount >= 0",
+    )
+    _add_check_constraint_if_missing(
+        conn,
+        table="order_items",
+        name="ck_order_items_quantity_range",
+        condition=f"quantity >= {CART_QUANTITY_MIN} AND quantity <= {CART_QUANTITY_MAX}",
+    )
+    _add_check_constraint_if_missing(
+        conn,
+        table="order_items",
+        name="ck_order_items_unit_price_non_negative",
+        condition="unit_price >= 0",
+    )
+    _add_check_constraint_if_missing(
+        conn,
+        table="order_items",
+        name="ck_order_items_total_price_non_negative",
+        condition="total_price >= 0",
+    )
 
     # Add is_bot_paused column if missing
     check_paused = conn.execute(

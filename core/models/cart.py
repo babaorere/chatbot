@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import uuid
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, func
+from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Integer, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from config.database import Base
+from config.value_limits import CART_QUANTITY_MAX, CART_QUANTITY_MIN
 
 
 class Cart(Base):
@@ -34,6 +35,12 @@ class Cart(Base):
 
 class CartItem(Base):
     __tablename__ = "cart_items"
+    __table_args__ = (
+        CheckConstraint(
+            f"quantity >= {CART_QUANTITY_MIN} AND quantity <= {CART_QUANTITY_MAX}",
+            name="ck_cart_items_quantity_range",
+        ),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     cart_id = Column(
