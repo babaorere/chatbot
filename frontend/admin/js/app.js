@@ -48,7 +48,7 @@ class AdminApp {
         if (res.status === 403) {
             sessionStorage.removeItem(API_KEY_STORAGE);
             this.apiKey = '';
-            this.showLoginScreen('Clave inválida o expirada. Ingrese la Admin API Key.');
+            this.showLoginScreen('Clave inválida o expirada. Ingrese la clave de administración.');
             throw new Error('HTTP 403');
         }
         if (!res.ok) {
@@ -58,7 +58,7 @@ class AdminApp {
         return res.json();
     }
 
-    showLoginScreen(message = 'Ingrese la Admin API Key para acceder al panel.') {
+    showLoginScreen(message = 'Ingrese la clave de administración para acceder al panel.') {
         let overlay = document.getElementById('loginOverlay');
         if (!overlay) {
             overlay = document.createElement('div');
@@ -70,7 +70,7 @@ class AdminApp {
             ].join(';');
             overlay.innerHTML = `
                 <div style="background:#1a1a2e;border:1px solid #3a3a5c;border-radius:16px;padding:2.5rem;width:min(400px,90vw);box-shadow:0 25px 60px rgba(0,0,0,0.6);">
-                    <h2 style="margin:0 0 0.5rem;color:#e2e8f0;font-size:1.4rem;">&#128272; Admin Portal</h2>
+                    <h2 style="margin:0 0 0.5rem;color:#e2e8f0;font-size:1.4rem;">&#128272; Panel de Administración</h2>
                     <p id="loginMsg" style="margin:0 0 1.5rem;color:#94a3b8;font-size:0.9rem;">${message}</p>
                     <form id="loginForm">
                         <input type="text" name="username" autocomplete="username"
@@ -79,7 +79,7 @@ class AdminApp {
                         <div style="position:relative;margin-bottom:1rem;">
                             <input id="loginKeyInput" type="password" name="password"
                                 autocomplete="current-password"
-                                placeholder="Admin API Key"
+                                placeholder="Clave de administración"
                                 style="width:100%;box-sizing:border-box;padding:0.75rem 3rem 0.75rem 1rem;
                                        border-radius:8px;border:1px solid #3a3a5c;background:#0f0f1a;
                                        color:#e2e8f0;font-size:1rem;outline:none;"
@@ -90,10 +90,10 @@ class AdminApp {
                                        background:none;border:none;cursor:pointer;color:#94a3b8;
                                        font-size:1.1rem;line-height:1;padding:0;">&#128065;</button>
                         </div>
-                        <button type="submit" id="loginSubmitBtn"
-                            style="width:100%;padding:0.8rem;border:none;border-radius:8px;
-                                   background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;
-                                   font-size:1rem;font-weight:600;cursor:pointer;">
+                            <button type="submit" id="loginSubmitBtn"
+                                style="width:100%;padding:0.8rem;border:none;border-radius:8px;
+                                       background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;
+                                       font-size:1rem;font-weight:600;cursor:pointer;">
                             Acceder
                         </button>
                     </form>
@@ -230,7 +230,7 @@ class AdminApp {
             document.getElementById('systemSettingsCount').textContent = String(settingsCount);
             
             document.getElementById('dashboardOverview').innerHTML = `
-                El sistema opera actualmente en modo <strong>single-tenant</strong> y <strong>multi-usuario</strong>.<br>
+                El sistema opera actualmente en modo <strong>instancia única</strong> y <strong>multiusuario</strong>.<br>
                 El motor de IA principal está configurado como <code>${mainModel}</code>.
             `;
         } catch (err) {
@@ -503,7 +503,7 @@ class AdminApp {
             if (usersBody) {
                 usersBody.innerHTML = '';
                 if (users.length === 0) {
-                    usersBody.innerHTML = '<tr><td colspan="6" class="empty-state">Aún no hay usuarios tenant activos.</td></tr>';
+                    usersBody.innerHTML = '<tr><td colspan="6" class="empty-state">Aún no hay usuarios activos.</td></tr>';
                 }
                 users.forEach((user) => {
                     const tr = document.createElement('tr');
@@ -555,7 +555,7 @@ class AdminApp {
         const title = document.getElementById('modalTitle');
         const body = document.getElementById('modalBody');
 
-        title.textContent = 'Nueva invitación tenant';
+        title.textContent = 'Nueva invitación de acceso';
         body.innerHTML = `
             <form id="tenantInviteForm">
                 <div class="form-group">
@@ -618,7 +618,7 @@ class AdminApp {
     }
 
     async disableTenantUser(userId) {
-        if (!confirm('¿Desactivar este usuario tenant y cerrar sus sesiones?')) return;
+        if (!confirm('¿Desactivar este usuario del negocio y cerrar sus sesiones?')) return;
         try {
             await this.fetch(`/admin/tenant-access/users/${userId}/disable`, {
                 method: 'POST',

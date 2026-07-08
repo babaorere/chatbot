@@ -12,7 +12,7 @@ test.describe("admin frontend", () => {
     await page.goto("/frontend/admin/index.html");
 
     // Title / shell validation
-    await expect(page).toHaveTitle(/Admin Portal/);
+    await expect(page).toHaveTitle(/Panel de Administración/);
     await expect(page.locator("#activeAgentStatus")).toBeVisible();
     await expect(page.locator("#systemSettingsCount")).toContainText("2");
 
@@ -30,7 +30,7 @@ test.describe("admin frontend", () => {
     await expect(page.locator("#toastContainer")).toContainText("Setting actualizado");
 
     // 3. Tenant Access Section
-    await page.getByRole("link", { name: /acceso tenant/i }).click();
+    await page.getByRole("link", { name: /accesos/i }).click();
     await expect(page.locator("#tenantUsersBody tr")).toHaveCount(1);
     await page.getByRole("button", { name: /Desactivar/i }).click();
     await expect(page.locator("#toastContainer")).toContainText("Usuario desactivado");

@@ -3,7 +3,7 @@ import time
 import httpx
 
 WEBHOOK_URL = (
-    "http://localhost/telegram/webhook/8581822135:AAEZQ6azDAbZOT17DHrKVtVyU-P7uh7HIgM"
+    "http://localhost/telegram/webhook/8941924456:AAHsEaE_5m4lw6rvpEiXTsW_l-T3Vxf0A0s"
 )
 USER_ID = 5391760292
 CHAT_ID = 5391760292

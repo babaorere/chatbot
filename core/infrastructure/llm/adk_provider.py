@@ -11,9 +11,14 @@ from typing import Any, AsyncGenerator
 
 from google.genai import types
 from agents.constants import GADK_APP_NAME
-from agents.root_agent import get_runner
 
 logger = logging.getLogger(__name__)
+
+
+def _get_runner() -> Any:
+    from agents.root_agent import get_runner
+
+    return get_runner()
 
 
 class ADKLLMProvider:
@@ -55,7 +60,7 @@ class ADKLLMProvider:
             RuntimeError: Si el modelo no puede generar respuesta.
         """
         try:
-            runner = get_runner()
+            runner = _get_runner()
             content = self._build_content(message, rag_context)
             full_response: list[str] = []
 
@@ -103,7 +108,7 @@ class ADKLLMProvider:
             str: Fragmentos de texto a medida que el modelo los genera.
         """
         try:
-            runner = get_runner()
+            runner = _get_runner()
             content = self._build_content(message, rag_context)
 
             async for event in runner.run_async(
@@ -140,7 +145,7 @@ class ADKLLMProvider:
             list[dict[str, str]]: Lista de mensajes con 'author' y 'content'.
         """
         try:
-            runner = get_runner()
+            runner = _get_runner()
             session = await self._session_service.get_session(
                 app_name=runner.app_name,
                 user_id=user_id,
@@ -211,6 +216,11 @@ class ADKLLMProvider:
             )
         else:
             text = message
+
+        text = (
+            f"{text}\n\n"
+            "REGLA FINAL DE IDIOMA: responde exclusivamente en español."
+        )
 
         return types.Content(
             role="user",

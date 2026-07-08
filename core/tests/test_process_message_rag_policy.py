@@ -11,6 +11,7 @@ from application.use_cases.process_message import ProcessMessageUseCase
 class RecordingLLMProvider:
     def __init__(self) -> None:
         self.rag_context: str | None = None
+        self.message: str | None = None
 
     async def run_chat(
         self,
@@ -20,6 +21,7 @@ class RecordingLLMProvider:
         rag_context: str | None,
     ) -> str:
         self.rag_context = rag_context
+        self.message = message
         return "respuesta"
 
 
@@ -97,3 +99,28 @@ async def test_process_message_builds_rag_for_general_service_query(
 
     assert result.response == "respuesta"
     assert llm.rag_context == "contexto:¿Cuál es el horario de atención?"
+
+
+@pytest.mark.asyncio
+async def test_process_message_injects_telegram_state_metadata(
+    patched_services: tuple[MagicMock, MagicMock],
+) -> None:
+    llm = RecordingLLMProvider()
+    use_case = ProcessMessageUseCase(MagicMock(), llm, BlockingRAGProvider())
+
+    await use_case.execute(
+        ProcessMessageCommand(
+            user_id="user-1",
+            platform="telegram",
+            message="quiero ver las cervezas",
+            metadata={
+                "telegram_fsm_state": "in_menu",
+                "telegram_menu_scope": "menu:categories",
+                "telegram_expected_input": "menu_selection",
+            },
+        )
+    )
+
+    assert llm.message is not None
+    assert "CONTEXTO ESTRUCTURADO DE LA CONVERSACION TELEGRAM" in llm.message
+    assert "menu_activo: menu:categories" in llm.message

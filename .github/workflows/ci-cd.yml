@@ -85,7 +85,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check deploy configuration
+        id: deploy_config
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          if [ -n "$VPS_HOST" ] && [ -n "$VPS_USER" ] && [ -n "$VPS_SSH_KEY" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "Deploy target detected."
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Deploy skipped: VPS secrets are not configured for this repository yet."
+          fi
+
+      - name: Skip deploy
+        if: steps.deploy_config.outputs.ready != 'true'
+        run: echo "No VPS configured. CI finished without remote deployment."
+
       - name: Deploy to VPS
+        if: steps.deploy_config.outputs.ready == 'true'
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}

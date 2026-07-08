@@ -3,7 +3,11 @@ import httpx
 from unittest.mock import patch, AsyncMock, MagicMock
 from main import app
 from app.container import get_process_message_uc
-from infrastructure.channels.telegram_fsm import TelegramConversationFSM, FSMStateStore
+from infrastructure.channels.telegram_fsm import (
+    FSMState,
+    FSMStateStore,
+    TelegramConversationFSM,
+)
 from controllers.telegram_controller import prime_human_agent_cache
 
 
@@ -84,6 +88,8 @@ async def test_telegram_hybrid_menu_flow(mock_use_case):
                 "menu:promociones",
                 "menu:mas_vendidos",
                 "menu:carrito",
+                "menu:pedidos",
+                "menu:horario",
             ]
 
             # 2. Enviar la opción "1" como mensaje de texto para ir a Categorías
@@ -98,46 +104,45 @@ async def test_telegram_hybrid_menu_flow(mock_use_case):
             }
 
             # Parchear listado de categorías en base de datos para simular retorno
-            mock_cat = MagicMock()
-            mock_cat.name = "General"
-            with patch(
-                "services.category_service.CategoryService.list_categories",
-                return_value=[mock_cat],
-            ):
-                resp2 = await client.post(
-                    "/telegram/webhook/fake_token", json=payload_option_1
-                )
-                assert resp2.status_code == 200
+            from controllers.telegram_controller import _categories_cache, _products_by_category_cache
+            _categories_cache.clear()
+            _categories_cache.append({"name": "General", "slug": "general", "is_system": True})
+            _products_by_category_cache.clear()
+            
+            resp2 = await client.post(
+                "/telegram/webhook/fake_token", json=payload_option_1
+            )
+            assert resp2.status_code == 200
 
             # Debe haber enviado el listado de categorías a Telegram (con versión incrementada a 3)
             category_call = next(
                 call
                 for call in mock_send.call_args_list
                 if call.kwargs.get("text")
-                == "Selecciona una categoría para ver los productos disponibles:"
+                == "Selecciona una categoría."
             )
             assert category_call.kwargs["bot_token"] == "fake_token"
             assert category_call.kwargs["chat_id"] == int(user_id)
             assert category_call.kwargs["reply_markup"] == {
                 "inline_keyboard": [
-                    [{"text": "1. 🏷️ General", "callback_data": "cat_select:General#3"}],
                     [
-                        {
-                            "text": "2. 🔙 Menú Principal",
-                            "callback_data": "menu:back_to_main#3",
-                        }
+                        {"text": "1. 🏷️ General", "callback_data": "cat_select:general#3"}
+                    ],
+                    [
+                        {"text": "V. ↩️ Volver", "callback_data": "menu:back#3"},
+                        {"text": "M. 🏠 Menú principal", "callback_data": "menu:home#3"},
                     ],
                 ]
             }
 
-            # 3. Enviar la opción "2" para volver al menú principal desde el menú de categorías
+            # 3. Enviar la opción "v" para volver al menú principal desde el menú de categorías
             payload_option_2 = {
                 "message": {
                     "message_id": 3,
                     "from": {"id": int(user_id), "first_name": "TestUser"},
                     "chat": {"id": int(user_id), "type": "private"},
                     "date": 100010,
-                    "text": "2",
+                    "text": "v",
                 }
             }
             resp3 = await client.post(
@@ -156,24 +161,16 @@ async def test_telegram_hybrid_menu_flow(mock_use_case):
             assert back_to_main_call.kwargs["reply_markup"] == {
                 "inline_keyboard": [
                     [
-                        {
-                            "text": "1. 🏷️ Ver Categorías",
-                            "callback_data": "menu:categorias#4",
-                        },
-                        {
-                            "text": "2. ✨ Promociones",
-                            "callback_data": "menu:promociones#4",
-                        },
+                        {"text": "1. 🛍️ Ver Catálogo", "callback_data": "menu:categorias#4"},
+                        {"text": "2. ⚡ Promos del Día", "callback_data": "menu:promociones#4"},
                     ],
                     [
-                        {
-                            "text": "3. 🔥 Más vendidos",
-                            "callback_data": "menu:mas_vendidos#4",
-                        },
-                        {
-                            "text": "4. 🛒 Ver carrito",
-                            "callback_data": "menu:carrito#4",
-                        },
+                        {"text": "3. ⭐ Recomendados", "callback_data": "menu:mas_vendidos#4"},
+                        {"text": "4. 🛒 Mi Carrito (Pagar)", "callback_data": "menu:carrito#4"},
+                    ],
+                    [
+                        {"text": "5. 📋 Mis Pedidos", "callback_data": "menu:pedidos#4"},
+                        {"text": "6. 🛵 Envíos y Horarios", "callback_data": "menu:horario#4"},
                     ],
                 ]
             }
@@ -201,8 +198,11 @@ async def test_telegram_hybrid_menu_ignored_if_out_of_range(mock_use_case):
         ):
             # Guardar opciones simuladas en FSM
             await fsm.set_state(
-                await fsm.get_state(),
-                {"_menu_options": ["menu:categorias", "menu:promociones"]},
+                FSMState.IN_MENU,
+                {
+                    "_menu_options": ["menu:categorias", "menu:promociones"],
+                    "_allow_numeric_input": True,
+                },
             )
 
             # Enviar opción "9" (fuera de rango)

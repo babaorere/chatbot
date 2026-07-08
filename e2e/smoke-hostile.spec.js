@@ -25,7 +25,7 @@ test.describe("smoke and hostile frontend paths", () => {
     await page.goto("/frontend/admin/index.html");
 
     await expect(page.locator("h1")).toContainText("Admin");
-    await expect(page.locator("#pageTitle")).toContainText("Dashboard");
+    await expect(page.locator("#pageTitle")).toContainText("Inicio");
     await expect(page.locator("#systemSettingsCount")).toHaveText("0");
   });
 

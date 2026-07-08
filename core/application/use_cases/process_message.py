@@ -17,17 +17,17 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from typing import Any
 
-from agents.root_agent import current_session_id_var
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from application.ports.llm_port import ILLMProvider
 from application.ports.rag_port import IRAGProvider
 from application.use_cases.commands import ProcessMessageCommand, ProcessMessageResult
+from agents.context import current_session_id_var
 from services.alert_service import AlertService
 from services.conversation_service import ConversationService
-from services.job_dispatcher import JobDispatcher
 from services.rag_policy import RAGIntent, RAGPolicyService
 from services.user_service import UserService
 
@@ -46,7 +46,7 @@ class ProcessMessageUseCase:
         db: Session,
         llm_provider: ILLMProvider,
         rag_provider: IRAGProvider,
-        job_dispatcher: JobDispatcher | None = None,
+        job_dispatcher: Any | None = None,
     ) -> None:
         """Inicializa el use case con sus dependencias inyectadas.
 
@@ -58,7 +58,12 @@ class ProcessMessageUseCase:
         self._db = db
         self._llm = llm_provider
         self._rag = rag_provider
-        self._job_dispatcher = job_dispatcher or JobDispatcher()
+        if job_dispatcher is None:
+            from services.job_dispatcher import JobDispatcher
+
+            self._job_dispatcher = JobDispatcher()
+        else:
+            self._job_dispatcher = job_dispatcher
 
     async def execute(self, cmd: ProcessMessageCommand) -> ProcessMessageResult:
         """Ejecuta el pipeline completo de procesamiento.
@@ -107,6 +112,7 @@ class ProcessMessageUseCase:
 
             # 4. RAG context — policy check before retrieval
             rag_policy = RAGPolicyService()
+            effective_message = self._build_effective_message(cmd)
             rag_result = rag_policy.classify(query=cmd.message)
 
             rag_context: str | None = None
@@ -128,7 +134,7 @@ class ProcessMessageUseCase:
                 response = await self._llm.run_chat(
                     user_id=cmd.user_id,
                     session_id=session_id,
-                    message=cmd.message,
+                    message=effective_message,
                     rag_context=rag_context,
                 )
             except Exception as e:
@@ -168,6 +174,39 @@ class ProcessMessageUseCase:
                 e,
             )
             raise
+
+    @staticmethod
+    def _build_effective_message(cmd: ProcessMessageCommand) -> str:
+        """Inyecta contexto conversacional estructurado cuando el canal lo provee."""
+        state = cmd.metadata.get("telegram_fsm_state")
+        if cmd.platform != "telegram" or not state:
+            return cmd.message
+
+        lines = [
+            "CONTEXTO ESTRUCTURADO DE LA CONVERSACION TELEGRAM:",
+            f"- estado_actual: {state}",
+        ]
+        menu_scope = cmd.metadata.get("telegram_menu_scope")
+        if menu_scope:
+            lines.append(f"- menu_activo: {menu_scope}")
+        expected_input = cmd.metadata.get("telegram_expected_input")
+        if expected_input:
+            lines.append(f"- input_esperado: {expected_input}")
+        allowed_actions = cmd.metadata.get("telegram_allowed_actions")
+        if allowed_actions:
+            lines.append(f"- acciones_permitidas: {allowed_actions}")
+        selected_category = cmd.metadata.get("telegram_selected_category")
+        if selected_category:
+            lines.append(f"- categoria_visible: {selected_category}")
+        lines.extend(
+            [
+                "- regla: no asumas cambios de estado no soportados por el canal.",
+                "- regla: si el usuario cambia de intencion de forma clara, ayudalo con esa nueva intencion sin inventar pasos ocultos.",
+                "",
+                f"MENSAJE DEL USUARIO:\n{cmd.message}",
+            ]
+        )
+        return "\n".join(lines)
 
     async def _dispatch_llm_failure_alert(
         self,

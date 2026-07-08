@@ -18,7 +18,6 @@ from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from config.database import get_db
-from infrastructure.rag.kb_rag_provider import KBRAGProvider
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +106,8 @@ def get_rag_provider(
     Returns:
         IRAGProvider: Implementación de recuperación de contexto RAG.
     """
+    from infrastructure.rag.kb_rag_provider import KBRAGProvider  # noqa: PLC0415
+
     return KBRAGProvider(db=db)
 
 

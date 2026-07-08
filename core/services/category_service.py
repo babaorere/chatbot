@@ -53,6 +53,9 @@ class CategoryService:
     def get_category(self, name: str) -> Category | None:
         return self.db.query(Category).filter(Category.name == name).first()
 
+    def get_category_by_slug(self, slug: str) -> Category | None:
+        return self.db.query(Category).filter(Category.slug == slug).first()
+
     def create_category(self, name: str) -> Category:
         cleaned_name = name.strip()
         if not cleaned_name:

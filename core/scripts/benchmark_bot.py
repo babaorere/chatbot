@@ -4,7 +4,7 @@ import httpx
 
 
 async def benchmark_endpoint(name: str, payload: dict):
-    url = "http://localhost:8000/telegram/webhook/8581822135:AAEZQ6azDAbZOT17DHrKVtVyU-P7uh7HIgM"
+    url = "http://localhost:8000/telegram/webhook/8941924456:AAHsEaE_5m4lw6rvpEiXTsW_l-T3Vxf0A0s"
     start_time = time.perf_counter()
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:

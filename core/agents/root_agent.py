@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextvars
 import datetime
 import logging
 import os
@@ -13,13 +12,15 @@ from services.conversation_service import ConversationService
 from services.product_service import ProductService
 from services.session_service_factory import create_session_service
 from config.settings import settings
-from .constants import GADK_APP_NAME, GADK_INSTRUCTION, GADK_MODEL
+from .context import current_session_id_var
+from .constants import (
+    GADK_APP_NAME,
+    GADK_INSTRUCTION,
+    GADK_MODEL,
+    build_effective_instruction,
+)
 
 logger = logging.getLogger(__name__)
-
-current_session_id_var = contextvars.ContextVar("current_session_id", default=None)
-
-
 # ============================================================================
 # TOOLS — Funciones que el agente puede llamar
 # ============================================================================
@@ -303,7 +304,7 @@ def _get_agent() -> Any:
             model_kwargs["thinking"] = {"type": settings.deepseek_thinking}
 
         model_obj = LiteLlm(**model_kwargs)
-        instruction = db_instruction or GADK_INSTRUCTION
+        instruction = build_effective_instruction(db_instruction or GADK_INSTRUCTION)
 
         _agent_cache = Agent(
             name=f"{GADK_APP_NAME}_{int(time.time())}",

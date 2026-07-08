@@ -9,10 +9,6 @@ from sqlalchemy.orm import Session
 from app.security import get_admin_api_key
 from config.database import get_db
 from config.settings import settings
-from models.user import User
-from models.conversation import Conversation
-from models.knowledge_base import KnowledgeBase
-from models.product import Product
 from models.system_admin import SystemAdmin
 from repositories.system_setting_repository import (
     SystemSettingRepository as SysSettingRepo,
@@ -50,6 +46,8 @@ def get_all_settings(
             db_settings["fallback_model_2"] = settings.fallback_model_2
         if "openrouter_api_key" not in db_settings:
             db_settings["openrouter_api_key"] = settings.openrouter_api_key
+        if "ui_language" not in db_settings:
+            db_settings["ui_language"] = settings.ui_language
         if "agent_instruction" not in db_settings:
             db_settings["agent_instruction"] = GADK_INSTRUCTION
 
@@ -106,6 +104,11 @@ def get_system_metrics(
 ) -> dict:
     """Entrega métricas agregadas del sistema para paneles administrativos."""
     try:
+        from models.conversation import Conversation
+        from models.knowledge_base import KnowledgeBase
+        from models.product import Product
+        from models.user import User
+
         total_users = db.query(User).count()
         total_conversations = db.query(Conversation).count()
         total_kb_entries = (

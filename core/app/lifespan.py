@@ -298,6 +298,13 @@ def _run_migrations(conn: object) -> None:
             "ON CONFLICT (key) DO NOTHING;"
         )
     )
+    conn.execute(
+        text(
+            "INSERT INTO system_settings (key, value, description) "
+            "VALUES ('ui_language', to_json('es-CL'::text), 'Idioma de interfaz y canales conversacionales por defecto') "
+            "ON CONFLICT (key) DO NOTHING;"
+        )
+    )
 
     logger.info(
         "Fuzzy search and user RLS policies successfully initialized in database"

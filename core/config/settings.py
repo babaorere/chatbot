@@ -109,6 +109,7 @@ class Settings(BaseSettings):
     # ── App ──────────────────────────────────────────────────────
     app_env: str = "development"
     log_level: str = "INFO"
+    ui_language: str = "es-CL"
 
     # ── Security & Channels ──────────────────────────────────────
     telegram_bot_token: str = ""

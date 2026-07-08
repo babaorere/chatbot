@@ -32,7 +32,7 @@ def test_promotions_text_uses_configured_products() -> None:
         config_service_mock.return_value.get_config.return_value = config
         from controllers.telegram_controller import _get_promotions_text
 
-        text = _get_promotions_text()
+        text, _ = _get_promotions_text()
 
     assert "Promociones de hoy" in text
     assert "Promo Uno" in text
@@ -67,7 +67,7 @@ def test_best_sellers_text_uses_manual_selection_when_configured() -> None:
         config_service_mock.return_value.get_config.return_value = config
         from controllers.telegram_controller import _get_best_sellers_text
 
-        text = _get_best_sellers_text()
+        text, _ = _get_best_sellers_text()
 
     assert "Más vendidos" in text
     assert "Más Uno" in text
@@ -102,7 +102,7 @@ def test_favorites_text_uses_configured_products() -> None:
         config_service_mock.return_value.get_config.return_value = config
         from controllers.telegram_controller import _get_favorites_text
 
-        text = _get_favorites_text()
+        text, _ = _get_favorites_text()
 
     assert "Favoritos" in text
     assert "Favorito Uno" in text
