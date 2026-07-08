@@ -12,6 +12,7 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass, field
+from copy import deepcopy
 from typing import Any
 
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
@@ -37,6 +38,7 @@ from infrastructure.channels.telegram_fsm import (
 )
 from infrastructure.channels.telegram_menu_flow import (
     CATEGORIES_MENU_SCOPE,
+    CATEGORY_SCOPE_PREFIX,
     MAIN_MENU_SCOPE,
     PEDIDOS_MENU_SCOPE,
     TelegramMenuFlow,
@@ -104,8 +106,15 @@ class BusinessConfigSnapshot:
     version: int = 0
 
 
+@dataclass(frozen=True)
+class StaticMenuPrerenderSnapshot:
+    catalog_version: int = 0
+    plans_by_scope: dict[str, TelegramMenuPlan] = field(default_factory=dict)
+
+
 _catalog_snapshot = CatalogSnapshot()
 _business_config_snapshot = BusinessConfigSnapshot()
+_static_menu_prerender_snapshot = StaticMenuPrerenderSnapshot()
 _catalog_distributed_version_seen = 0
 _catalog_remote_version_checked_at = 0.0
 
@@ -407,6 +416,109 @@ def _active_products_by_category_cache() -> dict[str, list[dict[str, Any]]]:
     return snapshot_products
 
 
+def _copy_menu_plan(
+    plan: TelegramMenuPlan,
+    *,
+    menu_stack: list[str] | None = None,
+) -> TelegramMenuPlan:
+    return TelegramMenuPlan(
+        text=plan.text,
+        reply_markup=deepcopy(plan.reply_markup),
+        state=plan.state,
+        menu_scope=plan.menu_scope,
+        menu_stack=list(menu_stack if menu_stack is not None else plan.menu_stack),
+        expected_input=plan.expected_input,
+        allow_numeric_input=plan.allow_numeric_input,
+        context_updates=deepcopy(plan.context_updates),
+    )
+
+
+def _get_static_menu_prerenders() -> StaticMenuPrerenderSnapshot:
+    global _static_menu_prerender_snapshot
+    catalog_version = _catalog_snapshot.version
+    if (
+        _static_menu_prerender_snapshot.catalog_version == catalog_version
+        and _static_menu_prerender_snapshot.plans_by_scope
+    ):
+        return _static_menu_prerender_snapshot
+
+    flow = _create_menu_flow()
+    plans: dict[str, TelegramMenuPlan] = {}
+    main_plan = flow.render_main_menu()
+    plans[MAIN_MENU_SCOPE] = main_plan
+    categories_plan = flow.render_categories_menu(current_stack=[MAIN_MENU_SCOPE])
+    plans[CATEGORIES_MENU_SCOPE] = categories_plan
+    for category in _active_categories_cache():
+        slug = category.get("slug")
+        if isinstance(slug, str) and slug:
+            scope = f"{CATEGORY_SCOPE_PREFIX}{slug}"
+            plans[scope] = flow.render_category_detail(
+                category_slug=slug,
+                current_stack=[MAIN_MENU_SCOPE, CATEGORIES_MENU_SCOPE],
+            )
+
+    _static_menu_prerender_snapshot = StaticMenuPrerenderSnapshot(
+        catalog_version=catalog_version,
+        plans_by_scope=plans,
+    )
+    logger.info(
+        "[telegram_cache] key=static_menu_prerender refreshed catalog_version=%d plans=%d",
+        catalog_version,
+        len(plans),
+    )
+    return _static_menu_prerender_snapshot
+
+
+def _render_static_menu_plan(
+    scope: str,
+    *,
+    current_stack: list[str] | None = None,
+) -> TelegramMenuPlan | None:
+    snapshot = _get_static_menu_prerenders()
+    plan = snapshot.plans_by_scope.get(scope)
+    if plan is None:
+        return None
+    if scope == MAIN_MENU_SCOPE:
+        return _copy_menu_plan(plan, menu_stack=[MAIN_MENU_SCOPE])
+    if scope == CATEGORIES_MENU_SCOPE:
+        base_stack = current_stack or [MAIN_MENU_SCOPE]
+        return _copy_menu_plan(
+            plan,
+            menu_stack=TelegramMenuFlow._push_scope(base_stack, CATEGORIES_MENU_SCOPE),
+        )
+    if scope.startswith(CATEGORY_SCOPE_PREFIX):
+        base_stack = current_stack or [MAIN_MENU_SCOPE, CATEGORIES_MENU_SCOPE]
+        return _copy_menu_plan(
+            plan,
+            menu_stack=TelegramMenuFlow._push_scope(base_stack, scope),
+        )
+    return None
+
+
+def _render_main_menu_plan() -> TelegramMenuPlan:
+    plan = _render_static_menu_plan(MAIN_MENU_SCOPE)
+    if plan is not None:
+        return plan
+    return _create_menu_flow().render_main_menu()
+
+
+def _render_menu_scope_plan(
+    *,
+    menu_flow: TelegramMenuFlow,
+    scope: str,
+    user_id: str,
+    current_stack: list[str] | None = None,
+) -> TelegramMenuPlan:
+    static_plan = _render_static_menu_plan(scope, current_stack=current_stack)
+    if static_plan is not None:
+        return static_plan
+    return menu_flow.render_scope(
+        scope=scope,
+        user_id=user_id,
+        current_stack=current_stack,
+    )
+
+
 def _create_logged_task(
     coro: Any,
     *,
@@ -450,9 +562,7 @@ async def _prewarm_idle_client_cache(
         if _catalog_snapshot.version == 0:
             await asyncio.to_thread(prime_catalog_cache)
 
-        menu_flow = _create_menu_flow()
-        menu_flow.render_main_menu()
-        menu_flow.render_categories_menu(current_stack=[MAIN_MENU_SCOPE])
+        _get_static_menu_prerenders()
         _log_timing(
             trace_id=trace_id,
             stage="idle_prewarm_done",
@@ -1251,7 +1361,7 @@ async def _process_telegram_update_core(
                 "Ubicación: Santiago, Chile.\n\n"
                 "¿En qué puedo ayudarte hoy?"
             )
-            expired_plan = menu_flow.render_main_menu()
+            expired_plan = _render_main_menu_plan()
             await send_menu_message(
                 bot_token=token,
                 chat_id=chat_id,
@@ -1404,7 +1514,10 @@ async def _process_telegram_update_core(
 
         render_started_at = time.perf_counter()
         if callback_data == "menu:categorias":
-            plan = menu_flow.render_categories_menu(current_stack=current_stack)
+            plan = _render_static_menu_plan(
+                CATEGORIES_MENU_SCOPE,
+                current_stack=current_stack,
+            )
         elif callback_data.startswith("product_select:"):
             product_id = callback_data.split(":", 1)[1]
             purchase_plan = purchase_flow.render_quantity_prompt(product_id=product_id)
@@ -1421,7 +1534,7 @@ async def _process_telegram_update_core(
             quantity = purchase_flow.parse_quantity(callback_data.split(":", 1)[1])
             pending_product_id = runtime_snapshot.context.get("pending_product_id")
             if quantity is None or not isinstance(pending_product_id, str):
-                plan = menu_flow.render_main_menu()
+                plan = _render_static_menu_plan(MAIN_MENU_SCOPE)
                 await _apply_menu_plan(
                     token=token,
                     chat_id=chat_id,
@@ -1447,7 +1560,7 @@ async def _process_telegram_update_core(
         elif callback_data == "cart:change_quantity":
             pending_product_id = runtime_snapshot.context.get("pending_product_id")
             if not isinstance(pending_product_id, str):
-                plan = menu_flow.render_main_menu()
+                plan = _render_static_menu_plan(MAIN_MENU_SCOPE)
                 await _apply_menu_plan(
                     token=token,
                     chat_id=chat_id,
@@ -1476,7 +1589,7 @@ async def _process_telegram_update_core(
             if not isinstance(pending_product_id, str) or not isinstance(
                 pending_quantity, int
             ):
-                plan = menu_flow.render_main_menu()
+                plan = _render_static_menu_plan(MAIN_MENU_SCOPE)
                 await _apply_menu_plan(
                     token=token,
                     chat_id=chat_id,
@@ -1535,10 +1648,20 @@ async def _process_telegram_update_core(
             return
         elif callback_data.startswith("cat_select:"):
             slug = callback_data.split(":", 1)[1]
-            plan = menu_flow.render_category_detail(
-                category_slug=slug,
+            plan = _render_static_menu_plan(
+                f"{CATEGORY_SCOPE_PREFIX}{slug}",
                 current_stack=current_stack,
             )
+            if plan is None:
+                await asyncio.to_thread(prime_catalog_cache)
+                menu_flow = _create_menu_flow()
+                plan = _render_static_menu_plan(
+                    f"{CATEGORY_SCOPE_PREFIX}{slug}",
+                    current_stack=current_stack,
+                ) or menu_flow.render_category_detail(
+                    category_slug=slug,
+                    current_stack=current_stack,
+                )
         elif callback_data == "menu:promociones":
             plan = menu_flow.render_promotions_menu(
                 current_stack=current_stack,
@@ -1613,10 +1736,11 @@ async def _process_telegram_update_core(
             )
             return
         elif callback_data in {"menu:home", "menu:back_to_main", "menu:inicio"}:
-            plan = menu_flow.render_main_menu()
+            plan = _render_static_menu_plan(MAIN_MENU_SCOPE)
         elif callback_data == "menu:back":
             previous_scope = menu_flow.resolve_back_scope(current_stack)
-            plan = menu_flow.render_scope(
+            plan = _render_menu_scope_plan(
+                menu_flow=menu_flow,
                 scope=previous_scope,
                 user_id=user_id,
                 current_stack=current_stack[:-1],
@@ -1701,7 +1825,7 @@ async def _process_telegram_update_core(
     cmd_text = message_text.strip().lower()
     if cmd_text in {"/start", "/cancel", "/exit", "/salir", "/clear", "/reset"}:
         await fsm.reset()
-        home_plan = menu_flow.render_main_menu()
+        home_plan = _render_main_menu_plan()
 
         if cmd_text == "/start":
             start_command_at = time.perf_counter()
@@ -1786,7 +1910,8 @@ async def _process_telegram_update_core(
                 if override_scope.startswith("category:")
                 else [MAIN_MENU_SCOPE, override_scope]
             )
-            plan = menu_flow.render_scope(
+            plan = _render_menu_scope_plan(
+                menu_flow=menu_flow,
                 scope=override_scope,
                 user_id=user_id,
                 current_stack=override_stack[:-1],
@@ -1809,7 +1934,8 @@ async def _process_telegram_update_core(
                 if override_scope.startswith("category:")
                 else [MAIN_MENU_SCOPE, override_scope]
             )
-            plan = menu_flow.render_scope(
+            plan = _render_menu_scope_plan(
+                menu_flow=menu_flow,
                 scope=override_scope,
                 user_id=user_id,
                 current_stack=override_stack[:-1],
@@ -1825,7 +1951,7 @@ async def _process_telegram_update_core(
             return
         pending_product_id = fsm_context.get("pending_product_id")
         if not isinstance(pending_product_id, str):
-            plan = menu_flow.render_main_menu()
+            plan = _render_main_menu_plan()
             await _apply_menu_plan(
                 token=token,
                 chat_id=chat_id,
@@ -1865,7 +1991,8 @@ async def _process_telegram_update_core(
                 if override_scope.startswith("category:")
                 else [MAIN_MENU_SCOPE, override_scope]
             )
-            plan = menu_flow.render_scope(
+            plan = _render_menu_scope_plan(
+                menu_flow=menu_flow,
                 scope=override_scope,
                 user_id=user_id,
                 current_stack=override_stack[:-1],
@@ -1928,7 +2055,7 @@ async def _process_telegram_update_core(
                 invalid_input=True,
             )
         else:
-            plan = menu_flow.render_main_menu()
+            plan = _render_main_menu_plan()
             await _apply_menu_plan(
                 token=token,
                 chat_id=chat_id,
@@ -1956,7 +2083,8 @@ async def _process_telegram_update_core(
                 if override_scope.startswith("category:")
                 else [MAIN_MENU_SCOPE, override_scope]
             )
-            plan = menu_flow.render_scope(
+            plan = _render_menu_scope_plan(
+                menu_flow=menu_flow,
                 scope=override_scope,
                 user_id=user_id,
                 current_stack=override_stack[:-1],
@@ -2159,7 +2287,7 @@ async def _process_telegram_update_core(
     expected_input = ExpectedInput.FREE_TEXT
     allow_numeric_input = False
     if current_state == FSMState.IDLE:
-        home_plan = menu_flow.render_main_menu()
+        home_plan = _render_main_menu_plan()
         reply_markup = home_plan.reply_markup
         menu_scope = home_plan.menu_scope
         menu_stack = home_plan.menu_stack
@@ -2170,7 +2298,8 @@ async def _process_telegram_update_core(
         current_scope = await fsm.get_menu_scope()
         current_stack = await fsm.get_menu_stack()
         if current_scope:
-            current_plan = menu_flow.render_scope(
+            current_plan = _render_menu_scope_plan(
+                menu_flow=menu_flow,
                 scope=current_scope,
                 user_id=user_id,
                 current_stack=current_stack[:-1] if current_stack else None,

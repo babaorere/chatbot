@@ -273,21 +273,22 @@ BusinessConfigSnapshot(...)
 
 ### 8. Pre-render de menus estaticos
 
-- [ ] Pre-renderizar:
+- [x] Pre-renderizar:
   - menu principal
   - menu categorias
   - detalle de categoria por slug
-- [ ] Versionar junto con `CatalogSnapshot.version`.
-- [ ] No incluir datos por usuario en pre-render global.
-- [ ] No pre-renderizar:
+- [x] Versionar junto con `CatalogSnapshot.version`.
+- [x] No incluir datos por usuario en pre-render global.
+- [x] No pre-renderizar:
   - carrito
   - pedidos
   - menus con estado de usuario
-- [ ] Enviar siempre pasando por `send_menu_message` para inyectar version FSM.
-- [ ] Tests:
+- [x] Enviar siempre pasando por `send_menu_message` para inyectar version FSM.
+- [x] Tests:
   - cambio de catalogo invalida pre-render
   - menu por usuario no filtra datos incorrectos
   - botones mantienen callback_data esperado
+- [x] Nota: el pre-render conserva `callback_data` sin `#version`; la version FSM se inyecta en `send_menu_message`.
 
 ### 9. Revisar rutas que hacen DB en render de menus
 
