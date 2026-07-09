@@ -291,3 +291,7 @@ Al terminar esta reevaluacion debe existir:
 | 5 | Logs del Worker ARQ invisibles | `docker compose logs` no mostraba los eventos de trabajos ejecutados. | **Corregido** | Configurado logging básico en el punto de entrada de `arq_worker.py`. |
 | 6 | Vulnerabilidad de cantidades negativas/nulas | Permitía checkout con cantidades $\le 0$, inflando stock y corrompiendo montos de compra. | **Corregido** | Implementadas validaciones de protección en `CartService.add_to_cart` y `OrderService.checkout_cart` con tests paranoicos correspondientes. |
 | 7 | Fallos de Redis/ARQ bloquean respuestas | Redis caído interrumpía el flujo principal del bot durante el lock de concurrencia y los fallos de cleanup podían impactar el callback. | **Corregido** | El webhook ahora degrada a lock local cuando falla Redis y se validó en runtime real con `redis` detenido brevemente; además `_create_logged_task` mantiene desacoplado el ack del cleanup. |
+
+## Regla operativa adicional
+
+- Todo error catastrófico del sistema debe notificarse a la lista de administradores configurada, usando el canal de alertas críticas vigente.

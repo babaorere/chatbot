@@ -41,6 +41,12 @@ router = APIRouter(
 )
 
 
+def _raise_http_for_business_value_error(exc: ValueError) -> None:
+    detail = str(exc)
+    status_code = 404 if "not found" in detail.lower() else 400
+    raise HTTPException(status_code, detail)
+
+
 @router.get("/profile", response_model=BusinessConfigResponse)
 def get_profile(db: Session = Depends(get_db)) -> BusinessConfigResponse:
     try:
@@ -88,6 +94,8 @@ def update_profile(
             )
         prime_human_agent_cache(config.human_agent_available)
         return BusinessConfigResponse.model_validate(config)
+    except ValueError as exc:
+        _raise_http_for_business_value_error(exc)
     except Exception as exc:
         logger.error("business.update_profile failed: %s", exc)
         raise HTTPException(500, "Failed to update profile")
@@ -152,6 +160,8 @@ def create_product(
             )
         refresh_catalog_cache_after_commit("business_me_product_created")
         return ProductResponse.model_validate(product)
+    except ValueError as exc:
+        _raise_http_for_business_value_error(exc)
     except Exception as exc:
         logger.error("business.create_product failed: %s", exc)
         raise HTTPException(500, "Failed to create product")
@@ -183,6 +193,8 @@ def update_product(
             )
         refresh_catalog_cache_after_commit("business_me_product_updated")
         return ProductResponse.model_validate(product)
+    except ValueError as exc:
+        _raise_http_for_business_value_error(exc)
     except Exception as exc:
         logger.error("business.update_product failed: %s", exc)
         raise HTTPException(500, "Failed to update product")
@@ -264,6 +276,8 @@ def import_products(
             "rows_processed": len(rows),
             **result,
         }
+    except ValueError as exc:
+        _raise_http_for_business_value_error(exc)
     except Exception as exc:
         logger.error("business.import_products failed: %s", exc)
         raise HTTPException(500, "Failed to import products")

@@ -53,6 +53,12 @@ router = APIRouter(
 )
 
 
+def _raise_http_for_business_value_error(exc: ValueError) -> None:
+    detail = str(exc)
+    status_code = 404 if "not found" in detail.lower() else 400
+    raise HTTPException(status_code, detail)
+
+
 # ── Profile ──────────────────────────────────────────────────────────────────
 
 
@@ -109,6 +115,8 @@ def update_profile(
         prime_business_config_cache(config)
         prime_human_agent_cache(config.human_agent_available)
         return BusinessConfigResponse.model_validate(config)
+    except ValueError as e:
+        _raise_http_for_business_value_error(e)
     except Exception as e:
         logger.error("update_profile failed: %s", e)
         raise HTTPException(500, "Failed to update profile")
@@ -166,6 +174,8 @@ def create_product(
             )
         refresh_catalog_cache_after_commit("business_config_product_created")
         return ProductResponse.model_validate(product)
+    except ValueError as e:
+        _raise_http_for_business_value_error(e)
     except Exception as e:
         logger.error("create_product failed: %s", e)
         raise HTTPException(500, "Failed to create product")
@@ -199,6 +209,8 @@ def update_product(
             )
         refresh_catalog_cache_after_commit("business_config_product_updated")
         return ProductResponse.model_validate(product)
+    except ValueError as e:
+        _raise_http_for_business_value_error(e)
     except Exception as e:
         logger.error("update_product failed: %s", e)
         raise HTTPException(500, "Failed to update product")
@@ -323,6 +335,8 @@ def import_products(
         }
     except HTTPException:
         raise
+    except ValueError as e:
+        _raise_http_for_business_value_error(e)
     except Exception as e:
         logger.error("import_products failed: %s", e)
         raise HTTPException(500, "Failed to import products")
@@ -390,6 +404,8 @@ async def update_kb_entry(
             is_active=data.is_active,
         )
         return KBEntryResponse.model_validate(entry)
+    except ValueError as e:
+        _raise_http_for_business_value_error(e)
     except Exception as e:
         logger.error("update_kb_entry failed: %s", e)
         raise HTTPException(500, "Failed to update KB entry")
