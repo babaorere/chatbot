@@ -2501,14 +2501,14 @@ async def telegram_webhook(
         extra=f"kind={update_kind}",
     )
 
-    # 1. Concurrency Lock: block concurrent requests from the same user_id (adquirido síncronamente)
+    # 1. Concurrency Lock: prefer Redis, fallback to local lock if Redis is unavailable.
     lock_key = f"lock:telegram:user:{user_id}"
     redis_client = get_redis_client()
     lock_acquired = False
 
     if redis_client is not None:
+        lock_started_at = time.perf_counter()
         try:
-            lock_started_at = time.perf_counter()
             lock_acquired = await redis_client.set(lock_key, "locked", ex=20, nx=True)
             _log_timing(
                 trace_id=trace_id,
@@ -2546,10 +2546,21 @@ async def telegram_webhook(
                     extra=f"detail=duplicate_request_blocked kind={update_kind}",
                 )
                 return {"status": "ok", "detail": "duplicate request blocked"}
-        except Exception as e:
-            logger.exception("Redis concurrency lock error")
-            raise RuntimeError("Failed to acquire Redis concurrency lock") from e
-    else:
+        except Exception:
+            logger.exception(
+                "Redis concurrency lock error; falling back to local lock [user=%s]",
+                user_id,
+            )
+            redis_client = None
+            _log_timing(
+                trace_id=trace_id,
+                stage="redis_lock_fallback_to_local",
+                started_at=lock_started_at,
+                user_id=user_id,
+                extra="reason=redis_lock_error",
+            )
+
+    if redis_client is None:
         lock_started_at = time.perf_counter()
         if user_id in _local_locks:
             logger.warning(

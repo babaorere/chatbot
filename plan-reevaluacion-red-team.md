@@ -143,11 +143,14 @@ Evidencia:
 - Logs runtime confirmaron llamada externa: `editMessageReplyMarkup elapsed_ms=1216.75 status=404 ok=False`.
 - Resultados ARQ sinteticos de RT-3 fueron limpiados de Redis despues de capturar evidencia.
 - `/health` posterior siguio reportando `arq.worker_status=ok`.
+- RT-3 destructivo ejecutado el 2026-07-08 sobre el stack real: `redis` detenido brevemente y webhook callback sintetico respondio `200 scheduled`.
+- El hallazgo previo fue real: antes del fix, con `redis` caido el webhook devolvia `500`.
+- Despues del fix, el lock Redis degrada a lock local y no bloquea el webhook ni el ack en background.
 
 Pruebas:
 - [x] Encolar `job_healthcheck` y verificar ejecucion por ARQ.
 - [x] Encolar cleanup de reply markup con payload serializable en runtime real.
-- [x] Simular fallo de encolado ARQ/Redis y verificar que no bloquea `answerCallbackQuery`.
+- [x] Forzar Redis caido y verificar que el webhook y `answerCallbackQuery` no quedan bloqueados.
 - [x] Verificar heartbeat fresco cada 15s y `/health` `worker_status=ok`.
 
 Pendiente destructivo:
@@ -287,4 +290,4 @@ Al terminar esta reevaluacion debe existir:
 | 4 | Contaminación de DB operacional por Tests | Ejecución local de tests truncaba tablas de la base de datos productiva `chatbot`. | **Corregido** | `conftest.py` ahora deriva dinámicamente y auto-crea `chatbot_test` en modo local de forma segura. |
 | 5 | Logs del Worker ARQ invisibles | `docker compose logs` no mostraba los eventos de trabajos ejecutados. | **Corregido** | Configurado logging básico en el punto de entrada de `arq_worker.py`. |
 | 6 | Vulnerabilidad de cantidades negativas/nulas | Permitía checkout con cantidades $\le 0$, inflando stock y corrompiendo montos de compra. | **Corregido** | Implementadas validaciones de protección en `CartService.add_to_cart` y `OrderService.checkout_cart` con tests paranoicos correspondientes. |
-| 7 | Fallos de ARQ asíncrono bloquean respuestas | Errores en la cola de trabajos o en su encolado podían interrumpir el flujo principal del bot. | **Corregido** | `_create_logged_task` desacopla el ack y la prueba automatizada valida que un fallo simulado de encolado ARQ/Redis no interrumpe `answerCallbackQuery`. |
+| 7 | Fallos de Redis/ARQ bloquean respuestas | Redis caído interrumpía el flujo principal del bot durante el lock de concurrencia y los fallos de cleanup podían impactar el callback. | **Corregido** | El webhook ahora degrada a lock local cuando falla Redis y se validó en runtime real con `redis` detenido brevemente; además `_create_logged_task` mantiene desacoplado el ack del cleanup. |

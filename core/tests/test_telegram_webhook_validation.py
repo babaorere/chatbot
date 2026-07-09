@@ -22,7 +22,8 @@ def setup_mocks():
 
 
 @pytest.mark.asyncio
-async def test_webhook_fails_when_redis_lock_cannot_be_acquired():
+async def test_webhook_falls_back_to_local_lock_when_redis_lock_fails():
+    telegram_controller._local_locks.clear()
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         with (
@@ -33,6 +34,10 @@ async def test_webhook_fails_when_redis_lock_cannot_be_acquired():
                 "controllers.telegram_controller.settings.telegram_bot_token",
                 "fake_token",
             ),
+            patch(
+                "controllers.telegram_controller.process_telegram_update_background",
+                new_callable=AsyncMock,
+            ) as background_mock,
         ):
             redis_instance = MagicMock()
             redis_instance.set = AsyncMock(side_effect=RuntimeError("redis down"))
@@ -49,7 +54,11 @@ async def test_webhook_fails_when_redis_lock_cannot_be_acquired():
             }
 
             response = await client.post("/telegram/webhook/fake_token", json=payload)
-            assert response.status_code == 500
+            assert response.status_code == 200
+            assert response.json() == {"status": "ok", "detail": "scheduled"}
+            background_mock.assert_awaited_once()
+
+    telegram_controller._local_locks.clear()
 
 
 @pytest.mark.asyncio
