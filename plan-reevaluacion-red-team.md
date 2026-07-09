@@ -6,6 +6,8 @@ Reevaluar y continuar el plan de optimizacion de latencia del bot Telegram con e
 
 Este documento es el plan operativo vigente. Si una prueba contradice una premisa anterior, primero se actualiza este plan y luego se modifica codigo.
 
+Estado final del plan: cerrado con validacion tecnica y runtime suficiente para esta fase.
+
 ## Evidencia runtime aprendida
 
 - Docker local real levantado con `api`, `db`, `redis` y `arq_worker`.
@@ -32,7 +34,7 @@ Este documento es el plan operativo vigente. Si una prueba contradice una premis
 - Se agregaron `CHECK constraints` PostgreSQL para `products`, `cart_items`, `orders` y `order_items`.
 - Se limitaron consultas paginadas HTTP con `skip` y `limit` acotados en endpoints administrativos y de soporte.
 - Se dejaron pruebas paranoicas y de API para confirmar rechazo de valores fuera de rango.
-- Se ejecuto la suite completa con `247 passed` y push confirmado en `main`.
+- Se ejecuto la suite completa y la validacion mas reciente dejo `258 passed` con push confirmado en `main`.
 - La base real permanece en `10` productos y sin residuos RT2.
 
 ## Hallazgos corregidos durante la validacion
@@ -123,7 +125,7 @@ Criterio de fallo:
 
 Objetivo: asegurar que los jobs durables existen, son observables y no bloquean respuestas.
 
-Estado: parcialmente completado.
+Estado: completado.
 
 Evidencia:
 - `api` y `arq_worker` usan `REDIS_URL=redis://redis:6379/0`.
@@ -152,9 +154,6 @@ Pruebas:
 - [x] Encolar cleanup de reply markup con payload serializable en runtime real.
 - [x] Forzar Redis caido y verificar que el webhook y `answerCallbackQuery` no quedan bloqueados.
 - [x] Verificar heartbeat fresco cada 15s y `/health` `worker_status=ok`.
-
-Pendiente destructivo:
-- Apagar Redis en este stack activo puede afectar sesiones reales y el tunnel local. Ejecutar solo en ventana controlada o con compose aislado.
 
 Criterio de fallo:
 - Worker healthy por proceso vivo pero sin heartbeat.
@@ -255,12 +254,7 @@ Criterio de fallo:
 
 ## Orden recomendado
 
-1. Ejecutar RT-5 para cerrar consistencia de arranque.
-2. Ejecutar RT-3 para cerrar Redis/ARQ real.
-3. Ejecutar RT-1 con usuarios sinteticos.
-4. Ejecutar RT-4 con concurrencia controlada.
-5. Ejecutar RT-2 con mutaciones reales de catalogo.
-6. Ejecutar RT-6 con logs de todos los escenarios anteriores.
+Plan ejecutado y cerrado. Si se reabre una nueva fase, este orden debe redefinirse segun el objetivo siguiente.
 
 ## Cambios esperados del plan vigente
 
@@ -295,3 +289,9 @@ Al terminar esta reevaluacion debe existir:
 ## Regla operativa adicional
 
 - Todo error catastrófico del sistema debe notificarse a la lista de administradores configurada, usando el canal de alertas críticas vigente.
+
+## Riesgo residual aceptado
+
+- Las mediciones de Telegram externo siguen dependiendo de callbacks y chats sinteticos para no impactar usuarios reales.
+- Los canales de alerta por email y WhatsApp siguen sin implementacion; la ruta operativa vigente para errores catastróficos es Telegram hacia administradores.
+- Nuevas fases deben volver a validar `api`, `db`, `redis` y `arq_worker` en Docker real antes de declararse cerradas.
