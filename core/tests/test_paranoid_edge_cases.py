@@ -18,6 +18,11 @@ from models.order import Order, OrderItem
 from models.product import Product
 from models.user import User
 from controllers.order_controller import CartAddRequest, CartRemoveRequest
+from domain.business_config import (
+    FEATURED_PRODUCTS_MAX_ITEMS,
+    normalize_business_hours_config_json,
+    normalize_featured_products_config_json,
+)
 from services.category_service import slugify
 from services.product_service import ProductService
 from services.rag_policy import RAGPolicyService, RAGIntent
@@ -162,7 +167,51 @@ def test_local_locks_leak_safety():
 
 
 # ============================================================================
-# 5. LIMIT / SYSTEM-BREAKING TESTS: Cart and Checkout Edge Cases
+# 5. PARANOID TESTS: Business Config Typed Contracts
+# ============================================================================
+
+
+def test_featured_config_rejects_oversized_product_selection():
+    ids = [
+        f"00000000-0000-0000-0000-{index:012d}"
+        for index in range(FEATURED_PRODUCTS_MAX_ITEMS + 1)
+    ]
+
+    with pytest.raises(ValueError, match="Invalid featured products config"):
+        normalize_featured_products_config_json(
+            {
+                "enabled": True,
+                "title": "Demasiados productos",
+                "mode": "manual",
+                "product_ids": ids,
+            }
+        )
+
+
+def test_featured_config_rejects_nested_injection_payloads():
+    with pytest.raises(ValueError, match="Invalid featured products config"):
+        normalize_featured_products_config_json(
+            {
+                "enabled": True,
+                "title": "<script>alert('x')</script>",
+                "mode": "manual",
+                "product_ids": [{"$ne": None}],
+            }
+        )
+
+
+def test_business_hours_rejects_non_dict_and_unknown_schedule_fields():
+    with pytest.raises(ValueError, match="Input should be a valid dictionary"):
+        normalize_business_hours_config_json(["lunes", "martes"])
+
+    with pytest.raises(ValueError, match="Extra inputs are not permitted"):
+        normalize_business_hours_config_json(
+            {"Lunes": {"open": "10:00", "close": "12:00", "timezone": "UTC"}}
+        )
+
+
+# ============================================================================
+# 6. LIMIT / SYSTEM-BREAKING TESTS: Cart and Checkout Edge Cases
 # ============================================================================
 
 

@@ -6,7 +6,7 @@ import math
 import uuid
 from decimal import Decimal
 
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from sqlalchemy.orm import Session
 
@@ -431,6 +431,28 @@ class ProductService:
         except Exception as exc:
             logger.error("import_from_rows failed: %s", exc)
             raise
+
+    def load_import_rows_from_workbook_bytes(
+        self,
+        workbook_bytes: bytes,
+    ) -> list[dict[str, object]]:
+        workbook = load_workbook(io.BytesIO(workbook_bytes), data_only=True)
+        worksheet = workbook.active
+        rows: list[dict[str, object]] = []
+        for row in worksheet.iter_rows(min_row=2, values_only=True):
+            if all(cell is None for cell in row):
+                continue
+            row_dict = {
+                FIELD_NAMES[index]: row[index] if index < len(row) else None
+                for index in range(len(FIELD_NAMES))
+            }
+            rows.append(row_dict)
+        return rows
+
+    def import_from_workbook_bytes(self, workbook_bytes: bytes) -> dict[str, int]:
+        rows = self.load_import_rows_from_workbook_bytes(workbook_bytes)
+        summary = self.import_from_rows(rows)
+        return {"rows_processed": len(rows), **summary}
 
     def export_to_workbook(self) -> io.BytesIO:
         """Exporta todos los productos al formato Excel (.xlsx)."""

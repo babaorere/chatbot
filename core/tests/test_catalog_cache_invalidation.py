@@ -58,20 +58,15 @@ def test_business_me_import_products_refreshes_catalog_cache_after_transaction()
     db = MagicMock()
     file = MagicMock()
     file.file.read.return_value = b"xlsx-bytes"
-    row_values = [None for _ in business_controller.FIELD_NAMES]
-    row_values[business_controller.FIELD_NAMES.index("name")] = "Producto importado"
-
-    workbook = MagicMock()
-    workbook.active.iter_rows.return_value = [tuple(row_values)]
 
     with (
-        patch("controllers.business_controller.load_workbook", return_value=workbook),
         patch("controllers.business_controller.ProductService") as service_mock,
         patch(
             "controllers.business_controller.refresh_catalog_cache_after_commit"
         ) as refresh_mock,
     ):
-        service_mock.return_value.import_from_rows.return_value = {
+        service_mock.return_value.import_from_workbook_bytes.return_value = {
+            "rows_processed": 1,
             "created": 1,
             "updated": 0,
             "errors": 0,
@@ -82,6 +77,9 @@ def test_business_me_import_products_refreshes_catalog_cache_after_transaction()
     assert result["status"] == "ok"
     assert result["rows_processed"] == 1
     db.begin.assert_called_once()
+    service_mock.return_value.import_from_workbook_bytes.assert_called_once_with(
+        b"xlsx-bytes"
+    )
     refresh_mock.assert_called_once_with("business_me_products_imported")
 
 

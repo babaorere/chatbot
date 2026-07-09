@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from pydantic import BaseModel
+from domain.business_config import BusinessHoursConfig, FeaturedProductsConfig
 
 
 class BusinessConfigResponse(BaseModel):
@@ -13,10 +14,10 @@ class BusinessConfigResponse(BaseModel):
     city: str | None
     website: str | None
     logo_url: str | None
-    business_hours: dict | None
-    promotions_config: dict | None
-    best_sellers_config: dict | None
-    favorites_config: dict | None
+    business_hours: BusinessHoursConfig | None
+    promotions_config: FeaturedProductsConfig | None
+    best_sellers_config: FeaturedProductsConfig | None
+    favorites_config: FeaturedProductsConfig | None
     estimated_attention_minutes: int
     human_agent_available: bool
 

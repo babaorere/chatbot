@@ -7,10 +7,14 @@ from fastapi import HTTPException
 
 from controllers.business_config_controller import (
     import_products as admin_import_products,
+    update_profile as admin_update_profile,
     update_kb_entry,
     update_product as admin_update_product,
 )
-from controllers.business_controller import update_product as tenant_update_product
+from controllers.business_controller import (
+    update_product as tenant_update_product,
+    update_profile as tenant_update_profile,
+)
 from controllers.category_controller import list_categories
 from controllers.order_controller import add_to_cart, cancel_order, update_order_status
 from controllers.chat_controller import chat
@@ -119,17 +123,12 @@ def test_admin_import_products_maps_row_validation_error_to_400() -> None:
     db_mock = MagicMock()
     file_mock = MagicMock(filename="productos.xlsx")
     file_mock.file.read.return_value = b"fake-bytes"
-    workbook_mock = MagicMock()
-    worksheet_mock = MagicMock()
-    worksheet_mock.iter_rows.return_value = [("SKU-1", "Producto", None)]
-    workbook_mock.active = worksheet_mock
 
     with (
-        patch("controllers.business_config_controller.load_workbook", return_value=workbook_mock),
         patch("controllers.business_config_controller.ProductService") as svc_mock,
     ):
         svc_instance = MagicMock()
-        svc_instance.import_from_rows.side_effect = ValueError(
+        svc_instance.import_from_workbook_bytes.side_effect = ValueError(
             "Fila 1: Stock debe estar entre 0 y 1000000"
         )
         svc_mock.return_value = svc_instance
@@ -139,6 +138,72 @@ def test_admin_import_products_maps_row_validation_error_to_400() -> None:
 
     assert exc_info.value.status_code == 400
     assert "Fila 1" in exc_info.value.detail
+
+
+def test_admin_update_profile_maps_invalid_config_to_400() -> None:
+    db_mock = MagicMock()
+    data = MagicMock(
+        name=None,
+        email=None,
+        phone=None,
+        address=None,
+        city=None,
+        website=None,
+        logo_url=None,
+        business_hours={"Lunes": {"open": "25:00", "close": "26:00"}},
+        promotions_config=None,
+        best_sellers_config=None,
+        favorites_config=None,
+        estimated_attention_minutes=None,
+        human_agent_available=None,
+    )
+
+    with patch("controllers.business_config_controller.BusinessConfigService") as svc_mock:
+        svc_mock.return_value.update_config.side_effect = ValueError(
+            "Invalid business hours config"
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            admin_update_profile(data=data, db=db_mock)
+
+    assert exc_info.value.status_code == 400
+    assert "Invalid business hours config" in exc_info.value.detail
+
+
+def test_tenant_update_profile_primes_full_business_config_cache() -> None:
+    db_mock = MagicMock()
+    config_mock = MagicMock(human_agent_available=True)
+    data = MagicMock(
+        name=None,
+        email=None,
+        phone=None,
+        address=None,
+        city=None,
+        website=None,
+        logo_url=None,
+        business_hours=None,
+        promotions_config=None,
+        best_sellers_config=None,
+        favorites_config=None,
+        estimated_attention_minutes=None,
+        human_agent_available=True,
+    )
+
+    with (
+        patch("controllers.business_controller.BusinessConfigService") as svc_mock,
+        patch("controllers.business_controller.prime_business_config_cache") as prime_mock,
+        patch("controllers.business_controller.prime_human_agent_cache"),
+        patch(
+            "controllers.business_controller.BusinessConfigResponse.model_validate",
+            return_value={"ok": True},
+        ),
+    ):
+        svc_mock.return_value.update_config.return_value = config_mock
+
+        result = tenant_update_profile(data=data, db=db_mock)
+
+    assert result == {"ok": True}
+    prime_mock.assert_called_once_with(config=config_mock)
 
 
 @pytest.mark.asyncio

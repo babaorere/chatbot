@@ -14,6 +14,7 @@ from controllers.telegram_controller import _get_human_agent_available
 from controllers.telegram_controller import prime_human_agent_cache
 from config.settings import Settings
 from application.use_cases.process_message import ProcessMessageUseCase
+from services import business_config_cache_service
 from services.session_service_factory import create_session_service
 
 
@@ -283,12 +284,13 @@ def test_get_human_agent_available_raises_when_config_lookup_fails() -> None:
     db_mock = MagicMock()
 
     with (
-        patch(
-            "controllers.telegram_controller._human_agent_cache",
+        patch.object(
+            business_config_cache_service,
+            "_human_agent_cache",
             {"value": True, "expires_at": 0},
         ),
-        patch("controllers.telegram_controller.SessionLocal", return_value=db_mock),
-        patch("controllers.telegram_controller.BusinessConfigService") as svc_mock,
+        patch("services.business_config_cache_service.SessionLocal", return_value=db_mock),
+        patch("services.business_config_cache_service.BusinessConfigService") as svc_mock,
     ):
         svc_instance = MagicMock()
         svc_instance.get_config.side_effect = RuntimeError("db down")
@@ -303,7 +305,7 @@ def test_get_human_agent_available_raises_when_config_lookup_fails() -> None:
 def test_get_human_agent_available_uses_primed_cache_without_db_lookup() -> None:
     prime_human_agent_cache(False, ttl_seconds=300)
 
-    with patch("controllers.telegram_controller.SessionLocal") as session_local_mock:
+    with patch("services.business_config_cache_service.SessionLocal") as session_local_mock:
         assert _get_human_agent_available() is False
 
     session_local_mock.assert_not_called()

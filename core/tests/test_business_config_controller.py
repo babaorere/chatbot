@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from controllers.business_config_controller import update_profile
+from controllers.business_config_controller import import_products, update_profile
 
 
 def test_update_profile_refreshes_human_agent_cache() -> None:
@@ -48,7 +48,7 @@ def test_update_profile_refreshes_human_agent_cache() -> None:
             db=db_mock,
         )
 
-    prime_config_mock.assert_called_once_with(config_mock)
+    prime_config_mock.assert_called_once_with(config=config_mock)
     prime_mock.assert_called_once_with(False)
     svc_instance.update_config.assert_called_once()
     update_kwargs = svc_instance.update_config.call_args.kwargs
@@ -57,3 +57,37 @@ def test_update_profile_refreshes_human_agent_cache() -> None:
     assert update_kwargs["favorites_config"] is None
     assert update_kwargs["estimated_attention_minutes"] == 45
     assert result == {"ok": True}
+
+
+def test_import_products_delegates_workbook_parsing_to_product_service() -> None:
+    db_mock = MagicMock()
+    file_mock = MagicMock(filename="productos.xlsx")
+    file_mock.file.read.return_value = b"fake-xlsx"
+
+    with (
+        patch("controllers.business_config_controller.ProductService") as svc_mock,
+        patch(
+            "controllers.business_config_controller.refresh_catalog_cache_after_commit"
+        ) as refresh_mock,
+    ):
+        svc_instance = MagicMock()
+        svc_instance.import_from_workbook_bytes.return_value = {
+            "rows_processed": 2,
+            "created": 1,
+            "updated": 1,
+            "errors": 0,
+        }
+        svc_mock.return_value = svc_instance
+
+        result = import_products(file=file_mock, db=db_mock)
+
+    assert result == {
+        "status": "ok",
+        "rows_processed": 2,
+        "created": 1,
+        "updated": 1,
+        "errors": 0,
+    }
+    db_mock.begin.assert_called_once()
+    svc_instance.import_from_workbook_bytes.assert_called_once_with(b"fake-xlsx")
+    refresh_mock.assert_called_once_with("business_config_products_imported")

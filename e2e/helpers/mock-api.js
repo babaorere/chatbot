@@ -256,7 +256,7 @@ async function mockTenantApi(page) {
         enabled: true,
         title: "Promociones destacadas",
         mode: "manual",
-        product_ids: ["prod-1"],
+        product_ids: ["00000000-0000-0000-0000-000000000101"],
       },
       best_sellers_config: {
         enabled: true,
@@ -268,7 +268,7 @@ async function mockTenantApi(page) {
         enabled: true,
         title: "Favoritos",
         mode: "manual",
-        product_ids: ["prod-1"],
+        product_ids: ["00000000-0000-0000-0000-000000000101"],
       },
       human_agent_available: true,
       status: "active",
@@ -276,7 +276,7 @@ async function mockTenantApi(page) {
     counts: { users: 42, conversations: 128 },
     products: [
       {
-        id: "prod-1",
+        id: "00000000-0000-0000-0000-000000000101",
         name: "Alto del Carmen 35°",
         category: "Piscos",
         format: "750ml",

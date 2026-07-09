@@ -15,16 +15,27 @@ from dataclasses import dataclass, field
 from copy import deepcopy
 from typing import Any
 
-from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Request, BackgroundTasks
 from sqlalchemy import func
 
 from app.container import ProcessMessageUCDep, get_redis_client
+from application.use_cases.telegram_webhook import TelegramWebhookUseCase
 from application.use_cases.commands import ProcessMessageCommand
 from config.database import SessionLocal
+from domain.business_config import (
+    FeaturedProductsConfig,
+    normalize_featured_products_config,
+)
 from models.order import Order, OrderItem
 from models.product import Product
 from models.category import Category
-from services.business_config_service import BusinessConfigService
+from services.business_config_cache_service import (
+    BusinessConfigSnapshot,
+    get_business_config_snapshot,
+    get_human_agent_available,
+    prime_business_config_cache as service_prime_business_config_cache,
+    prime_human_agent_cache as service_prime_human_agent_cache,
+)
 from services.job_dispatcher import JobDispatcher
 from services.cart_service import CartService
 from services.product_service import ProductService
@@ -91,29 +102,12 @@ class CatalogSnapshot:
 
 
 @dataclass(frozen=True)
-class BusinessConfigSnapshot:
-    name: str = ""
-    phone: str = ""
-    address: str = ""
-    city: str = ""
-    business_hours: dict[str, Any] = field(default_factory=dict)
-    promotions_config: dict[str, Any] = field(default_factory=dict)
-    best_sellers_config: dict[str, Any] = field(default_factory=dict)
-    favorites_config: dict[str, Any] = field(default_factory=dict)
-    estimated_attention_minutes: int | None = None
-    human_agent_available: bool = True
-    loaded_at: float = 0.0
-    version: int = 0
-
-
-@dataclass(frozen=True)
 class StaticMenuPrerenderSnapshot:
     catalog_version: int = 0
     plans_by_scope: dict[str, TelegramMenuPlan] = field(default_factory=dict)
 
 
 _catalog_snapshot = CatalogSnapshot()
-_business_config_snapshot = BusinessConfigSnapshot()
 _static_menu_prerender_snapshot = StaticMenuPrerenderSnapshot()
 _catalog_distributed_version_seen = 0
 _catalog_remote_version_checked_at = 0.0
@@ -301,64 +295,11 @@ async def _refresh_catalog_cache_if_remote_version_changed(
 
 
 def prime_business_config_cache(config: Any | None = None) -> BusinessConfigSnapshot:
-    """Carga configuración estable del negocio para evitar DB en menús no transaccionales."""
-    global _business_config_snapshot, _human_agent_cache
-    started_at = time.perf_counter()
-    db = None
-    try:
-        if config is None:
-            db = SessionLocal()
-            config = BusinessConfigService(db).get_config()
-
-        next_snapshot = BusinessConfigSnapshot(
-            name=str(getattr(config, "name", "") or ""),
-            phone=str(getattr(config, "phone", "") or ""),
-            address=str(getattr(config, "address", "") or ""),
-            city=str(getattr(config, "city", "") or ""),
-            business_hours=dict(getattr(config, "business_hours", {}) or {}),
-            promotions_config=dict(getattr(config, "promotions_config", {}) or {}),
-            best_sellers_config=dict(getattr(config, "best_sellers_config", {}) or {}),
-            favorites_config=dict(getattr(config, "favorites_config", {}) or {}),
-            estimated_attention_minutes=getattr(
-                config,
-                "estimated_attention_minutes",
-                None,
-            ),
-            human_agent_available=bool(getattr(config, "human_agent_available", True)),
-            loaded_at=time.time(),
-            version=_business_config_snapshot.version + 1,
-        )
-        _business_config_snapshot = next_snapshot
-        _human_agent_cache = {
-            "value": next_snapshot.human_agent_available,
-            "expires_at": time.time() + 300,
-        }
-        _log_timing(
-            trace_id="business-config-cache-prime",
-            stage="business_config_cache_primed",
-            started_at=started_at,
-            extra=f"version={next_snapshot.version}",
-        )
-        return next_snapshot
-    except Exception as exc:
-        logger.exception("Failed to prime business config cache")
-        raise RuntimeError("Failed to prime business config cache") from exc
-    finally:
-        if db is not None:
-            db.close()
+    return service_prime_business_config_cache(config=config, log_timing=_log_timing)
 
 
 def _get_business_config_snapshot() -> BusinessConfigSnapshot:
-    if _business_config_snapshot.version > 0:
-        logger.info(
-            "[telegram_cache] key=business_config hit version=%d age_seconds=%.2f",
-            _business_config_snapshot.version,
-            time.time() - _business_config_snapshot.loaded_at,
-        )
-        return _business_config_snapshot
-
-    logger.info("[telegram_cache] key=business_config miss")
-    return prime_business_config_cache()
+    return get_business_config_snapshot(log_timing=_log_timing)
 
 
 def _elapsed_ms(start: float) -> float:
@@ -748,55 +689,24 @@ async def send_menu_message(
     return msg_id
 
 
-_human_agent_cache: dict[str, Any] = {"value": True, "expires_at": 0}
-
-
 def prime_human_agent_cache(value: bool, ttl_seconds: int = 300) -> None:
     """Carga en memoria el estado de atención humana para evitar un lookup inicial en DB."""
-    global _human_agent_cache
-    _human_agent_cache = {
-        "value": value,
-        "expires_at": time.time() + ttl_seconds,
-    }
+    service_prime_human_agent_cache(value, ttl_seconds=ttl_seconds)
 
 
 def _get_human_agent_available() -> bool:
     """Retrieves whether a human agent is currently available from business configuration with caching."""
-    global _human_agent_cache
-    now = time.time()
-    if now < _human_agent_cache["expires_at"]:
-        logger.info(
-            "[telegram_cache] key=human_agent_available hit ttl_remaining=%.2f value=%s",
-            _human_agent_cache["expires_at"] - now,
-            _human_agent_cache["value"],
-        )
-        return _human_agent_cache["value"]
-
-    logger.info("[telegram_cache] key=human_agent_available miss")
-    db = SessionLocal()
-    try:
-        cfg = BusinessConfigService(db).get_config()
-        snapshot = prime_business_config_cache(cfg)
-        return snapshot.human_agent_available
-    except Exception as exc:
-        logger.exception("Failed to resolve human agent availability")
-        raise RuntimeError("Failed to resolve human agent availability") from exc
-    finally:
-        db.close()
+    return get_human_agent_available(log_timing=_log_timing)
 
 
 def _format_money(value: float) -> str:
     return f"${value:,.0f}"
 
 
-def _parse_featured_section(config: dict[str, Any] | None) -> dict[str, Any]:
-    data = config or {}
-    return {
-        "enabled": bool(data.get("enabled", False)),
-        "title": str(data.get("title") or "").strip(),
-        "mode": "automatic" if data.get("mode") == "automatic" else "manual",
-        "product_ids": [str(product_id) for product_id in data.get("product_ids", [])],
-    }
+def _parse_featured_section(config: FeaturedProductsConfig | dict[str, Any] | None) -> FeaturedProductsConfig:
+    if isinstance(config, FeaturedProductsConfig):
+        return config
+    return normalize_featured_products_config(config or {})
 
 
 def _load_products_by_ids(db, product_ids: list[str]) -> list[Product]:
@@ -877,20 +787,21 @@ def _build_empty_cart_text() -> str:
 def _get_promotions_text() -> tuple[str, list[str]]:
     cfg = _get_business_config_snapshot()
     section = _parse_featured_section(cfg.promotions_config)
-    title = section["title"] or "Promociones destacadas del momento:"
-    if not section["enabled"]:
+    title = section.title or "Promociones destacadas del momento:"
+    product_ids = [str(product_id) for product_id in section.product_ids]
+    if not section.enabled:
         return _build_empty_featured_text(
             title,
             "Aún no hay promociones publicadas.",
         ), []
 
-    cached_products = _cached_featured_products_by_ids(section["product_ids"])
+    cached_products = _cached_featured_products_by_ids(product_ids)
     if cached_products:
         return _build_cached_featured_products_text(title, cached_products)
 
     db = SessionLocal()
     try:
-        products = _load_products_by_ids(db, section["product_ids"])
+        products = _load_products_by_ids(db, product_ids)
         if not products:
             product_svc = ProductService(db)
             products = product_svc.list_products(
@@ -931,22 +842,23 @@ def _get_promotions_text() -> tuple[str, list[str]]:
 def _get_best_sellers_text() -> tuple[str, list[str]]:
     cfg = _get_business_config_snapshot()
     section = _parse_featured_section(cfg.best_sellers_config)
-    title = section["title"] or "Más vendidos del momento:"
-    if not section["enabled"]:
+    title = section.title or "Más vendidos del momento:"
+    product_ids = [str(product_id) for product_id in section.product_ids]
+    if not section.enabled:
         return _build_empty_featured_text(
             title,
             "Todavía no hay más vendidos para mostrar.",
         ), []
 
-    if section["mode"] == "manual" and section["product_ids"]:
-        cached_products = _cached_featured_products_by_ids(section["product_ids"])
+    if section.mode == "manual" and product_ids:
+        cached_products = _cached_featured_products_by_ids(product_ids)
         if cached_products:
             return _build_cached_featured_products_text(title, cached_products)
 
     db = SessionLocal()
     try:
-        if section["mode"] == "manual" and section["product_ids"]:
-            products = _load_products_by_ids(db, section["product_ids"])
+        if section.mode == "manual" and product_ids:
+            products = _load_products_by_ids(db, product_ids)
             products = [p for p in products if p.is_available]
             lines = [title, ""]
             product_names = []
@@ -980,7 +892,7 @@ def _get_best_sellers_text() -> tuple[str, list[str]]:
             .all()
         )
         if not rows:
-            products = _load_products_by_ids(db, section["product_ids"])
+            products = _load_products_by_ids(db, product_ids)
             products = [p for p in products if p.is_available]
             if products:
                 lines = [title, ""]
@@ -1025,20 +937,21 @@ def _get_best_sellers_text() -> tuple[str, list[str]]:
 def _get_favorites_text() -> tuple[str, list[str]]:
     cfg = _get_business_config_snapshot()
     section = _parse_featured_section(cfg.favorites_config)
-    title = section["title"] or "Productos favoritos:"
-    if not section["enabled"]:
+    title = section.title or "Productos favoritos:"
+    product_ids = [str(product_id) for product_id in section.product_ids]
+    if not section.enabled:
         return _build_empty_featured_text(
             title,
             "Aún no hay productos favoritos publicados.",
         ), []
 
-    cached_products = _cached_featured_products_by_ids(section["product_ids"])
+    cached_products = _cached_featured_products_by_ids(product_ids)
     if cached_products:
         return _build_cached_featured_products_text(title, cached_products)
 
     db = SessionLocal()
     try:
-        products = _load_products_by_ids(db, section["product_ids"])
+        products = _load_products_by_ids(db, product_ids)
         products = [p for p in products if p.is_available]
         lines = [title, ""]
         product_names = []
@@ -2447,199 +2360,18 @@ async def telegram_webhook(
     process_message_uc: ProcessMessageUCDep,
     background_tasks: BackgroundTasks,
 ) -> dict[str, Any]:
-    """Recibe updates de Telegram, valida el webhook y agenda su procesamiento asíncrono."""
-    webhook_started_at = time.perf_counter()
-    if token != settings.telegram_bot_token:
-        logger.warning("Unauthorized webhook request with token: %s", token)
-        raise HTTPException(403, "Forbidden: Invalid Telegram bot token")
-
-    try:
-        payload = await request.json()
-    except Exception as e:
-        logger.error("Failed to parse Telegram payload: %s", e)
-        raise HTTPException(400, "Invalid JSON payload")
-
-    # Detectar tipo de update: Mensaje o Callback Query
-    message_obj = payload.get("message") or payload.get("edited_message")
-    callback_query = payload.get("callback_query")
-
-    if not message_obj and not callback_query:
-        return {"status": "ok", "detail": "no message or callback in payload"}
-
-    # Resolver chat_id y user_id de forma unificada
-    chat_id = None
-    user_id = None
-    callback_query_id = None
-    msg_obj = None
-    if callback_query:
-        from_obj = callback_query.get("from")
-        msg_obj = callback_query.get("message")
-        chat_id = msg_obj.get("chat", {}).get("id") if msg_obj else None
-        user_id = str(from_obj.get("id")) if from_obj else str(chat_id)
-        callback_query_id = callback_query.get("id")
-    else:
-        chat_obj = message_obj.get("chat")
-        from_obj = message_obj.get("from")
-        chat_id = chat_obj.get("id") if chat_obj else None
-        user_id = str(from_obj.get("id") if from_obj else chat_id)
-
-    if not user_id or not chat_id:
-        return {"status": "ok", "detail": "invalid user_id or chat_id"}
-
-    update_kind = "callback" if callback_query else "message"
-    raw_update_id = payload.get("update_id")
-    trace_id = (
-        f"tg:{user_id}:{raw_update_id}"
-        if raw_update_id is not None
-        else f"tg:{user_id}:{int(time.time() * 1000)}"
+    """Recibe updates de Telegram y delega el flujo HTTP/concurrencia al caso de uso."""
+    use_case = TelegramWebhookUseCase(
+        telegram_bot_token=settings.telegram_bot_token,
+        get_redis_client=get_redis_client,
+        answer_callback_query=answer_telegram_callback_query,
+        process_update_background=process_telegram_update_background,
+        log_timing=_log_timing,
+        local_locks=_local_locks,
     )
-    _log_timing(
-        trace_id=trace_id,
-        stage="webhook_parsed",
-        started_at=webhook_started_at,
-        user_id=user_id,
-        extra=f"kind={update_kind}",
-    )
-
-    # 1. Concurrency Lock: prefer Redis, fallback to local lock if Redis is unavailable.
-    lock_key = f"lock:telegram:user:{user_id}"
-    redis_client = get_redis_client()
-    lock_acquired = False
-
-    if redis_client is not None:
-        lock_started_at = time.perf_counter()
-        try:
-            lock_acquired = await redis_client.set(lock_key, "locked", ex=20, nx=True)
-            _log_timing(
-                trace_id=trace_id,
-                stage="redis_lock_checked",
-                started_at=lock_started_at,
-                user_id=user_id,
-                extra=f"acquired={bool(lock_acquired)}",
-            )
-            if not lock_acquired:
-                logger.warning(
-                    "Concurrency warning: duplicate request from user %s blocked",
-                    user_id,
-                )
-                if callback_query:
-                    callback_query_id = callback_query.get("id")
-                if callback_query_id:
-                    background_tasks.add_task(
-                        answer_telegram_callback_query,
-                        bot_token=token,
-                        callback_query_id=callback_query_id,
-                        text="Procesando tu solicitud anterior, por favor espera...",
-                        trace_id=trace_id,
-                    )
-                    _log_timing(
-                        trace_id=trace_id,
-                        stage="duplicate_callback_deferred",
-                        started_at=webhook_started_at,
-                        user_id=user_id,
-                    )
-                _log_timing(
-                    trace_id=trace_id,
-                    stage="webhook_response_ready",
-                    started_at=webhook_started_at,
-                    user_id=user_id,
-                    extra=f"detail=duplicate_request_blocked kind={update_kind}",
-                )
-                return {"status": "ok", "detail": "duplicate request blocked"}
-        except Exception:
-            logger.exception(
-                "Redis concurrency lock error; falling back to local lock [user=%s]",
-                user_id,
-            )
-            redis_client = None
-            _log_timing(
-                trace_id=trace_id,
-                stage="redis_lock_fallback_to_local",
-                started_at=lock_started_at,
-                user_id=user_id,
-                extra="reason=redis_lock_error",
-            )
-
-    if redis_client is None:
-        lock_started_at = time.perf_counter()
-        if user_id in _local_locks:
-            logger.warning(
-                "Local concurrency warning: duplicate request from user %s blocked",
-                user_id,
-            )
-            if callback_query:
-                callback_query_id = callback_query.get("id")
-            if callback_query_id:
-                background_tasks.add_task(
-                    answer_telegram_callback_query,
-                    bot_token=token,
-                    callback_query_id=callback_query_id,
-                    text="Procesando tu solicitud anterior, por favor espera...",
-                    trace_id=trace_id,
-                )
-                _log_timing(
-                    trace_id=trace_id,
-                    stage="duplicate_callback_deferred",
-                    started_at=webhook_started_at,
-                    user_id=user_id,
-                )
-            _log_timing(
-                trace_id=trace_id,
-                stage="webhook_response_ready",
-                started_at=webhook_started_at,
-                user_id=user_id,
-                extra=f"detail=duplicate_request_blocked kind={update_kind}",
-            )
-            return {"status": "ok", "detail": "duplicate request blocked"}
-        _local_locks.add(user_id)
-        lock_acquired = True
-        _log_timing(
-            trace_id=trace_id,
-            stage="local_lock_checked",
-            started_at=lock_started_at,
-            user_id=user_id,
-            extra="acquired=True",
-        )
-
-    # 2. Programar ejecución en segundo plano y responder de inmediato
-    schedule_started_at = time.perf_counter()
-    background_tasks.add_task(
-        process_telegram_update_background,
+    return await use_case.execute(
         token=token,
-        chat_id=chat_id,
-        user_id=user_id,
-        message_obj=message_obj,
-        callback_query=callback_query,
-        callback_query_id=callback_query_id,
-        msg_obj=msg_obj if callback_query else None,
+        request=request,
         process_message_uc=process_message_uc,
-        lock_key=lock_key,
-        lock_acquired=lock_acquired,
-        redis_client=redis_client,
-        trace_id=trace_id,
-        webhook_started_at=webhook_started_at,
+        background_tasks=background_tasks,
     )
-    _log_timing(
-        trace_id=trace_id,
-        stage="background_task_scheduled",
-        started_at=schedule_started_at,
-        user_id=user_id,
-        extra=f"kind={update_kind}",
-    )
-
-    _log_timing(
-        trace_id=trace_id,
-        stage="webhook_scheduled",
-        started_at=webhook_started_at,
-        user_id=user_id,
-        extra=f"lock_acquired={lock_acquired} kind={update_kind}",
-    )
-    _log_timing(
-        trace_id=trace_id,
-        stage="webhook_response_ready",
-        started_at=webhook_started_at,
-        user_id=user_id,
-        extra=f"detail=scheduled kind={update_kind}",
-    )
-
-    return {"status": "ok", "detail": "scheduled"}

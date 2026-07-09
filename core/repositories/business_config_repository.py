@@ -8,17 +8,13 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from config.settings import settings
+from domain.business_config import default_featured_products_config_json
 from models.business_config import BusinessConfig
 from repositories.base import JpaRepository
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_FEATURED_CONFIG: dict[str, Any] = {
-    "enabled": False,
-    "title": "",
-    "mode": "manual",
-    "product_ids": [],
-}
+_DEFAULT_FEATURED_CONFIG: dict[str, Any] = default_featured_products_config_json()
 
 
 class BusinessConfigRepository(JpaRepository[BusinessConfig]):
@@ -49,11 +45,11 @@ class BusinessConfigRepository(JpaRepository[BusinessConfig]):
                 self.save(config)
                 self.db.commit()
             else:
-                if config.promotions_config is None:
+                if not config.promotions_config:
                     config.promotions_config = deepcopy(_DEFAULT_FEATURED_CONFIG)
-                if config.best_sellers_config is None:
+                if not config.best_sellers_config:
                     config.best_sellers_config = deepcopy(_DEFAULT_FEATURED_CONFIG)
-                if config.favorites_config is None:
+                if not config.favorites_config:
                     config.favorites_config = deepcopy(_DEFAULT_FEATURED_CONFIG)
                 if config.estimated_attention_minutes is None:
                     config.estimated_attention_minutes = 30

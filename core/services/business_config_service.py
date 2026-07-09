@@ -1,20 +1,17 @@
 from __future__ import annotations
 
 import logging
-from copy import deepcopy
 from typing import Any
 from sqlalchemy.orm import Session
+from domain.business_config import (
+    default_featured_products_config_json,
+    normalize_business_hours_config_json,
+    normalize_featured_products_config_json,
+)
 from models.business_config import BusinessConfig
 from repositories.business_config_repository import BusinessConfigRepository
 
 logger = logging.getLogger(__name__)
-
-_DEFAULT_FEATURED_CONFIG: dict[str, Any] = {
-    "enabled": False,
-    "title": "",
-    "mode": "manual",
-    "product_ids": [],
-}
 
 
 class BusinessConfigService:
@@ -24,7 +21,9 @@ class BusinessConfigService:
 
     def get_config(self) -> BusinessConfig:
         try:
-            return self.repo.get_config()
+            config = self.repo.get_config()
+            self._normalize_existing_config(config)
+            return config
         except Exception as e:
             logger.error("BusinessConfigService.get_config failed: %s", e)
             raise
@@ -62,7 +61,9 @@ class BusinessConfigService:
             if logo_url is not None:
                 config.logo_url = logo_url
             if business_hours is not None:
-                config.business_hours = business_hours
+                config.business_hours = self._normalize_business_hours_config(
+                    business_hours
+                )
             if promotions_config is not None:
                 config.promotions_config = self._normalize_featured_config(
                     promotions_config
@@ -90,15 +91,24 @@ class BusinessConfigService:
             raise
 
     def _normalize_featured_config(self, config: dict[str, Any]) -> dict[str, Any]:
-        normalized = {**deepcopy(_DEFAULT_FEATURED_CONFIG), **config}
-        product_ids = normalized.get("product_ids") or []
-        normalized["product_ids"] = [str(product_id) for product_id in product_ids]
-        normalized["enabled"] = bool(normalized.get("enabled", False))
-        normalized["mode"] = (
-            "automatic" if normalized.get("mode") == "automatic" else "manual"
+        return normalize_featured_products_config_json(config)
+
+    def _normalize_business_hours_config(self, config: dict[str, Any]) -> dict[str, Any]:
+        return normalize_business_hours_config_json(config)
+
+    def _normalize_existing_config(self, config: BusinessConfig) -> None:
+        config.business_hours = normalize_business_hours_config_json(
+            config.business_hours or {}
         )
-        normalized["title"] = str(normalized.get("title", "")).strip()
-        return normalized
+        config.promotions_config = normalize_featured_products_config_json(
+            config.promotions_config or default_featured_products_config_json()
+        )
+        config.best_sellers_config = normalize_featured_products_config_json(
+            config.best_sellers_config or default_featured_products_config_json()
+        )
+        config.favorites_config = normalize_featured_products_config_json(
+            config.favorites_config or default_featured_products_config_json()
+        )
 
     def _normalize_attention_minutes(self, value: int) -> int:
         minutes = int(value)

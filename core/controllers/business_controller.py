@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import io
 import logging
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
-from openpyxl import load_workbook
 from sqlalchemy.orm import Session
 
 from app.security import get_current_tenant_user
@@ -17,10 +15,6 @@ from config.value_limits import (
     PAGINATION_SKIP_MAX,
     PAGINATION_SKIP_MIN,
 )
-from controllers.telegram_controller import (
-    prime_human_agent_cache,
-    refresh_catalog_cache_after_commit,
-)
 from dtos import (
     BusinessConfigResponse,
     BusinessConfigUpdateRequest,
@@ -29,8 +23,12 @@ from dtos import (
     ProductUpdateRequest,
 )
 from services import BusinessConfigService, ProductService
+from services.business_config_cache_service import (
+    prime_business_config_cache,
+    prime_human_agent_cache,
+)
+from services.catalog_cache_service import refresh_catalog_cache_after_commit
 from services.order_service import OrderService
-from services.product_service import FIELD_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -74,24 +72,13 @@ def update_profile(
                 website=data.website,
                 logo_url=data.logo_url,
                 business_hours=data.business_hours,
-                promotions_config=(
-                    data.promotions_config.model_dump(mode="json")
-                    if data.promotions_config is not None
-                    else None
-                ),
-                best_sellers_config=(
-                    data.best_sellers_config.model_dump(mode="json")
-                    if data.best_sellers_config is not None
-                    else None
-                ),
-                favorites_config=(
-                    data.favorites_config.model_dump(mode="json")
-                    if data.favorites_config is not None
-                    else None
-                ),
+                promotions_config=data.promotions_config,
+                best_sellers_config=data.best_sellers_config,
+                favorites_config=data.favorites_config,
                 estimated_attention_minutes=data.estimated_attention_minutes,
                 human_agent_available=data.human_agent_available,
             )
+        prime_business_config_cache(config=config)
         prime_human_agent_cache(config.human_agent_available)
         return BusinessConfigResponse.model_validate(config)
     except ValueError as exc:
@@ -257,25 +244,10 @@ def import_products(
 ) -> dict:
     try:
         content = file.file.read()
-        workbook = load_workbook(io.BytesIO(content), data_only=True)
-        rows: list[dict[str, object]] = []
-        for row in workbook.active.iter_rows(min_row=2, values_only=True):
-            if all(cell is None for cell in row):
-                continue
-            rows.append(
-                {
-                    FIELD_NAMES[index]: row[index] if index < len(row) else None
-                    for index in range(len(FIELD_NAMES))
-                }
-            )
         with db.begin():
-            result = ProductService(db).import_from_rows(rows)
+            result = ProductService(db).import_from_workbook_bytes(content)
         refresh_catalog_cache_after_commit("business_me_products_imported")
-        return {
-            "status": "ok",
-            "rows_processed": len(rows),
-            **result,
-        }
+        return {"status": "ok", **result}
     except ValueError as exc:
         _raise_http_for_business_value_error(exc)
     except Exception as exc:

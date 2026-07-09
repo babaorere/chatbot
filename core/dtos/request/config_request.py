@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import uuid
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -11,13 +11,6 @@ from config.value_limits import (
 )
 
 
-class FeaturedProductsConfigRequest(BaseModel):
-    enabled: bool = False
-    title: str = Field(..., min_length=1, max_length=120)
-    mode: str = Field(default="manual", pattern="^(manual|automatic)$")
-    product_ids: list[uuid.UUID] = Field(default_factory=list)
-
-
 class BusinessConfigUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=100)
     email: str | None = Field(None, max_length=255)
@@ -26,10 +19,10 @@ class BusinessConfigUpdateRequest(BaseModel):
     city: str | None = Field(None, max_length=100)
     website: str | None = Field(None, max_length=255)
     logo_url: str | None = Field(None, max_length=500)
-    business_hours: dict | None = None
-    promotions_config: FeaturedProductsConfigRequest | None = None
-    best_sellers_config: FeaturedProductsConfigRequest | None = None
-    favorites_config: FeaturedProductsConfigRequest | None = None
+    business_hours: dict[str, Any] | None = None
+    promotions_config: dict[str, Any] | None = None
+    best_sellers_config: dict[str, Any] | None = None
+    favorites_config: dict[str, Any] | None = None
     estimated_attention_minutes: int | None = Field(None, ge=1, le=1440)
     human_agent_available: bool | None = None
 

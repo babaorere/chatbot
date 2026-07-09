@@ -8,8 +8,8 @@ from pydantic import BaseModel, Field
 
 from app.security import require_tenant_or_admin_access
 from config.database import get_db, safe_transaction
-from controllers.telegram_controller import refresh_catalog_cache_after_commit
 from services.category_service import CategoryService
+from services.catalog_cache_service import refresh_catalog_cache_after_commit
 
 logger = logging.getLogger(__name__)
 

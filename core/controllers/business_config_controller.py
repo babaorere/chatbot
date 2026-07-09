@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import io
 import logging
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
-from openpyxl import load_workbook
 from sqlalchemy.orm import Session
 
 from app.security import get_admin_api_key
@@ -17,11 +15,6 @@ from config.value_limits import (
     PAGINATION_SKIP_MAX,
     PAGINATION_SKIP_MIN,
 )
-from controllers.telegram_controller import (
-    prime_business_config_cache,
-    prime_human_agent_cache,
-    refresh_catalog_cache_after_commit,
-)
 from services import (
     BusinessConfigService,
     KBService,
@@ -29,7 +22,11 @@ from services import (
     UserService,
     ConversationService,
 )
-from services.product_service import FIELD_NAMES
+from services.business_config_cache_service import (
+    prime_business_config_cache,
+    prime_human_agent_cache,
+)
+from services.catalog_cache_service import refresh_catalog_cache_after_commit
 from dtos import (
     BusinessConfigUpdateRequest,
     BusinessConfigResponse,
@@ -94,25 +91,13 @@ def update_profile(
                 website=data.website,
                 logo_url=data.logo_url,
                 business_hours=data.business_hours,
-                promotions_config=(
-                    data.promotions_config.model_dump(mode="json")
-                    if data.promotions_config is not None
-                    else None
-                ),
-                best_sellers_config=(
-                    data.best_sellers_config.model_dump(mode="json")
-                    if data.best_sellers_config is not None
-                    else None
-                ),
-                favorites_config=(
-                    data.favorites_config.model_dump(mode="json")
-                    if data.favorites_config is not None
-                    else None
-                ),
+                promotions_config=data.promotions_config,
+                best_sellers_config=data.best_sellers_config,
+                favorites_config=data.favorites_config,
                 estimated_attention_minutes=data.estimated_attention_minutes,
                 human_agent_available=data.human_agent_available,
             )
-        prime_business_config_cache(config)
+        prime_business_config_cache(config=config)
         prime_human_agent_cache(config.human_agent_available)
         return BusinessConfigResponse.model_validate(config)
     except ValueError as e:
@@ -308,29 +293,13 @@ def import_products(
         raise HTTPException(400, "Solo se aceptan archivos .xlsx")
     try:
         contents = file.file.read()
-        wb = load_workbook(io.BytesIO(contents), data_only=True)
-        ws = wb.active
-
-        # Primera fila = cabeceras (las ignoramos, usamos FIELD_NAMES por posición)
-        rows: list[dict[str, object]] = []
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            # Saltar filas completamente en blanco
-            if all(cell is None for cell in row):
-                continue
-            row_dict = {
-                FIELD_NAMES[i]: row[i] if i < len(row) else None
-                for i in range(len(FIELD_NAMES))
-            }
-            rows.append(row_dict)
-
         product_svc = ProductService(db)
         with db.begin():
-            summary = product_svc.import_from_rows(rows)
+            summary = product_svc.import_from_workbook_bytes(contents)
         refresh_catalog_cache_after_commit("business_config_products_imported")
 
         return {
             "status": "ok",
-            "rows_processed": len(rows),
             **summary,
         }
     except HTTPException:
