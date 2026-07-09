@@ -46,6 +46,8 @@ async def chat(
             user_id=result.user_id,
             response=result.response,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         request_id = (
             getattr(fastapi_request.state, "request_id", "unknown")
@@ -53,7 +55,7 @@ async def chat(
             else "unknown"
         )
         logger.error("Chat endpoint failed [request_id=%s]: %s", request_id, e)
-        raise
+        raise HTTPException(500, "Failed to process chat message")
 
 
 @router.post("/stream")

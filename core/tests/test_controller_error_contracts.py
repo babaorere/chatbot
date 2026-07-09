@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -13,7 +13,10 @@ from controllers.business_config_controller import (
 from controllers.business_controller import update_product as tenant_update_product
 from controllers.category_controller import list_categories
 from controllers.order_controller import add_to_cart, cancel_order, update_order_status
+from controllers.chat_controller import chat
+from controllers.session_controller import get_session_history, list_conversations
 from controllers.user_controller import create_user
+from dtos.request import ChatRequest
 
 
 def test_create_user_hides_internal_error_details() -> None:
@@ -212,3 +215,55 @@ def test_cancel_order_maps_unauthorized_to_403() -> None:
 
     assert exc_info.value.status_code == 403
     assert exc_info.value.detail == "No autorizado para cancelar este pedido"
+
+
+@pytest.mark.asyncio
+async def test_chat_hides_internal_error_details_in_http_500() -> None:
+    uc_mock = AsyncMock()
+    uc_mock.execute.side_effect = RuntimeError("llm backend exploded")
+    request_dto = ChatRequest(
+        user_id="123",
+        platform="web",
+        message="hola",
+        session_id="preview-123",
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await chat(
+            request=request_dto,
+            process_message_uc=uc_mock,
+            fastapi_request=None,
+            token_data={"sub": "123"},
+        )
+
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.detail == "Failed to process chat message"
+
+
+@pytest.mark.asyncio
+async def test_get_session_history_hides_internal_error_details() -> None:
+    llm_mock = AsyncMock()
+    llm_mock.get_session_history.side_effect = RuntimeError("history backend exploded")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_session_history(
+            session_id="s1",
+            user_id="u1",
+            db=MagicMock(),
+            llm=llm_mock,
+            fastapi_request=None,
+        )
+
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.detail == "Failed to retrieve session history"
+
+
+def test_list_conversations_hides_internal_error_details() -> None:
+    db_mock = MagicMock()
+    db_mock.execute.side_effect = RuntimeError("rls exploded")
+
+    with pytest.raises(HTTPException) as exc_info:
+        list_conversations(user_id=1, db=db_mock, fastapi_request=None)
+
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.detail == "Failed to list conversations"

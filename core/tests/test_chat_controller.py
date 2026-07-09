@@ -69,7 +69,7 @@ async def test_chat_raises_403_when_user_id_mismatch() -> None:
 
 
 @pytest.mark.asyncio
-async def test_chat_error_propagation_without_silent_fallback() -> None:
+async def test_chat_hides_internal_error_details() -> None:
     uc_mock = AsyncMock()
     uc_mock.execute.side_effect = RuntimeError("Database connection lost")
 
@@ -80,13 +80,16 @@ async def test_chat_error_propagation_without_silent_fallback() -> None:
         session_id="preview-123",
     )
 
-    with pytest.raises(RuntimeError, match="Database connection lost"):
+    with pytest.raises(HTTPException) as exc_info:
         await chat(
             request=request_dto,
             process_message_uc=uc_mock,
             fastapi_request=None,
             token_data={"sub": "123"},
         )
+
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.detail == "Failed to process chat message"
 
 
 @pytest.mark.asyncio
