@@ -63,3 +63,40 @@ async def test_job_check_llm_latency_uses_worker_db_session() -> None:
         session_id="s1",
     )
     db_mock.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_job_notify_critical_issue_notifies_admin_chat_id_fallback() -> None:
+    db_mock = MagicMock()
+    db_mock.query.return_value.all.return_value = []
+
+    with (
+        patch("jobs.alerts.SessionLocal", return_value=db_mock),
+        patch("services.alert_service.SystemSettingRepository") as repo_mock,
+        patch(
+            "services.alert_service.send_telegram_message",
+            new_callable=AsyncMock,
+        ) as send_mock,
+        patch("services.alert_service.settings") as settings_mock,
+    ):
+        settings_mock.telegram_bot_token = "fake_bot_token"
+        repo_instance = MagicMock()
+        repo_instance.get_value.return_value = [123456789]
+        repo_mock.return_value = repo_instance
+
+        await job_notify_critical_issue(
+            {},
+            title="Fallo critico",
+            details="Stack trace resumido",
+            alert_type="error",
+            user_id="u1",
+            session_id="s1",
+            event_id="evt-3",
+        )
+
+    send_mock.assert_awaited_once_with(
+        "fake_bot_token",
+        123456789,
+        "🚨 *ALERTA CRÍTICA: Fallo critico*\n\nStack trace resumido\n\n🏷️ *Tipo:* `error`",
+    )
+    db_mock.close.assert_called_once()
