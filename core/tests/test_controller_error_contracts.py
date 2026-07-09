@@ -12,7 +12,7 @@ from controllers.business_config_controller import (
 )
 from controllers.business_controller import update_product as tenant_update_product
 from controllers.category_controller import list_categories
-from controllers.order_controller import add_to_cart
+from controllers.order_controller import add_to_cart, cancel_order, update_order_status
 from controllers.user_controller import create_user
 
 
@@ -159,3 +159,56 @@ async def test_update_kb_entry_maps_missing_entry_to_404() -> None:
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Knowledge base entry 123 not found"
+
+
+def test_update_order_status_maps_missing_order_to_404() -> None:
+    db_mock = MagicMock()
+    data = MagicMock(status="confirmed")
+
+    with patch("controllers.order_controller.OrderService") as svc_mock:
+        svc_instance = MagicMock()
+        svc_instance.update_order_status.side_effect = ValueError("Order not found")
+        svc_mock.return_value = svc_instance
+
+        with pytest.raises(HTTPException) as exc_info:
+            update_order_status(
+                order_id="00000000-0000-0000-0000-000000000123",
+                data=data,
+                db=db_mock,
+                admin_key="admin",
+            )
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Order not found"
+
+
+def test_cancel_order_maps_unauthorized_to_403() -> None:
+    db_mock = MagicMock()
+    data = MagicMock(user_id="u1", platform="telegram")
+
+    with (
+        patch("controllers.order_controller.UserService") as user_svc_mock,
+        patch("controllers.order_controller.OrderService") as order_svc_mock,
+        patch("controllers.order_controller.safe_transaction") as tx_mock,
+    ):
+        user_instance = MagicMock()
+        user_instance.get_or_create.return_value = MagicMock(id=99)
+        user_svc_mock.return_value = user_instance
+
+        order_instance = MagicMock()
+        order_instance.cancel_order.side_effect = ValueError(
+            "No autorizado para cancelar este pedido"
+        )
+        order_svc_mock.return_value = order_instance
+        tx_mock.return_value.__enter__.return_value = None
+        tx_mock.return_value.__exit__.return_value = None
+
+        with pytest.raises(HTTPException) as exc_info:
+            cancel_order(
+                order_id="00000000-0000-0000-0000-000000000123",
+                data=data,
+                db=db_mock,
+            )
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "No autorizado para cancelar este pedido"

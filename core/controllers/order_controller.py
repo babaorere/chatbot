@@ -18,6 +18,16 @@ from config.value_limits import CART_QUANTITY_MAX
 
 logger = logging.getLogger(__name__)
 
+
+def _raise_http_for_order_value_error(exc: ValueError) -> None:
+    detail = str(exc)
+    lowered = detail.lower()
+    if "not found" in lowered or "no encontrado" in lowered:
+        raise HTTPException(404, detail)
+    if "not authorized" in lowered or "no autorizado" in lowered:
+        raise HTTPException(403, detail)
+    raise HTTPException(400, detail)
+
 router = APIRouter(prefix="/orders", tags=["orders"])
 
 
@@ -97,7 +107,7 @@ def add_to_cart(
 
         return {"status": "success", "cart": cart.to_dict()}
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        _raise_http_for_order_value_error(e)
     except Exception as e:
         logger.error("add_to_cart endpoint failed: %s", e)
         raise HTTPException(500, "Failed to add item to cart")
@@ -121,7 +131,7 @@ def remove_from_cart(
 
         return {"status": "success", "cart": cart.to_dict()}
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        _raise_http_for_order_value_error(e)
     except Exception as e:
         logger.error("remove_from_cart endpoint failed: %s", e)
         raise HTTPException(500, "Failed to remove item from cart")
@@ -181,7 +191,7 @@ def checkout(
             ),
         }
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        _raise_http_for_order_value_error(e)
     except Exception as e:
         logger.error("checkout endpoint failed: %s", e)
         raise HTTPException(500, "Failed to place order")
@@ -239,7 +249,7 @@ def update_order_status(
             order = order_svc.update_order_status(order_id, data.status)
         return {"status": "success", "order": order.to_dict()}
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        _raise_http_for_order_value_error(e)
     except Exception as e:
         logger.error("update_order_status endpoint failed: %s", e)
         raise HTTPException(500, "Failed to update order status")
@@ -262,7 +272,7 @@ def cancel_order(
 
         return {"status": "success", "order": order.to_dict()}
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        _raise_http_for_order_value_error(e)
     except Exception as e:
         logger.error("cancel_order endpoint failed [order_id=%s]: %s", order_id, e)
         raise HTTPException(500, "Failed to cancel order")

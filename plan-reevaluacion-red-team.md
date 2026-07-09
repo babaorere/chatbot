@@ -277,7 +277,7 @@ Al terminar esta reevaluacion debe existir:
 - Reporte de latencia p50/p95/p99 por stage. (Completado y documentado en logs de diagnóstico/QA)
 - Tabla de fallos red-team con estado: corregido, reproducible pendiente, o descartado con evidencia. (Completado - ver tabla abajo)
 - Actualizacion de este plan si algun paso queda reemplazado. (Completado)
-- Tests automatizados para todo hallazgo corregido. (Completado: 248 tests activos)
+- Tests automatizados para todo hallazgo corregido. (Completado: 254 tests activos)
 - Validacion Docker final con `api`, `db`, `redis` y `arq_worker` healthy. (Completado: verificado con docker ps)
 
 ### Tabla de Fallos Red-Team
