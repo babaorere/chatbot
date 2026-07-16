@@ -30,6 +30,26 @@ La unidad de aislamiento será el tenant:
 - No se definirá por ahora un límite comercial visible de mensajes mensuales.
   Esto no elimina los límites técnicos internos de seguridad y costos.
 
+## Decisiones operativas confirmadas
+
+- La clave inicial funcionará como medida de seguridad y credencial de entrada
+  al frontend del tenant.
+- Telegram se conectará durante desarrollo mediante un túnel público HTTPS.
+- La activación de cada tenant será una acción del administrador de la
+  plataforma.
+- El administrador de la plataforma tendrá control global.
+- El administrador del tenant tendrá control completo sobre la configuración y
+  operación de su propio negocio, sin acceso a otros tenants ni a la
+  plataforma global.
+- Cada tenant tendrá su propio archivo `docker-compose.yml`.
+- El tenant podrá modificar la información y configuración autorizada de su
+  negocio desde su frontend.
+- La suspensión podrá aplicar una o más acciones: bloquear acceso, desactivar
+  Telegram, detener contenedores y conservar o restringir datos, según la
+  decisión del administrador.
+- Se aceptan límites técnicos internos para prevenir abuso, bucles de mensajes
+  y costos inesperados, aunque no se anuncie un límite comercial al cliente.
+
 La frase “Redis en el mismo Docker” se interpreta aquí como “en el mismo
 stack Docker Compose”, pero en un contenedor separado de PostgreSQL y de la
 API. No se recomienda poner API, PostgreSQL y Redis en un único contenedor.
@@ -199,22 +219,39 @@ datos, pero aumenta el costo operativo y la complejidad de actualizaciones.
 
 ## Decisiones pendientes
 
-1. ¿La clave entregada al tenant será de un solo uso y obligará a crear una
-   credencial propia?
-2. ¿El bot se conectará mediante webhook público o polling durante el trabajo
-   local? Un webhook requiere una URL HTTPS accesible desde Telegram.
-3. ¿La activación del tenant será manual por el administrador o existirá un
-   flujo de aprobación desde el panel principal?
-4. ¿Qué roles administrativos tendrá inicialmente el tenant: administrador,
-   operador y solo lectura?
-5. ¿Cada tenant tendrá un `docker-compose.yml` y un volumen PostgreSQL propios,
-   o se usará un único Compose local para levantar varias instalaciones?
-6. ¿Qué información debe poder cambiar el tenant sin intervención del
-   administrador: preguntas frecuentes, horarios, mensajes, usuarios y bot?
-7. ¿Qué acción se ejecutará cuando un tenant sea suspendido: detener Docker,
-   desactivar el bot, bloquear el acceso o las tres?
-8. Aunque no exista un límite comercial visible, ¿aceptamos límites técnicos
-   internos para proteger el servicio ante abuso, bucles o costos inesperados?
+1. ¿La clave inicial será de un solo uso y obligará a crear una contraseña
+   propia? Recomendación: sí; la clave no debería quedar como contraseña
+   permanente ni almacenarse en texto plano.
+2. ¿El túnel local será Cloudflare Tunnel u otra herramienta equivalente?
+3. ¿Existirá un frontend central del administrador de la plataforma, separado
+   del frontend administrativo de cada tenant?
+4. ¿La creación del `docker-compose.yml`, volúmenes, credenciales y túnel será
+   manual en la primera etapa o se automatizará desde el panel central?
+5. ¿La suspensión debe conservar los datos para reactivación y respaldos, o
+   también podrá ordenar una eliminación irreversible con confirmación?
+6. ¿Qué límites técnicos iniciales aceptamos para mensajes, tamaño, frecuencia
+   y consumo del modelo?
+7. ¿Qué proveedor de túnel y dominio usaremos para que cada tenant tenga una
+   URL estable de webhook?
+8. ¿Qué partes concretas del proyecto `chatbot` deseas evaluar primero como
+   referencia: Telegram, autenticación, RAG, frontend tenant o despliegue?
+
+## Regla para reutilizar el proyecto existente
+
+El proyecto `chatbot` se considera una fuente de ideas y código candidato, no
+una base que deba copiarse completa. Antes de incorporar cualquier módulo se
+debe revisar:
+
+- responsabilidad del módulo;
+- dependencias;
+- límites entre dominio, aplicación e infraestructura;
+- aislamiento por tenant;
+- compatibilidad con el contrato de esta hoja de ruta;
+- pruebas existentes;
+- deuda técnica que se estaría trasladando.
+
+Ninguna pieza se incorpora sin una decisión explícita y una prueba que demuestre
+que queda acoplada correctamente.
 
 ## Regla de avance
 
