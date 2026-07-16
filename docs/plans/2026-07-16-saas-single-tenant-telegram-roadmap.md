@@ -217,6 +217,91 @@ Cada tenant debe poseer credenciales, volúmenes, backups, logs y dominio o
 ruta de webhook aislados. El despliegue separado reduce el riesgo de fuga de
 datos, pero aumenta el costo operativo y la complejidad de actualizaciones.
 
+## Revisión del `chatbot` existente
+
+El proyecto actual ya contiene piezas reutilizables, pero no deben trasladarse
+sin revisión:
+
+- `docker-compose.yml` local con API, worker, PostgreSQL, Redis, Nginx y
+  Cloudflare Tunnel;
+- `Dockerfile.postgres` basado en `postgres:18-alpine` y con pgvector;
+- frontend administrativo en `/admin/`;
+- frontend de tenant en `/tenant/`;
+- autenticación de tenant mediante invitaciones, hash de tokens, contraseñas,
+  sesiones y cookies HttpOnly;
+- endpoints administrativos protegidos por una clave global;
+- límites de frecuencia configurados en Nginx.
+
+La configuración de producción actual usa Redis externo en algunos servicios,
+por lo que no debe copiarse directamente al objetivo inicial. Para esta etapa
+se mantiene Redis dentro del Compose de cada tenant.
+
+## Revisión del `.env` de referencia
+
+El `.env` actual contiene variables mezcladas de varias responsabilidades:
+
+### Por tenant
+
+- nombre y slug del negocio;
+- configuración comercial básica;
+- token del bot de Telegram;
+- `DATABASE_URL`, usuario, contraseña y nombre de base;
+- `REDIS_URL` y namespace;
+- `ALLOWED_ORIGINS`;
+- estado y configuración del tenant.
+
+### Por instalación o seguridad del tenant
+
+- `JWT_SECRET`;
+- clave de activación o administración local;
+- secretos Docker;
+- credenciales de base de datos;
+- credenciales del túnel si cada Compose posee su propio túnel.
+
+### De plataforma o proveedor
+
+- claves de modelos y embeddings;
+- modelo principal y modelos de fallback;
+- políticas de costo y uso;
+- observabilidad central, si se agrega posteriormente.
+
+### Variables que requieren revisión
+
+`DEFAULT_TENANT_*`, `TENANT_PORTAL_*`, `ADMIN_PORTAL_*`, `REDIS_UPSTASH_*` y
+claves de proveedores aparecen en el entorno de referencia, pero no todas están
+consumidas por el código actual. No deben formar parte del contrato final hasta
+confirmar su uso o eliminarlas.
+
+La configuración final debe tener un `.env.example` sin secretos, secretos
+Docker separados y un inventario que indique si cada variable pertenece a la
+plataforma, a la instalación o al tenant.
+
+No se debe copiar el `.env` real al repositorio ni a un nuevo tenant. Los
+secretos que hayan sido expuestos durante pruebas deben rotarse antes de usar
+la instalación fuera del entorno local.
+
+## Primera etapa prioritaria
+
+La primera implementación debe ser el **vertical slice de activación y
+aislamiento de un tenant**, no RAG ni voz.
+
+Debe probar:
+
+1. levantar un Compose local limpio;
+2. activar un tenant mediante una clave inicial;
+3. obligar al tenant a crear su credencial propia;
+4. acceder al frontend administrativo del tenant;
+5. configurar un bot Telegram propio;
+6. registrar el webhook mediante Cloudflare Tunnel;
+7. recibir un mensaje y asociarlo a esa instalación;
+8. suspender el tenant y verificar que acceso, bot y servicios respeten el
+   estado elegido;
+9. conservar datos y poder reactivar desde un respaldo.
+
+Si este flujo no es sólido, cualquier reutilización de Telegram, RAG o voz
+trasladaría la arquitectura fragmentada del proyecto existente al nuevo
+producto.
+
 ## Decisiones pendientes
 
 1. ¿La clave inicial será de un solo uso y obligará a crear una contraseña
