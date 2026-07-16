@@ -50,6 +50,19 @@ La unidad de aislamiento será el tenant:
 - Se aceptan límites técnicos internos para prevenir abuso, bucles de mensajes
   y costos inesperados, aunque no se anuncie un límite comercial al cliente.
 
+## Confirmaciones adicionales
+
+- Cloudflare Tunnel es el túnel previsto para el desarrollo local y ya está
+  definido en el Compose de referencia.
+- El frontend central del administrador será una aplicación independiente,
+  ejecutada en otro Docker Compose y con su propia base de datos.
+- Cada instalación de tenant tendrá su propio Compose, frontend administrativo,
+  API, PostgreSQL, Redis y configuración de Telegram.
+- Cada instalación tendrá nombres de proyecto, puertos y volúmenes aislados
+  para permitir varios tenants locales simultáneos.
+- El ciclo de vida inicial del tenant usará estados explícitos como
+  `pending`, `active`, `suspended` y `deleted`.
+
 La frase “Redis en el mismo Docker” se interpreta aquí como “en el mismo
 stack Docker Compose”, pero en un contenedor separado de PostgreSQL y de la
 API. No se recomienda poner API, PostgreSQL y Redis en un único contenedor.
