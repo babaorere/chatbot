@@ -15,6 +15,21 @@ La unidad de aislamiento será el tenant:
 - Redis funcionará dentro del mismo stack Docker del tenant;
 - PostgreSQL utilizará `postgres:18-alpine` como imagen objetivo.
 
+## Decisiones confirmadas
+
+- La primera ejecución será local mediante Docker Compose.
+- La migración a VPS se realizará después de validar el flujo local.
+- Cada tenant tendrá su propio bot y token de Telegram.
+- El administrador configurará el bot desde el frontend administrativo del
+  tenant; el token debe llegar y permanecer únicamente en el backend.
+- Los clientes finales interactuarán solo por Telegram durante la primera
+  etapa.
+- El tenant tendrá un frontend administrativo propio.
+- El administrador de la plataforma entregará una clave al tenant y podrá
+  activar, suspender o mantener inactivo ese tenant.
+- No se definirá por ahora un límite comercial visible de mensajes mensuales.
+  Esto no elimina los límites técnicos internos de seguridad y costos.
+
 La frase “Redis en el mismo Docker” se interpreta aquí como “en el mismo
 stack Docker Compose”, pero en un contenedor separado de PostgreSQL y de la
 API. No se recomienda poner API, PostgreSQL y Redis en un único contenedor.
@@ -62,7 +77,8 @@ Incluye:
 - respaldo y restauración básica.
 
 Criterio de avance: una instalación limpia inicia, verifica salud de API,
-PostgreSQL y Redis, y puede restaurarse desde un respaldo de prueba.
+PostgreSQL y Redis, permite configurar un tenant y puede restaurarse desde un
+respaldo de prueba.
 
 ### Etapa 1: Telegram y atención básica
 
@@ -70,7 +86,7 @@ Objetivo: completar un flujo de atención real para un tenant.
 
 Incluye:
 
-- un bot de Telegram por tenant;
+- un bot de Telegram por tenant, configurado desde el frontend administrativo;
 - webhook seguro;
 - recepción y envío de mensajes;
 - identificación de conversación y usuario;
@@ -80,8 +96,9 @@ Incluye:
 - registro de mensajes y errores;
 - fallback claro cuando no existe información suficiente.
 
-Criterio de avance: un cliente puede preguntar por Telegram, recibir una
-respuesta basada en información aprobada y ser derivado sin perder el contexto.
+Criterio de avance: un tenant activo puede configurar su bot, un cliente puede
+preguntar por Telegram, recibir una respuesta basada en información aprobada y
+ser derivado sin perder el contexto.
 
 ### Etapa 2: base de conocimiento y RAG controlado
 
@@ -182,18 +199,22 @@ datos, pero aumenta el costo operativo y la complejidad de actualizaciones.
 
 ## Decisiones pendientes
 
-1. ¿El primer despliegue será un Docker Compose por tenant en un VPS o se
-   utilizará un orquestador desde el inicio?
-2. ¿Cada tenant tendrá un bot de Telegram propio o existirá un bot compartido
-   con identificación por configuración?
-3. ¿Los “multi usuarios” serán solo usuarios internos del negocio, o también
-   habrá cuentas para clientes finales?
-4. ¿Qué proveedor administrará backups, almacenamiento y monitoreo?
-5. ¿Qué límite mensual de mensajes y costo de modelo tendrá cada plan?
-6. ¿El aislamiento por tenant se validará también mediante pruebas de
-   seguridad automatizadas?
-7. ¿Qué proceso creará, actualizará, suspenderá y eliminará una instalación de
-   tenant?
+1. ¿La clave entregada al tenant será de un solo uso y obligará a crear una
+   credencial propia?
+2. ¿El bot se conectará mediante webhook público o polling durante el trabajo
+   local? Un webhook requiere una URL HTTPS accesible desde Telegram.
+3. ¿La activación del tenant será manual por el administrador o existirá un
+   flujo de aprobación desde el panel principal?
+4. ¿Qué roles administrativos tendrá inicialmente el tenant: administrador,
+   operador y solo lectura?
+5. ¿Cada tenant tendrá un `docker-compose.yml` y un volumen PostgreSQL propios,
+   o se usará un único Compose local para levantar varias instalaciones?
+6. ¿Qué información debe poder cambiar el tenant sin intervención del
+   administrador: preguntas frecuentes, horarios, mensajes, usuarios y bot?
+7. ¿Qué acción se ejecutará cuando un tenant sea suspendido: detener Docker,
+   desactivar el bot, bloquear el acceso o las tres?
+8. Aunque no exista un límite comercial visible, ¿aceptamos límites técnicos
+   internos para proteger el servicio ante abuso, bucles o costos inesperados?
 
 ## Regla de avance
 
