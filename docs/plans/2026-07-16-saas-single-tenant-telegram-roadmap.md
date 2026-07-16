@@ -61,7 +61,9 @@ La unidad de aislamiento será el tenant:
 - Cada instalación tendrá nombres de proyecto, puertos y volúmenes aislados
   para permitir varios tenants locales simultáneos.
 - El ciclo de vida inicial del tenant usará estados explícitos como
-  `pending`, `active`, `suspended` y `deleted`.
+  `pending`, `active`, `suspended` y `decommissioned`. `decommissioned`
+  conserva los datos y representa una instalación retirada o inactiva, no una
+  eliminación irreversible.
 
 La frase “Redis en el mismo Docker” se interpreta aquí como “en el mismo
 stack Docker Compose”, pero en un contenedor separado de PostgreSQL y de la
@@ -333,6 +335,44 @@ producto.
    URL estable de webhook?
 8. ¿Qué partes concretas del proyecto `chatbot` deseas evaluar primero como
    referencia: Telegram, autenticación, RAG, frontend tenant o despliegue?
+
+## Separación de aplicaciones
+
+La aplicación central debe crearse como un proyecto hermano independiente:
+
+```text
+/home/manager/Sync/python_proyects/voiceshop-control-plane/
+```
+
+Su responsabilidad será administrar la plataforma:
+
+- registro de tenants;
+- claves de activación;
+- estados `pending`, `active`, `suspended` y `decommissioned`;
+- usuarios administradores de la plataforma;
+- metadatos de cada instalación;
+- referencias a Compose, puertos, dominios, túneles y respaldos;
+- auditoría de activaciones y suspensiones.
+
+Su propio stack tendrá frontend central, API y PostgreSQL independiente.
+
+`chatbot` conservará el runtime que se ejecuta dentro de cada tenant:
+
+- frontend administrativo del negocio;
+- API de atención;
+- PostgreSQL propio;
+- Redis propio;
+- worker;
+- bot Telegram;
+- base de conocimiento y RAG.
+
+`web_promotion` seguirá siendo únicamente la página comercial.
+
+En la primera etapa el control plane no debe recibir acceso directo al socket
+Docker para crear contenedores automáticamente. La creación de los Compose de
+tenant será manual y el control plane registrará el estado y los metadatos. La
+automatización de Docker se evaluará después de definir sus límites de
+seguridad.
 
 ## Regla para reutilizar el proyecto existente
 
